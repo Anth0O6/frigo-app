@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
@@ -48,6 +49,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
+import java.time.LocalDate
 import java.time.LocalTime
 
 /** Saisie de noms propres : majuscule initiale, clavier qui enchaîne les champs. */
@@ -72,6 +74,7 @@ fun FormulaireIntervention(
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var choixDateOuvert by rememberSaveable { mutableStateOf(false) }
     var choixHeureOuvert by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
@@ -92,6 +95,19 @@ fun FormulaireIntervention(
                 text = if (etat.estCreation) "Nouvelle intervention" else "Modifier l'intervention",
                 style = MaterialTheme.typography.headlineSmall,
             )
+
+            OutlinedButton(
+                onClick = { choixDateOuvert = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = libelleDate(etat.date))
+            }
 
             OutlinedButton(
                 onClick = { choixHeureOuvert = true },
@@ -170,6 +186,17 @@ fun FormulaireIntervention(
         }
     }
 
+    if (choixDateOuvert) {
+        SelecteurDate(
+            date = etat.date,
+            onDateChoisie = {
+                onEtatChange(etat.copy(date = it))
+                choixDateOuvert = false
+            },
+            onFermer = { choixDateOuvert = false },
+        )
+    }
+
     if (choixHeureOuvert) {
         SelecteurHeure(
             heure = etat.heure,
@@ -243,7 +270,8 @@ private fun FormulaireInterventionPreview() {
     FrigoProTheme {
         FormulaireIntervention(
             etat = EtatFormulaire(
-                id = 1L,
+                id = "1",
+                date = LocalDate.now(),
                 heure = LocalTime.of(10, 30),
                 client = "Boucherie Lemoine",
                 ville = "Rouen",

@@ -10,11 +10,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -22,6 +26,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -29,8 +34,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,23 +49,25 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
+import java.time.LocalDate
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-
-/** Partagé avec le formulaire, qui affiche la même heure sous le même format. */
-internal val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /** Point d'entrée de l'écran, branché sur le [InterventionsViewModel]. */
 @Composable
 fun InterventionsRoute(
     modifier: Modifier = Modifier,
-    viewModel: InterventionsViewModel = viewModel(),
+    viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
 ) {
+    val jour by viewModel.jour.collectAsStateWithLifecycle()
     val interventions by viewModel.interventions.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
 
     InterventionsScreen(
+        jour = jour,
         interventions = interventions,
+        onJourPrecedent = viewModel::onJourPrecedent,
+        onJourSuivant = viewModel::onJourSuivant,
+        onJourChoisi = viewModel::onJourChoisi,
         onNouvelleIntervention = viewModel::onNouvelleIntervention,
         onModifierIntervention = viewModel::onModifierIntervention,
         modifier = modifier,
@@ -73,33 +84,40 @@ fun InterventionsRoute(
     }
 }
 
-/** Écran sans état : liste des interventions du jour et bouton d'ajout. */
+/** Écran sans état : tournée d'une journée, navigable jour par jour. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InterventionsScreen(
+    jour: LocalDate,
     interventions: List<Intervention>,
+    onJourPrecedent: () -> Unit,
+    onJourSuivant: () -> Unit,
+    onJourChoisi: (LocalDate) -> Unit,
     onNouvelleIntervention: () -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var calendrierOuvert by rememberSaveable { mutableStateOf(false) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "Interventions du jour")
-                        Text(
-                            text = sousTitre(interventions.size),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            )
+            Column {
+                CenterAlignedTopAppBar(
+                    title = { Text(text = "Interventions") },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                )
+                BarreJour(
+                    jour = jour,
+                    nombre = interventions.size,
+                    onPrecedent = onJourPrecedent,
+                    onSuivant = onJourSuivant,
+                    onOuvrirCalendrier = { calendrierOuvert = true },
+                )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onNouvelleIntervention) {
@@ -111,7 +129,7 @@ fun InterventionsScreen(
         },
     ) { innerPadding ->
         if (interventions.isEmpty()) {
-            TourneeVide(
+            JourneeVide(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
@@ -130,6 +148,79 @@ fun InterventionsScreen(
                         onClick = { onModifierIntervention(intervention) },
                     )
                 }
+            }
+        }
+    }
+
+    if (calendrierOuvert) {
+        SelecteurDate(
+            date = jour,
+            onDateChoisie = {
+                onJourChoisi(it)
+                calendrierOuvert = false
+            },
+            onFermer = { calendrierOuvert = false },
+        )
+    }
+}
+
+/**
+ * Navigation de journée : une flèche de chaque côté, et le libellé central
+ * ouvre le calendrier pour sauter directement à une date lointaine.
+ */
+@Composable
+private fun BarreJour(
+    jour: LocalDate,
+    nombre: Int,
+    onPrecedent: () -> Unit,
+    onSuivant: () -> Unit,
+    onOuvrirCalendrier: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onPrecedent) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronLeft,
+                    contentDescription = "Jour précédent",
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable(onClick = onOuvrirCalendrier)
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = titreJour(jour),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Filled.CalendarMonth,
+                        contentDescription = "Choisir une date",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Text(text = sousTitre(nombre), style = MaterialTheme.typography.labelSmall)
+            }
+            IconButton(onClick = onSuivant) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = "Jour suivant",
+                )
             }
         }
     }
@@ -172,7 +263,7 @@ fun InterventionCard(
                     Icon(
                         imageVector = Icons.Filled.LocationOn,
                         contentDescription = null,
-                        modifier = Modifier.width(16.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -184,7 +275,6 @@ fun InterventionCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = intervention.typePanne.libelle,
                     style = MaterialTheme.typography.labelSmall,
@@ -195,12 +285,12 @@ fun InterventionCard(
     }
 }
 
-/** Affiché quand la tournée a été entièrement vidée. */
+/** Affiché quand la journée consultée ne contient aucune intervention. */
 @Composable
-private fun TourneeVide(modifier: Modifier = Modifier) {
+private fun JourneeVide(modifier: Modifier = Modifier) {
     Box(modifier = modifier.padding(32.dp), contentAlignment = Alignment.Center) {
         Text(
-            text = "Aucune intervention planifiée.\nTouchez + pour en ajouter une.",
+            text = "Aucune intervention ce jour-là.\nTouchez + pour en planifier une.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -210,7 +300,7 @@ private fun TourneeVide(modifier: Modifier = Modifier) {
 
 /** « rendez-vous » est invariable : seul l'accord du participe change. */
 private fun sousTitre(nombre: Int): String = when (nombre) {
-    0 -> "Aucun rendez-vous planifié"
+    0 -> "Aucun rendez-vous"
     1 -> "1 rendez-vous planifié"
     else -> "$nombre rendez-vous planifiés"
 }
@@ -221,10 +311,28 @@ private fun InterventionsScreenPreview() {
     FrigoProTheme {
         Surface {
             InterventionsScreen(
+                jour = LocalDate.now(),
                 interventions = listOf(
-                    Intervention(1L, LocalTime.of(8, 30), "Boucherie Lemoine", "Rouen", TypePanne.FUITE_FLUIDE),
-                    Intervention(2L, LocalTime.of(10, 0), "Supérette Val-Fleuri", "Elbeuf", TypePanne.COMPRESSEUR),
+                    Intervention(
+                        id = "1",
+                        date = LocalDate.now(),
+                        heure = LocalTime.of(8, 30),
+                        client = "Boucherie Lemoine",
+                        ville = "Rouen",
+                        typePanne = TypePanne.FUITE_FLUIDE,
+                    ),
+                    Intervention(
+                        id = "2",
+                        date = LocalDate.now(),
+                        heure = LocalTime.of(10, 0),
+                        client = "Supérette Val-Fleuri",
+                        ville = "Elbeuf",
+                        typePanne = TypePanne.COMPRESSEUR,
+                    ),
                 ),
+                onJourPrecedent = {},
+                onJourSuivant = {},
+                onJourChoisi = {},
                 onNouvelleIntervention = {},
                 onModifierIntervention = {},
             )
