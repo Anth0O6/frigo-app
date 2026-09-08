@@ -12,6 +12,9 @@ import java.time.LocalTime
  * L'interface est volontairement la même que celle qu'aurait un dépôt adossé à
  * Room ou à une API : le jour où la persistance arrive, seule l'implémentation
  * change, pas le ViewModel ni l'UI.
+ *
+ * La liste exposée est toujours triée par heure de passage, l'ordre de la
+ * tournée étant la seule lecture utile pour un technicien.
  */
 class InterventionRepository {
 
@@ -19,22 +22,42 @@ class InterventionRepository {
 
     val interventions: StateFlow<List<Intervention>> = _interventions.asStateFlow()
 
-    /**
-     * Ajoute une intervention à la tournée du jour.
-     *
-     * Faute de formulaire de saisie en v0, la nouvelle ligne est piochée dans un
-     * jeu d'exemples et planifiée une heure après la dernière intervention.
-     */
-    fun ajouterIntervention() {
+    /** Crée une intervention et lui attribue un identifiant libre. */
+    fun ajouterIntervention(
+        heure: LocalTime,
+        client: String,
+        ville: String,
+        typePanne: TypePanne,
+    ) {
         _interventions.update { courantes ->
-            val modele = MODELES_AJOUT[courantes.size % MODELES_AJOUT.size]
-            val derniereHeure = courantes.maxOfOrNull { it.heure } ?: LocalTime.of(8, 0)
-            val nouvelle = modele.copy(
+            val nouvelle = Intervention(
                 id = (courantes.maxOfOrNull { it.id } ?: 0L) + 1L,
-                heure = derniereHeure.plusHours(1),
+                heure = heure,
+                client = client,
+                ville = ville,
+                typePanne = typePanne,
             )
-            (courantes + nouvelle).sortedBy { it.heure }
+            (courantes + nouvelle.nettoyee()).triees()
         }
+    }
+
+    /**
+     * Remplace l'intervention portant le même identifiant.
+     *
+     * Sans correspondance, la liste est laissée telle quelle : une édition ne
+     * doit jamais faire réapparaître une ligne supprimée entre-temps.
+     */
+    fun modifierIntervention(intervention: Intervention) {
+        _interventions.update { courantes ->
+            courantes
+                .map { if (it.id == intervention.id) intervention.nettoyee() else it }
+                .triees()
+        }
+    }
+
+    /** Retire l'intervention de la tournée. Sans effet si elle n'existe plus. */
+    fun supprimerIntervention(id: Long) {
+        _interventions.update { courantes -> courantes.filterNot { it.id == id } }
     }
 
     private companion object {
@@ -76,14 +99,13 @@ class InterventionRepository {
                 typePanne = TypePanne.ENTRETIEN,
             ),
         )
-
-        /** Exemples réutilisés par [ajouterIntervention]. */
-        val MODELES_AJOUT = listOf(
-            Intervention(0L, LocalTime.MIDNIGHT, "Cave coopérative Saint-Ouen", "Duclair", TypePanne.REGULATION),
-            Intervention(0L, LocalTime.MIDNIGHT, "Fromagerie Hardy", "Caudebec", TypePanne.FUITE_FLUIDE),
-            Intervention(0L, LocalTime.MIDNIGHT, "Brasserie du Port", "Le Havre", TypePanne.COMPRESSEUR),
-            Intervention(0L, LocalTime.MIDNIGHT, "Primeur Vasseur", "Bois-Guillaume", TypePanne.GIVRAGE),
-            Intervention(0L, LocalTime.MIDNIGHT, "Clinique des Ormes", "Mont-Saint-Aignan", TypePanne.ENTRETIEN),
-        )
     }
 }
+
+private fun List<Intervention>.triees(): List<Intervention> = sortedBy { it.heure }
+
+/** Les libellés saisis au clavier arrivent souvent avec des espaces parasites. */
+private fun Intervention.nettoyee(): Intervention = copy(
+    client = client.trim(),
+    ville = ville.trim(),
+)

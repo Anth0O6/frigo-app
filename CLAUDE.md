@@ -1,7 +1,8 @@
 # FrigoPro
 
 Application Android native destinée aux techniciens frigoristes en tournée.
-La v0 affiche la liste des interventions du jour et permet d'en ajouter une.
+La v0 affiche la liste des interventions du jour et permet de les créer,
+les modifier et les supprimer.
 
 ## Stack
 
@@ -28,6 +29,8 @@ La v0 affiche la liste des interventions du jour et permet d'en ajouter une.
 │       │   │   ├── Intervention.kt
 │       │   │   └── InterventionRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
+│       │       ├── EtatFormulaire.kt
+│       │       ├── FormulaireIntervention.kt
 │       │       ├── InterventionsScreen.kt
 │       │       ├── InterventionsViewModel.kt
 │       │       └── theme/
@@ -43,26 +46,35 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
 
 - **`data`** — `Intervention` (heure, client, ville, type de panne) et
   `TypePanne`. `InterventionRepository` détient l'état dans un
-  `MutableStateFlow` : **tout est en mémoire en v0**, rien n'est persisté ; les
-  données sont factices et repartent de zéro à chaque lancement. L'API du dépôt
-  est cependant celle qu'aurait une implémentation Room ou réseau, pour que le
-  passage à la persistance ne touche ni le ViewModel ni l'UI.
-- **`ui`** — `InterventionsViewModel` expose un `StateFlow<List<Intervention>>`
-  et reçoit les intentions utilisateur (`onAjouterIntervention`). L'écran suit
-  le motif *state hoisting* : `InterventionsRoute` (avec état, branché sur le
-  ViewModel) enveloppe `InterventionsScreen` (sans état, testable et
-  prévisualisable).
+  `MutableStateFlow` et expose les trois écritures du CRUD
+  (`ajouterIntervention`, `modifierIntervention`, `supprimerIntervention`) ;
+  la liste publiée est toujours triée par heure, l'ordre de la tournée étant la
+  seule lecture utile sur le terrain. **Tout est en mémoire en v0**, rien n'est
+  persisté : les données de départ sont factices et repartent de zéro à chaque
+  lancement. L'API du dépôt est cependant celle qu'aurait une implémentation
+  Room ou réseau, pour que le passage à la persistance ne touche ni le
+  ViewModel ni l'UI.
+- **`ui`** — `InterventionsViewModel` expose la liste et le formulaire ouvert
+  (`StateFlow<EtatFormulaire?>`, `null` quand l'écran n'affiche que la liste),
+  et reçoit les intentions utilisateur (`onNouvelleIntervention`,
+  `onModifierIntervention`, `onValiderFormulaire`…). `EtatFormulaire` porte la
+  saisie en cours : son `id` vaut `null` en création et identifie la ligne
+  éditée sinon, ce qui distingue « Ajouter » d'« Enregistrer ». L'écran suit le
+  motif *state hoisting* : `InterventionsRoute` (avec état, branché sur le
+  ViewModel) enveloppe `InterventionsScreen` et `FormulaireIntervention` (sans
+  état, testables et prévisualisables).
 - **`ui.theme`** — thème Material 3 avec couleurs dynamiques (Material You) sur
   Android 12+, repli sur la palette « froid » définie dans `Color.kt`.
 
-Un seul écran, pas de navigation : ajouter une destination impliquera
-d'introduire un graphe de navigation et de déplacer `InterventionsRoute`
-derrière celui-ci.
+La saisie se fait dans une `ModalBottomSheet` plutôt que sur une destination
+dédiée : un seul écran, pas de navigation. Ajouter une vraie destination
+impliquera d'introduire un graphe de navigation et de déplacer
+`InterventionsRoute` derrière celui-ci.
 
 ## Conventions
 
 - **Nommage** : code du domaine en français (`Intervention`, `TypePanne`,
-  `ajouterIntervention`) pour coller au vocabulaire métier ; les API Android et
+  `ajouterIntervention`, `EtatFormulaire`) pour coller au vocabulaire métier ; les API Android et
   Compose gardent évidemment leurs noms d'origine.
 - **Composables** : `PascalCase`, un `Modifier` en premier paramètre optionnel,
   paramètres d'état avant les lambdas de rappel, `@Preview` privé en fin de
@@ -99,6 +111,6 @@ déclenchement manuel (`workflow_dispatch`) : checkout, JDK Temurin 17,
 ## Pistes pour la suite
 
 - Persistance des interventions (Room) derrière `InterventionRepository`.
-- Formulaire de création plutôt que l'ajout d'un exemple par le bouton flottant.
 - Écran de détail d'une intervention + navigation.
+- Confirmation avant suppression (ou annulation par `Snackbar`).
 - Tests unitaires du dépôt et tests d'UI Compose.
