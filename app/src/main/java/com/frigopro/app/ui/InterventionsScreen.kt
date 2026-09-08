@@ -1,6 +1,8 @@
 package com.frigopro.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,7 +43,8 @@ import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-private val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+/** Partagé avec le formulaire, qui affiche la même heure sous le même format. */
+internal val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /** Point d'entrée de l'écran, branché sur le [InterventionsViewModel]. */
 @Composable
@@ -49,11 +53,24 @@ fun InterventionsRoute(
     viewModel: InterventionsViewModel = viewModel(),
 ) {
     val interventions by viewModel.interventions.collectAsStateWithLifecycle()
+    val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
+
     InterventionsScreen(
         interventions = interventions,
-        onAjouterIntervention = viewModel::onAjouterIntervention,
+        onNouvelleIntervention = viewModel::onNouvelleIntervention,
+        onModifierIntervention = viewModel::onModifierIntervention,
         modifier = modifier,
     )
+
+    formulaire?.let { etat ->
+        FormulaireIntervention(
+            etat = etat,
+            onEtatChange = viewModel::onFormulaireChange,
+            onValider = viewModel::onValiderFormulaire,
+            onSupprimer = viewModel::onSupprimerIntervention,
+            onFermer = viewModel::onFermerFormulaire,
+        )
+    }
 }
 
 /** Écran sans état : liste des interventions du jour et bouton d'ajout. */
@@ -61,7 +78,8 @@ fun InterventionsRoute(
 @Composable
 fun InterventionsScreen(
     interventions: List<Intervention>,
-    onAjouterIntervention: () -> Unit,
+    onNouvelleIntervention: () -> Unit,
+    onModifierIntervention: (Intervention) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -72,7 +90,7 @@ fun InterventionsScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = "Interventions du jour")
                         Text(
-                            text = "${interventions.size} rendez-vous planifiés",
+                            text = sousTitre(interventions.size),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
@@ -84,7 +102,7 @@ fun InterventionsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAjouterIntervention) {
+            FloatingActionButton(onClick = onNouvelleIntervention) {
                 Icon(
                     imageVector = Icons.Filled.Add,
                     contentDescription = "Ajouter une intervention",
@@ -92,15 +110,26 @@ fun InterventionsScreen(
             }
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(items = interventions, key = { it.id }) { intervention ->
-                InterventionCard(intervention = intervention)
+        if (interventions.isEmpty()) {
+            TourneeVide(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(items = interventions, key = { it.id }) { intervention ->
+                    InterventionCard(
+                        intervention = intervention,
+                        onClick = { onModifierIntervention(intervention) },
+                    )
+                }
             }
         }
     }
@@ -110,6 +139,7 @@ fun InterventionsScreen(
 @Composable
 fun InterventionCard(
     intervention: Intervention,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -121,6 +151,7 @@ fun InterventionCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(onClick = onClick)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -164,6 +195,26 @@ fun InterventionCard(
     }
 }
 
+/** Affiché quand la tournée a été entièrement vidée. */
+@Composable
+private fun TourneeVide(modifier: Modifier = Modifier) {
+    Box(modifier = modifier.padding(32.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = "Aucune intervention planifiée.\nTouchez + pour en ajouter une.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** « rendez-vous » est invariable : seul l'accord du participe change. */
+private fun sousTitre(nombre: Int): String = when (nombre) {
+    0 -> "Aucun rendez-vous planifié"
+    1 -> "1 rendez-vous planifié"
+    else -> "$nombre rendez-vous planifiés"
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun InterventionsScreenPreview() {
@@ -174,7 +225,8 @@ private fun InterventionsScreenPreview() {
                     Intervention(1L, LocalTime.of(8, 30), "Boucherie Lemoine", "Rouen", TypePanne.FUITE_FLUIDE),
                     Intervention(2L, LocalTime.of(10, 0), "Supérette Val-Fleuri", "Elbeuf", TypePanne.COMPRESSEUR),
                 ),
-                onAjouterIntervention = {},
+                onNouvelleIntervention = {},
+                onModifierIntervention = {},
             )
         }
     }
