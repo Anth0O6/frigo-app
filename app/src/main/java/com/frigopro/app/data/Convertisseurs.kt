@@ -46,4 +46,10 @@ object Convertisseurs {
 
     @TypeConverter
     fun versTypePanne(valeur: String?): TypePanne? = valeur?.let(TypePanne::valueOf)
+
+    @TypeConverter
+    fun depuisStatut(statut: StatutIntervention?): String? = statut?.name
+
+    @TypeConverter
+    fun versStatut(valeur: String?): StatutIntervention? = valeur?.let(StatutIntervention::valueOf)
 }

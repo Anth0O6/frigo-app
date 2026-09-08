@@ -15,7 +15,7 @@ import androidx.room.TypeConverters
  */
 @Database(
     entities = [Intervention::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -25,11 +25,15 @@ abstract class FrigoProDatabase : RoomDatabase() {
 
     companion object {
 
+        const val NOM = "frigopro.db"
+
         fun creer(contexte: Context): FrigoProDatabase =
             Room.databaseBuilder(
                 contexte.applicationContext,
                 FrigoProDatabase::class.java,
-                "frigopro.db",
-            ).build()
+                NOM,
+            )
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

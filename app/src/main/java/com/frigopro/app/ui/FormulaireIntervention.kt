@@ -47,6 +47,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
@@ -56,6 +57,12 @@ import java.time.LocalTime
 private val OPTIONS_CLAVIER = KeyboardOptions(
     capitalization = KeyboardCapitalization.Words,
     imeAction = ImeAction.Next,
+)
+
+/** Les notes sont des phrases, sur plusieurs lignes : pas d'enchaînement de champ. */
+private val OPTIONS_NOTES = KeyboardOptions(
+    capitalization = KeyboardCapitalization.Sentences,
+    imeAction = ImeAction.Default,
 )
 
 /**
@@ -157,6 +164,33 @@ fun FormulaireIntervention(
                     )
                 }
             }
+
+            Text(
+                text = "Statut",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatutIntervention.entries.forEach { statut ->
+                    FilterChip(
+                        selected = etat.statut == statut,
+                        onClick = { onEtatChange(etat.copy(statut = statut)) },
+                        label = { Text(text = statut.libelle) },
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = etat.notes,
+                onValueChange = { onEtatChange(etat.copy(notes = it)) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "Notes de passage") },
+                minLines = 3,
+                keyboardOptions = OPTIONS_NOTES,
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -276,6 +310,8 @@ private fun FormulaireInterventionPreview() {
                 client = "Boucherie Lemoine",
                 ville = "Rouen",
                 typePanne = TypePanne.COMPRESSEUR,
+                statut = StatutIntervention.EN_COURS,
+                notes = "Manque de fluide, à recontrôler la semaine prochaine.",
             ),
             onEtatChange = {},
             onValider = {},

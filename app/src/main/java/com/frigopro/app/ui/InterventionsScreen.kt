@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,9 +18,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Pending
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -40,13 +44,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Intervention
+import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
@@ -70,6 +77,7 @@ fun InterventionsRoute(
         onJourChoisi = viewModel::onJourChoisi,
         onNouvelleIntervention = viewModel::onNouvelleIntervention,
         onModifierIntervention = viewModel::onModifierIntervention,
+        onChangerStatut = viewModel::onChangerStatut,
         modifier = modifier,
     )
 
@@ -95,6 +103,7 @@ fun InterventionsScreen(
     onJourChoisi: (LocalDate) -> Unit,
     onNouvelleIntervention: () -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
+    onChangerStatut: (Intervention) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var calendrierOuvert by rememberSaveable { mutableStateOf(false) }
@@ -112,7 +121,7 @@ fun InterventionsScreen(
                 )
                 BarreJour(
                     jour = jour,
-                    nombre = interventions.size,
+                    sousTitre = sousTitre(interventions),
                     onPrecedent = onJourPrecedent,
                     onSuivant = onJourSuivant,
                     onOuvrirCalendrier = { calendrierOuvert = true },
@@ -146,6 +155,7 @@ fun InterventionsScreen(
                     InterventionCard(
                         intervention = intervention,
                         onClick = { onModifierIntervention(intervention) },
+                        onChangerStatut = { onChangerStatut(intervention) },
                     )
                 }
             }
@@ -171,7 +181,7 @@ fun InterventionsScreen(
 @Composable
 private fun BarreJour(
     jour: LocalDate,
-    nombre: Int,
+    sousTitre: String,
     onPrecedent: () -> Unit,
     onSuivant: () -> Unit,
     onOuvrirCalendrier: () -> Unit,
@@ -214,7 +224,7 @@ private fun BarreJour(
                         modifier = Modifier.size(18.dp),
                     )
                 }
-                Text(text = sousTitre(nombre), style = MaterialTheme.typography.labelSmall)
+                Text(text = sousTitre, style = MaterialTheme.typography.labelSmall)
             }
             IconButton(onClick = onSuivant) {
                 Icon(
@@ -226,62 +236,121 @@ private fun BarreJour(
     }
 }
 
-/** Carte présentant une intervention : heure, client, ville et type de panne. */
+/**
+ * Carte d'une intervention. Le corps ouvre le formulaire ; l'icône de droite
+ * fait avancer le statut sans le rouvrir, pour marquer un passage terminé
+ * d'un seul geste.
+ */
 @Composable
 fun InterventionCard(
     intervention: Intervention,
     onClick: () -> Unit,
+    onChangerStatut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val terminee = intervention.statut == StatutIntervention.TERMINEE
+
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = if (terminee) {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
         ),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = intervention.heure.format(FORMAT_HEURE),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick)
+                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = intervention.client,
+                    text = intervention.heure.format(FORMAT_HEURE),
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    color = if (terminee) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = intervention.ville,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = intervention.client,
+                        style = MaterialTheme.typography.titleMedium,
+                        textDecoration = if (terminee) TextDecoration.LineThrough else null,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = intervention.ville,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = intervention.typePanne.libelle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                    if (intervention.notes.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = intervention.notes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                Text(
-                    text = intervention.typePanne.libelle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
             }
+            BoutonStatut(statut = intervention.statut, onClick = onChangerStatut)
+            Spacer(modifier = Modifier.width(4.dp))
         }
+    }
+}
+
+/** Icône d'avancement, qui passe au statut suivant à chaque appui. */
+@Composable
+private fun BoutonStatut(
+    statut: StatutIntervention,
+    onClick: () -> Unit,
+) {
+    val icone = when (statut) {
+        StatutIntervention.A_FAIRE -> Icons.Filled.RadioButtonUnchecked
+        StatutIntervention.EN_COURS -> Icons.Filled.Pending
+        StatutIntervention.TERMINEE -> Icons.Filled.CheckCircle
+    }
+    val teinte: Color = when (statut) {
+        StatutIntervention.A_FAIRE -> MaterialTheme.colorScheme.onSurfaceVariant
+        StatutIntervention.EN_COURS -> MaterialTheme.colorScheme.tertiary
+        StatutIntervention.TERMINEE -> MaterialTheme.colorScheme.primary
+    }
+
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icone,
+            contentDescription = "${statut.libelle} — toucher pour changer de statut",
+            tint = teinte,
+        )
     }
 }
 
@@ -298,11 +367,24 @@ private fun JourneeVide(modifier: Modifier = Modifier) {
     }
 }
 
-/** « rendez-vous » est invariable : seul l'accord du participe change. */
-private fun sousTitre(nombre: Int): String = when (nombre) {
-    0 -> "Aucun rendez-vous"
-    1 -> "1 rendez-vous planifié"
-    else -> "$nombre rendez-vous planifiés"
+/**
+ * « rendez-vous » est invariable ; seul l'accord du participe change. Le
+ * décompte des interventions terminées répond à la question qu'un technicien
+ * se pose en cours de journée : ce qu'il lui reste.
+ */
+private fun sousTitre(interventions: List<Intervention>): String {
+    if (interventions.isEmpty()) return "Aucun rendez-vous"
+
+    val total = interventions.size
+    val base = if (total == 1) "1 rendez-vous" else "$total rendez-vous"
+    val terminees = interventions.count { it.statut == StatutIntervention.TERMINEE }
+
+    return when {
+        terminees == 0 -> base
+        terminees == total -> "$base · tout est terminé"
+        terminees == 1 -> "$base · 1 terminée"
+        else -> "$base · $terminees terminées"
+    }
 }
 
 @Preview(showBackground = true)
@@ -320,6 +402,7 @@ private fun InterventionsScreenPreview() {
                         client = "Boucherie Lemoine",
                         ville = "Rouen",
                         typePanne = TypePanne.FUITE_FLUIDE,
+                        statut = StatutIntervention.TERMINEE,
                     ),
                     Intervention(
                         id = "2",
@@ -328,6 +411,16 @@ private fun InterventionsScreenPreview() {
                         client = "Supérette Val-Fleuri",
                         ville = "Elbeuf",
                         typePanne = TypePanne.COMPRESSEUR,
+                        statut = StatutIntervention.EN_COURS,
+                        notes = "Compresseur bruyant, pièce commandée.",
+                    ),
+                    Intervention(
+                        id = "3",
+                        date = LocalDate.now(),
+                        heure = LocalTime.of(14, 15),
+                        client = "Traiteur Delaunay",
+                        ville = "Barentin",
+                        typePanne = TypePanne.GIVRAGE,
                     ),
                 ),
                 onJourPrecedent = {},
@@ -335,6 +428,7 @@ private fun InterventionsScreenPreview() {
                 onJourChoisi = {},
                 onNouvelleIntervention = {},
                 onModifierIntervention = {},
+                onChangerStatut = {},
             )
         }
     }

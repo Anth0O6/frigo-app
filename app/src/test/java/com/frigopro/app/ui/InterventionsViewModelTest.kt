@@ -2,6 +2,7 @@ package com.frigopro.app.ui
 
 import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.StatutIntervention
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -100,6 +101,46 @@ class InterventionsViewModelTest {
 
         assertNull(viewModel.formulaire.value)
         assertTrue(dao.contenu.isEmpty())
+    }
+
+    @Test
+    fun `changer le statut fait avancer l'intervention en boucle`() = runTest {
+        val viewModel = creerViewModel()
+        enregistrer(viewModel, client = "Fromagerie Hardy", ville = "Caudebec")
+        advanceUntilIdle()
+
+        assertEquals(StatutIntervention.A_FAIRE, dao.contenu.single().statut)
+
+        viewModel.onChangerStatut(dao.contenu.single())
+        advanceUntilIdle()
+        assertEquals(StatutIntervention.EN_COURS, dao.contenu.single().statut)
+
+        viewModel.onChangerStatut(dao.contenu.single())
+        advanceUntilIdle()
+        assertEquals(StatutIntervention.TERMINEE, dao.contenu.single().statut)
+
+        viewModel.onChangerStatut(dao.contenu.single())
+        advanceUntilIdle()
+        assertEquals(
+            "revenir au début permet de corriger une fausse manœuvre",
+            StatutIntervention.A_FAIRE,
+            dao.contenu.single().statut,
+        )
+    }
+
+    @Test
+    fun `changer le statut ne touche a rien d'autre`() = runTest {
+        val viewModel = creerViewModel()
+        enregistrer(viewModel, client = "Primeur Vasseur", ville = "Duclair")
+        advanceUntilIdle()
+        val avant = dao.contenu.single()
+
+        viewModel.onChangerStatut(avant)
+        advanceUntilIdle()
+
+        val apres = dao.contenu.single()
+        assertEquals(avant.copy(statut = apres.statut, modifieLe = apres.modifieLe), apres)
+        assertNull("la liste ne doit pas ouvrir le formulaire", viewModel.formulaire.value)
     }
 
     @Test

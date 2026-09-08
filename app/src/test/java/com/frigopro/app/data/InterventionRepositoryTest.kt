@@ -86,3 +86,20 @@ class InterventionRepositoryTest {
         typePanne = TypePanne.COMPRESSEUR,
     )
 }
+
+class StatutInterventionTest {
+
+    @Test
+    fun `les statuts s'enchainent dans l'ordre d'avancement, puis reviennent au debut`() {
+        assertEquals(StatutIntervention.EN_COURS, StatutIntervention.A_FAIRE.suivant())
+        assertEquals(StatutIntervention.TERMINEE, StatutIntervention.EN_COURS.suivant())
+        assertEquals(StatutIntervention.A_FAIRE, StatutIntervention.TERMINEE.suivant())
+    }
+
+    @Test
+    fun `chaque statut porte un libelle affichable`() {
+        for (statut in StatutIntervention.entries) {
+            assertTrue(statut.name, statut.libelle.isNotBlank())
+        }
+    }
+}

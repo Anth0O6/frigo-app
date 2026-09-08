@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.Intervention
+import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypePanne
 import java.time.LocalDate
 import java.time.LocalTime
@@ -19,6 +20,8 @@ data class EtatFormulaire(
     val client: String = "",
     val ville: String = "",
     val typePanne: TypePanne = TypePanne.FUITE_FLUIDE,
+    val statut: StatutIntervention = StatutIntervention.A_FAIRE,
+    val notes: String = "",
 ) {
 
     val estCreation: Boolean get() = id == null
@@ -34,6 +37,8 @@ data class EtatFormulaire(
         client = client,
         ville = ville,
         typePanne = typePanne,
+        statut = statut,
+        notes = notes,
     )
 
     companion object {
@@ -45,6 +50,8 @@ data class EtatFormulaire(
             client = intervention.client,
             ville = intervention.ville,
             typePanne = intervention.typePanne,
+            statut = intervention.statut,
+            notes = intervention.notes,
         )
     }
 }

@@ -20,6 +20,8 @@ import java.util.UUID
  * @param client raison sociale du client.
  * @param ville commune où se déroule l'intervention.
  * @param typePanne nature de la panne signalée.
+ * @param statut avancement dans la journée.
+ * @param notes observations relevées sur place.
  * @param modifieLe date de dernière écriture, posée par le dépôt. Inutilisée
  *   en v1, mais c'est elle qui permettra de départager deux versions d'une
  *   même ligne lors d'une synchronisation.
@@ -35,8 +37,25 @@ data class Intervention(
     val client: String,
     val ville: String,
     val typePanne: TypePanne,
+    val statut: StatutIntervention = StatutIntervention.A_FAIRE,
+    val notes: String = "",
     val modifieLe: Instant = Instant.EPOCH,
 )
+
+/** Avancement d'une intervention dans la journée du technicien. */
+enum class StatutIntervention(val libelle: String) {
+    A_FAIRE("À faire"),
+    EN_COURS("En cours"),
+    TERMINEE("Terminée"),
+    ;
+
+    /**
+     * Statut suivant, en boucle. La carte se touche pour avancer ; repasser
+     * par le début est le seul moyen de corriger une fausse manœuvre sur un
+     * toit, gants aux mains, sans rouvrir le formulaire.
+     */
+    fun suivant(): StatutIntervention = entries[(ordinal + 1) % entries.size]
+}
 
 /** Nature de la panne signalée. */
 enum class TypePanne(val libelle: String) {

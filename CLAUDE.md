@@ -2,8 +2,8 @@
 
 Application Android native destinée aux techniciens frigoristes en tournée.
 Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
-et permet de les créer, les modifier et les supprimer. Les données sont
-persistées localement.
+et permet de les créer, les modifier, les supprimer et de suivre leur
+avancement. Les données sont persistées localement.
 
 ## Stack
 
@@ -27,6 +27,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 ├── app/
 │   ├── build.gradle.kts            # configuration du module applicatif
 │   ├── schemas/                    # schémas Room exportés (migrations)
+│   ├── src/test/java/com/frigopro/app/  # tests JVM (voir « Tests »)
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── java/com/frigopro/app/
@@ -36,6 +37,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   ├── data/               # modèle, base et source de données
 │       │   │   ├── Intervention.kt
 │       │   │   ├── Convertisseurs.kt
+│       │   │   ├── Migrations.kt
 │       │   │   ├── InterventionDao.kt
 │       │   │   ├── FrigoProDatabase.kt
 │       │   │   └── InterventionRepository.kt
@@ -50,15 +52,15 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       └── res/                    # chaînes, couleurs, thème XML, icône
 ├── gradle/libs.versions.toml       # versions centralisées
 ├── gradle/wrapper/                 # wrapper committé (jar inclus)
-└── .github/workflows/build.yml     # CI : assembleDebug + Release
+└── .github/workflows/build.yml     # CI : tests, APK et Release
 ```
 
 ## Architecture
 
 Découpage en trois couches, sens de dépendance `ui → data` uniquement :
 
-- **`data`** — `Intervention` est à la fois le modèle du domaine et l'entité
-  Room ; les deux se confondent tant que le stockage épouse le domaine, et se
+- **`data`** — `Intervention` (date, heure, client, ville, type de panne,
+  statut, notes) est à la fois le modèle du domaine et l'entité Room ; les deux se confondent tant que le stockage épouse le domaine, et se
   sépareront le jour où ils divergeront. `Convertisseurs` traduit les types
   `java.time` en colonnes : dates et heures sont stockées en texte de largeur
   fixe, ce qui les rend **triables et comparables directement en SQL** — c'est
@@ -106,11 +108,20 @@ Rien d'autre n'anticipe le réseau : ni comptes, ni notion d'entreprise, ni
 ### Migrations
 
 `exportSchema` est actif et `room.schemaLocation` pointe sur `app/schemas`.
-Toute évolution de `Intervention` doit s'accompagner d'une migration et du
-schéma régénéré, **committé** : sans lui, aucune migration ne peut être écrite
-ni testée, et une mise à jour effacerait les tournées déjà saisies. Le fichier
-est produit à la compilation ; il faut donc penser à l'ajouter au dépôt après
-un `assembleDebug` local.
+Toute évolution de `Intervention` doit s'accompagner d'une migration dans
+`Migrations.kt`, du schéma régénéré **committé**, et d'un cas dans
+`MigrationTest` : sans le schéma, aucune migration ne peut être écrite ni
+vérifiée, et une mise à jour effacerait les tournées déjà saisies.
+
+Le schéma est produit à la compilation. Chaque build en publie une copie en
+artefact `room-schemas`, d'où il se récupère sans construire le projet
+localement.
+
+`MigrationTest` recrée une base telle que la version précédente l'écrivait —
+empreinte d'identité comprise — puis l'ouvre par `FrigoProDatabase.creer` : la
+migration est ainsi vérifiée dans les conditions réelles, y compris son
+enregistrement auprès du constructeur, qu'un simple test de SQL laisserait
+passer.
 
 ## Conventions
 
@@ -134,9 +145,27 @@ un `assembleDebug` local.
 - **Formatage** : style officiel Kotlin (`kotlin.code.style=official`),
   indentation 4 espaces, virgule finale sur les listes multi-lignes.
 
+## Tests
+
+Tout tourne sur la JVM, sans émulateur, donc en CI avant la construction de
+l'APK : un test rouge bloque la publication.
+
+| Cible | Ce qui est couvert |
+| --- | --- |
+| `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
+| `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id` |
+| `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
+| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète |
+| `MigrationTest` | Une base de la version précédente se migre sans perdre ses tournées |
+
+Le dépôt et le ViewModel s'exercent sur `FauxInterventionDao`, qui reproduit le
+contrat SQL du vrai DAO ; seul `MigrationTest` a besoin d'un vrai SQLite,
+fourni par Robolectric.
+
 ## Build
 
 ```bash
+./gradlew testDebugUnitTest # tests unitaires
 ./gradlew assembleDebug     # APK debug : app/build/outputs/apk/debug/app-debug.apk
 ./gradlew lint              # analyse statique Android
 ```
@@ -148,14 +177,16 @@ fichier non versionné).
 
 `.github/workflows/build.yml` s'exécute à chaque push sur `main` et sur
 déclenchement manuel (`workflow_dispatch`) : checkout, JDK Temurin 17,
-`gradle/actions/setup-gradle`, `./gradlew assembleDebug`, puis publication de
-`app-debug.apk` dans une GitHub Release taguée `build-<numéro de run>`
-(`permissions: contents: write`).
+`gradle/actions/setup-gradle`, `./gradlew testDebugUnitTest`,
+`./gradlew assembleDebug`, publication du schéma Room en artefact, puis
+publication de `app-debug.apk` dans une GitHub Release taguée
+`build-<numéro de run>` (`permissions: contents: write`).
 
 ## Pistes pour la suite
 
-- Suivi d'intervention : statut (à faire / en cours / terminée), notes, photos.
+- Photos avant / après, prises depuis l'intervention.
 - Compte-rendu client exportable, éventuellement signé.
+- Fiche client réutilisable, pour ne plus retaper les mêmes coordonnées.
 - Confirmation avant suppression (ou annulation par `Snackbar`).
-- Tests unitaires du dépôt (Room en mémoire) et tests d'UI Compose.
+- Tests d'UI Compose.
 - Synchronisation serveur, le jour où plusieurs techniciens partagent un planning.

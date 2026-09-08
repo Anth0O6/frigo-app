@@ -69,6 +69,16 @@ class InterventionsViewModel(
         _formulaire.value = EtatFormulaire.depuis(intervention)
     }
 
+    /**
+     * Fait avancer le statut depuis la liste, sans ouvrir le formulaire :
+     * marquer une intervention terminée doit tenir en un geste, sur place.
+     */
+    fun onChangerStatut(intervention: Intervention) {
+        viewModelScope.launch {
+            repository.enregistrer(intervention.copy(statut = intervention.statut.suivant()))
+        }
+    }
+
     fun onFormulaireChange(etat: EtatFormulaire) {
         _formulaire.value = etat
     }
