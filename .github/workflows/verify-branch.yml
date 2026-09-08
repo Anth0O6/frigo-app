@@ -19,5 +19,15 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Diagnostics SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_HOME" || true
+          ls "$ANDROID_HOME/platforms" || true
+          ls "$ANDROID_HOME/build-tools" || true
+          ls "$ANDROID_HOME/licenses" || true
       - run: chmod +x ./gradlew
-      - run: ./gradlew assembleDebug --stacktrace
+      - name: Build debug APK
+        timeout-minutes: 15
+        run: ./gradlew assembleDebug --stacktrace --no-daemon --info
