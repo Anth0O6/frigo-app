@@ -43,6 +43,12 @@ jobs:
           path: app/schemas/
           if-no-files-found: error
 
+      # Étape temporaire : le téléchargement d'artefact passe par Azure Blob,
+      # injoignable depuis l'environnement de développement. Le journal, lui,
+      # est lisible par l'API. À retirer une fois le schéma versionné.
+      - name: Dump Room schemas (base64)
+        run: tar -czf - app/schemas | base64 -w 120
+
       - name: Publish APK as a GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
