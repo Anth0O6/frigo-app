@@ -29,6 +29,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
@@ -42,12 +45,6 @@ jobs:
           name: room-schemas
           path: app/schemas/
           if-no-files-found: error
-
-      # Étape temporaire : le téléchargement d'artefact passe par Azure Blob,
-      # injoignable depuis l'environnement de développement. Le journal, lui,
-      # est lisible par l'API. À retirer une fois le schéma versionné.
-      - name: Dump Room schemas (base64)
-        run: tar -czf - app/schemas | base64 -w 120
 
       - name: Publish APK as a GitHub Release
         env:
