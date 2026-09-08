@@ -32,6 +32,17 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
+      # Le schéma Room n'existe qu'après compilation : le publier à chaque build
+      # est le seul moyen de pouvoir l'ajouter au dépôt, et donc d'écrire un jour
+      # une migration. `error` plutôt qu'un silence : un schéma manquant est un
+      # défaut de configuration, pas un cas normal.
+      - name: Publish Room schemas
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: app/schemas/
+          if-no-files-found: error
+
       - name: Publish APK as a GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
