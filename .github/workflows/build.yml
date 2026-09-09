@@ -46,10 +46,6 @@ jobs:
           path: app/schemas/
           if-no-files-found: error
 
-      # Temporaire : récupération du schéma de la version 2 (voir commit précédent).
-      - name: Dump Room schemas (base64)
-        run: tar -czf - app/schemas | base64 -w 120
-
       - name: Publish APK as a GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

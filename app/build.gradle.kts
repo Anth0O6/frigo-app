@@ -47,6 +47,13 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+
+        // Sans cela, un `testDebugUnitTest` vert ne dit pas ce qu'il a exécuté.
+        unitTests.all {
+            it.testLogging {
+                events("passed", "skipped", "failed")
+            }
+        }
     }
 }
 
