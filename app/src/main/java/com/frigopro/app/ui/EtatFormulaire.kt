@@ -19,6 +19,8 @@ data class EtatFormulaire(
     val heure: LocalTime = LocalTime.of(9, 0),
     val client: String = "",
     val ville: String = "",
+    /** Renseigné quand le client vient du carnet ; `null` s'il est saisi à la main. */
+    val clientId: String? = null,
     val typePanne: TypePanne = TypePanne.FUITE_FLUIDE,
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
@@ -37,6 +39,7 @@ data class EtatFormulaire(
         client = client,
         ville = ville,
         typePanne = typePanne,
+        clientId = clientId,
         statut = statut,
         notes = notes,
     )
@@ -50,6 +53,7 @@ data class EtatFormulaire(
             client = intervention.client,
             ville = intervention.ville,
             typePanne = intervention.typePanne,
+            clientId = intervention.clientId,
             statut = intervention.statut,
             notes = intervention.notes,
         )

@@ -67,6 +67,7 @@ fun InterventionsRoute(
 ) {
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val interventions by viewModel.interventions.collectAsStateWithLifecycle()
+    val clients by viewModel.clients.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
 
     InterventionsScreen(
@@ -84,7 +85,9 @@ fun InterventionsRoute(
     formulaire?.let { etat ->
         FormulaireIntervention(
             etat = etat,
+            clients = clients,
             onEtatChange = viewModel::onFormulaireChange,
+            onClientChoisi = viewModel::onClientChoisi,
             onValider = viewModel::onValiderFormulaire,
             onSupprimer = viewModel::onSupprimerIntervention,
             onFermer = viewModel::onFermerFormulaire,

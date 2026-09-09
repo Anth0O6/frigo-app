@@ -20,6 +20,10 @@ import java.util.UUID
  * @param client raison sociale du client.
  * @param ville commune où se déroule l'intervention.
  * @param typePanne nature de la panne signalée.
+ * @param clientId client du carnet, quand l'intervention y est rattachée.
+ *   `client` et `ville` restent stockés sur la ligne : ce sont les
+ *   coordonnées **au moment de l'intervention**, qu'un compte-rendu d'il y a
+ *   six mois doit continuer d'afficher même si le client a été renommé.
  * @param statut avancement dans la journée.
  * @param notes observations relevées sur place.
  * @param modifieLe date de dernière écriture, posée par le dépôt. Inutilisée
@@ -37,6 +41,7 @@ data class Intervention(
     val client: String,
     val ville: String,
     val typePanne: TypePanne,
+    val clientId: String? = null,
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
     val modifieLe: Instant = Instant.EPOCH,

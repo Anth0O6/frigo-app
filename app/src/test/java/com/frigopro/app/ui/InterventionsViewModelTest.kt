@@ -1,5 +1,8 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Client
+import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.StatutIntervention
@@ -23,6 +26,7 @@ import org.junit.Test
 class InterventionsViewModelTest {
 
     private val dao = FauxInterventionDao()
+    private val daoClients = FauxClientDao()
 
     @After
     fun nettoyer() {
@@ -144,6 +148,65 @@ class InterventionsViewModelTest {
     }
 
     @Test
+    fun `un client absent du carnet y est inscrit a l'enregistrement`() = runTest {
+        val viewModel = creerViewModel()
+
+        enregistrer(viewModel, client = "Fromagerie Hardy", ville = "Caudebec")
+        advanceUntilIdle()
+
+        val inscrit = daoClients.contenu.single()
+        assertEquals("Fromagerie Hardy", inscrit.nom)
+        assertEquals("Caudebec", inscrit.ville)
+        assertEquals(
+            "l'intervention doit pointer vers le client inscrit",
+            inscrit.id,
+            dao.contenu.single().clientId,
+        )
+    }
+
+    @Test
+    fun `deux interventions chez le meme client ne le dupliquent pas`() = runTest {
+        val viewModel = creerViewModel()
+
+        enregistrer(viewModel, client = "Boucherie Lemoine", ville = "Rouen")
+        advanceUntilIdle()
+        enregistrer(viewModel, client = "Boucherie Lemoine", ville = "Rouen")
+        advanceUntilIdle()
+
+        assertEquals(1, daoClients.contenu.size)
+        assertEquals(2, dao.contenu.size)
+        assertEquals(1, dao.contenu.mapNotNull { it.clientId }.distinct().size)
+    }
+
+    @Test
+    fun `choisir un client du carnet remplit le formulaire et le rattache`() = runTest {
+        val viewModel = creerViewModel()
+        val client = Client(id = "cl-1", nom = "Restaurant Le Comptoir", ville = "Elbeuf")
+        viewModel.onNouvelleIntervention()
+
+        viewModel.onClientChoisi(client)
+
+        val formulaire = viewModel.formulaire.value!!
+        assertEquals("Restaurant Le Comptoir", formulaire.client)
+        assertEquals("Elbeuf", formulaire.ville)
+        assertEquals("cl-1", formulaire.clientId)
+    }
+
+    @Test
+    fun `un client venu du carnet n'y est pas reinscrit`() = runTest {
+        val viewModel = creerViewModel()
+        val client = Client(id = "cl-1", nom = "Restaurant Le Comptoir", ville = "Elbeuf")
+        viewModel.onNouvelleIntervention()
+        viewModel.onClientChoisi(client)
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        assertTrue("rien ne doit être créé pour un client déjà rattaché", daoClients.contenu.isEmpty())
+        assertEquals("cl-1", dao.contenu.single().clientId)
+    }
+
+    @Test
     fun `la liste ne montre que la journee consultee`() = runTest {
         val viewModel = creerViewModel()
         val lundi = viewModel.jour.value
@@ -185,6 +248,6 @@ class InterventionsViewModelTest {
      */
     private fun TestScope.creerViewModel(): InterventionsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        return InterventionsViewModel(InterventionRepository(dao))
+        return InterventionsViewModel(InterventionRepository(dao), ClientRepository(daoClients))
     }
 }

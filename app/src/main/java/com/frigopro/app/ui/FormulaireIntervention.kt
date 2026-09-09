@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -17,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
@@ -42,11 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
@@ -75,7 +79,9 @@ private val OPTIONS_NOTES = KeyboardOptions(
 @Composable
 fun FormulaireIntervention(
     etat: EtatFormulaire,
+    clients: List<Client>,
     onEtatChange: (EtatFormulaire) -> Unit,
+    onClientChoisi: (Client) -> Unit,
     onValider: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
@@ -131,12 +137,31 @@ fun FormulaireIntervention(
 
             OutlinedTextField(
                 value = etat.client,
-                onValueChange = { onEtatChange(etat.copy(client = it)) },
+                // Modifier le nom détache du carnet : ce n'est plus le même client.
+                onValueChange = { onEtatChange(etat.copy(client = it, clientId = null)) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(text = "Client") },
                 singleLine = true,
                 keyboardOptions = OPTIONS_CLAVIER,
+                trailingIcon = {
+                    if (etat.clientId != null) {
+                        Icon(
+                            imageVector = Icons.Filled.ContactPage,
+                            contentDescription = "Client du carnet",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                },
             )
+
+            val propositions = suggestions(clients, etat)
+            if (propositions.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    propositions.forEach { client ->
+                        SuggestionClient(client = client, onClick = { onClientChoisi(client) })
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = etat.ville,
@@ -244,6 +269,67 @@ fun FormulaireIntervention(
 }
 
 /**
+ * Clients du carnet proposés sous le champ de saisie.
+ *
+ * Rien n'est proposé une fois le client rattaché, ni sur une saisie trop
+ * courte pour discriminer, ni pour un nom déjà tapé en entier — la suggestion
+ * n'apporterait alors rien.
+ */
+private fun suggestions(clients: List<Client>, etat: EtatFormulaire): List<Client> {
+    val saisie = etat.client.trim()
+    if (etat.clientId != null || saisie.length < 2) return emptyList()
+
+    return clients
+        .filter { it.nom.contains(saisie, ignoreCase = true) && !it.nom.equals(saisie, ignoreCase = true) }
+        .take(NOMBRE_SUGGESTIONS)
+}
+
+/** Au-delà, la feuille de saisie se transforme en liste de clients. */
+private const val NOMBRE_SUGGESTIONS = 4
+
+@Composable
+private fun SuggestionClient(
+    client: Client,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ContactPage,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = client.nom,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = client.ville,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
  * Boîte de dialogue d'horloge Material 3.
  *
  * `material3` 1.3 ne fournit pas encore de `TimePickerDialog` prêt à l'emploi :
@@ -303,6 +389,8 @@ private fun SelecteurHeure(
 private fun FormulaireInterventionPreview() {
     FrigoProTheme {
         FormulaireIntervention(
+            clients = emptyList(),
+            onClientChoisi = {},
             etat = EtatFormulaire(
                 id = "1",
                 date = LocalDate.now(),

@@ -25,3 +25,27 @@ val MIGRATION_1_2: Migration = object : Migration(1, 2) {
         db.execSQL("ALTER TABLE `interventions` ADD COLUMN `notes` TEXT NOT NULL DEFAULT ''")
     }
 }
+
+/**
+ * Arrivée du carnet de clients.
+ *
+ * `clientId` est volontairement nullable et **sans clé étrangère** : SQLite ne
+ * sait pas ajouter une contrainte à une table existante, il faudrait la
+ * reconstruire. Le jeu n'en vaut pas la chandelle tant que rien ne supprime de
+ * client ; le jour où la suppression arrivera, sa migration reconstruira la
+ * table et posera la contrainte avec un `ON DELETE SET NULL`.
+ *
+ * Les interventions déjà saisies restent sans client rattaché, ce qui est
+ * exact : le carnet n'existait pas quand elles ont été créées.
+ */
+val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `clients` (" +
+                "`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `ville` TEXT NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `clientId` TEXT")
+    }
+}
