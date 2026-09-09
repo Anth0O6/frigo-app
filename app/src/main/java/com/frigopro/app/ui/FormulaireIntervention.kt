@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
@@ -46,14 +47,22 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
+import java.time.LocalDate
 import java.time.LocalTime
 
 /** Saisie de noms propres : majuscule initiale, clavier qui enchaîne les champs. */
 private val OPTIONS_CLAVIER = KeyboardOptions(
     capitalization = KeyboardCapitalization.Words,
     imeAction = ImeAction.Next,
+)
+
+/** Les notes sont des phrases, sur plusieurs lignes : pas d'enchaînement de champ. */
+private val OPTIONS_NOTES = KeyboardOptions(
+    capitalization = KeyboardCapitalization.Sentences,
+    imeAction = ImeAction.Default,
 )
 
 /**
@@ -72,6 +81,7 @@ fun FormulaireIntervention(
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var choixDateOuvert by rememberSaveable { mutableStateOf(false) }
     var choixHeureOuvert by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
@@ -92,6 +102,19 @@ fun FormulaireIntervention(
                 text = if (etat.estCreation) "Nouvelle intervention" else "Modifier l'intervention",
                 style = MaterialTheme.typography.headlineSmall,
             )
+
+            OutlinedButton(
+                onClick = { choixDateOuvert = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = libelleDate(etat.date))
+            }
 
             OutlinedButton(
                 onClick = { choixHeureOuvert = true },
@@ -142,6 +165,33 @@ fun FormulaireIntervention(
                 }
             }
 
+            Text(
+                text = "Statut",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatutIntervention.entries.forEach { statut ->
+                    FilterChip(
+                        selected = etat.statut == statut,
+                        onClick = { onEtatChange(etat.copy(statut = statut)) },
+                        label = { Text(text = statut.libelle) },
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = etat.notes,
+                onValueChange = { onEtatChange(etat.copy(notes = it)) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "Notes de passage") },
+                minLines = 3,
+                keyboardOptions = OPTIONS_NOTES,
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -168,6 +218,17 @@ fun FormulaireIntervention(
                 }
             }
         }
+    }
+
+    if (choixDateOuvert) {
+        SelecteurDate(
+            date = etat.date,
+            onDateChoisie = {
+                onEtatChange(etat.copy(date = it))
+                choixDateOuvert = false
+            },
+            onFermer = { choixDateOuvert = false },
+        )
     }
 
     if (choixHeureOuvert) {
@@ -243,11 +304,14 @@ private fun FormulaireInterventionPreview() {
     FrigoProTheme {
         FormulaireIntervention(
             etat = EtatFormulaire(
-                id = 1L,
+                id = "1",
+                date = LocalDate.now(),
                 heure = LocalTime.of(10, 30),
                 client = "Boucherie Lemoine",
                 ville = "Rouen",
                 typePanne = TypePanne.COMPRESSEUR,
+                statut = StatutIntervention.EN_COURS,
+                notes = "Manque de fluide, à recontrôler la semaine prochaine.",
             ),
             onEtatChange = {},
             onValider = {},
