@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.Client
+import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,11 +24,12 @@ import java.time.LocalDate
 /**
  * Détient l'état de l'écran « Interventions ».
  *
- * L'UI observe [jour], [interventions] et [formulaire], et remonte les
- * intentions utilisateur via les méthodes `on…`.
+ * L'UI observe [jour], [interventions], [clients] et [formulaire], et remonte
+ * les intentions utilisateur via les méthodes `on…`.
  */
 class InterventionsViewModel(
-    private val repository: InterventionRepository,
+    private val interventionRepository: InterventionRepository,
+    private val clientRepository: ClientRepository,
 ) : ViewModel() {
 
     private val _jour = MutableStateFlow(LocalDate.now())
@@ -36,7 +39,15 @@ class InterventionsViewModel(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val interventions: StateFlow<List<Intervention>> = _jour
-        .flatMapLatest { repository.observerJournee(it) }
+        .flatMapLatest { interventionRepository.observerJournee(it) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    /** Carnet de clients, dans lequel le formulaire propose des suggestions. */
+    val clients: StateFlow<List<Client>> = clientRepository.clients
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
@@ -75,12 +86,21 @@ class InterventionsViewModel(
      */
     fun onChangerStatut(intervention: Intervention) {
         viewModelScope.launch {
-            repository.enregistrer(intervention.copy(statut = intervention.statut.suivant()))
+            interventionRepository.enregistrer(
+                intervention.copy(statut = intervention.statut.suivant()),
+            )
         }
     }
 
     fun onFormulaireChange(etat: EtatFormulaire) {
         _formulaire.value = etat
+    }
+
+    /** Rattache l'intervention à un client du carnet et en reprend les coordonnées. */
+    fun onClientChoisi(client: Client) {
+        _formulaire.update { etat ->
+            etat?.copy(client = client.nom, ville = client.ville, clientId = client.id)
+        }
     }
 
     fun onFermerFormulaire() {
@@ -91,6 +111,9 @@ class InterventionsViewModel(
      * Enregistre la saisie, puis se place sur la journée de l'intervention :
      * sans cela, une ligne datée d'un autre jour disparaîtrait sans un mot.
      * Une saisie incomplète laisse le formulaire ouvert.
+     *
+     * Un client absent du carnet y est inscrit au passage : c'est ainsi que le
+     * carnet se remplit, sans écran de saisie dédié.
      */
     fun onValiderFormulaire() {
         val etat = _formulaire.value ?: return
@@ -98,7 +121,11 @@ class InterventionsViewModel(
 
         _formulaire.value = null
         _jour.value = etat.date
-        viewModelScope.launch { repository.enregistrer(etat.versIntervention()) }
+        viewModelScope.launch {
+            val clientId = etat.clientId
+                ?: clientRepository.trouverOuCreer(etat.client, etat.ville).id
+            interventionRepository.enregistrer(etat.versIntervention().copy(clientId = clientId))
+        }
     }
 
     /** Supprime l'intervention en cours d'édition. Sans effet sur une création. */
@@ -106,7 +133,7 @@ class InterventionsViewModel(
         val id = _formulaire.value?.id ?: return
 
         _formulaire.value = null
-        viewModelScope.launch { repository.supprimer(id) }
+        viewModelScope.launch { interventionRepository.supprimer(id) }
     }
 
     companion object {
@@ -121,7 +148,8 @@ class InterventionsViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
-                InterventionsViewModel((application as FrigoProApplication).conteneur.interventions)
+                val conteneur = (application as FrigoProApplication).conteneur
+                InterventionsViewModel(conteneur.interventions, conteneur.clients)
             }
         }
     }

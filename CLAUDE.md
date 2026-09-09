@@ -3,7 +3,8 @@
 Application Android native destinée aux techniciens frigoristes en tournée.
 Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
 et permet de les créer, les modifier, les supprimer et de suivre leur
-avancement. Les données sont persistées localement.
+avancement. Un carnet de clients évite d'en retaper les coordonnées. Les
+données sont persistées localement.
 
 ## Stack
 
@@ -36,11 +37,14 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   ├── MainActivity.kt         # unique activité, héberge l'arbre Compose
 │       │   ├── data/               # modèle, base et source de données
 │       │   │   ├── Intervention.kt
+│       │   │   ├── Client.kt
 │       │   │   ├── Convertisseurs.kt
 │       │   │   ├── Migrations.kt
 │       │   │   ├── InterventionDao.kt
+│       │   │   ├── ClientDao.kt
 │       │   │   ├── FrigoProDatabase.kt
-│       │   │   └── InterventionRepository.kt
+│       │   │   ├── InterventionRepository.kt
+│       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── EtatFormulaire.kt
@@ -60,7 +64,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 Découpage en trois couches, sens de dépendance `ui → data` uniquement :
 
 - **`data`** — `Intervention` (date, heure, client, ville, type de panne,
-  statut, notes) est à la fois le modèle du domaine et l'entité Room ; les deux se confondent tant que le stockage épouse le domaine, et se
+  statut, notes) et `Client` (nom, ville) sont à la fois modèles du domaine et
+  entités Room ; les deux se confondent tant que le stockage épouse le domaine, et se
   sépareront le jour où ils divergeront. `Convertisseurs` traduit les types
   `java.time` en colonnes : dates et heures sont stockées en texte de largeur
   fixe, ce qui les rend **triables et comparables directement en SQL** — c'est
@@ -68,6 +73,10 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `InterventionRepository` expose un `Flow` par journée et deux écritures
   (`enregistrer`, `supprimer`) ; Room réémet le `Flow` à chaque écriture, donc
   l'UI se remet à jour sans que personne n'ait à la prévenir.
+  `ClientRepository` tient le carnet. Son tri passe par un `Collator` français
+  plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
+  « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
+  intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
 - **`ui`** — `InterventionsViewModel` détient la journée consultée
   (`StateFlow<LocalDate>`) et en dérive la liste par `flatMapLatest` : changer
   la date suffit à recharger l'écran. Il détient aussi le formulaire ouvert
@@ -156,11 +165,12 @@ l'APK : un test rouge bloque la publication.
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id` |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
 | `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète |
-| `MigrationTest` | Une base de la version précédente se migre sans perdre ses tournées |
+| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près |
+| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées |
 
-Le dépôt et le ViewModel s'exercent sur `FauxInterventionDao`, qui reproduit le
-contrat SQL du vrai DAO ; seul `MigrationTest` a besoin d'un vrai SQLite,
-fourni par Robolectric.
+Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
+`FauxClientDao`, qui reproduisent le contrat SQL des vrais ; seul
+`MigrationTest` a besoin d'un vrai SQLite, fourni par Robolectric.
 
 ## Build
 
@@ -184,9 +194,9 @@ publication de `app-debug.apk` dans une GitHub Release taguée
 
 ## Pistes pour la suite
 
+- Adresse et téléphone sur la fiche client, avec un écran pour les saisir.
 - Photos avant / après, prises depuis l'intervention.
 - Compte-rendu client exportable, éventuellement signé.
-- Fiche client réutilisable, pour ne plus retaper les mêmes coordonnées.
 - Confirmation avant suppression (ou annulation par `Snackbar`).
 - Tests d'UI Compose.
 - Synchronisation serveur, le jour où plusieurs techniciens partagent un planning.

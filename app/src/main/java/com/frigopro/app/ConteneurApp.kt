@@ -1,6 +1,7 @@
 package com.frigopro.app
 
 import android.content.Context
+import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
 
@@ -16,4 +17,6 @@ class ConteneurApp(contexte: Context) {
     private val base: FrigoProDatabase by lazy { FrigoProDatabase.creer(contexte) }
 
     val interventions: InterventionRepository by lazy { InterventionRepository(base.interventionDao()) }
+
+    val clients: ClientRepository by lazy { ClientRepository(base.clientDao()) }
 }
