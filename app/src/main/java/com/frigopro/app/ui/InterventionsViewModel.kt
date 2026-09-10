@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -24,7 +25,7 @@ import java.time.LocalDate
 /**
  * Détient l'état de l'écran « Interventions ».
  *
- * L'UI observe [jour], [interventions], [clients] et [formulaire], et remonte
+ * L'UI observe [jour], [lignes], [clients] et [formulaire], et remonte
  * les intentions utilisateur via les méthodes `on…`.
  */
 class InterventionsViewModel(
@@ -37,17 +38,38 @@ class InterventionsViewModel(
     /** Journée affichée. Changer sa valeur suffit à recharger la liste. */
     val jour: StateFlow<LocalDate> = _jour.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val interventions: StateFlow<List<Intervention>> = _jour
-        .flatMapLatest { interventionRepository.observerJournee(it) }
+    /**
+     * Carnet de clients : il fournit les suggestions du formulaire et les
+     * coordonnées qu'affiche la tournée.
+     */
+    val clients: StateFlow<List<Client>> = clientRepository.clients
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
             initialValue = emptyList(),
         )
 
-    /** Carnet de clients, dans lequel le formulaire propose des suggestions. */
-    val clients: StateFlow<List<Client>> = clientRepository.clients
+    /**
+     * Tournée de la journée consultée, chaque ligne accompagnée de la fiche du
+     * client chez qui elle a lieu.
+     *
+     * Le rapprochement se fait ici plutôt que par une jointure SQL : les deux
+     * flux sont déjà observés, et l'écran reçoit ainsi de quoi afficher
+     * l'intervention *et* de quoi agir — appeler, se rendre sur place.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val lignes: StateFlow<List<LigneTournee>> = combine(
+        _jour.flatMapLatest { interventionRepository.observerJournee(it) },
+        clients,
+    ) { interventions, carnet ->
+        val parIdentifiant = carnet.associateBy { client -> client.id }
+        interventions.map { intervention ->
+            LigneTournee(
+                intervention = intervention,
+                client = intervention.clientId?.let { id -> parIdentifiant[id] },
+            )
+        }
+    }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
