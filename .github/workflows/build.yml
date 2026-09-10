@@ -57,6 +57,12 @@ jobs:
       # `apksigner verify` échouerait : deux filets pour la même erreur, celle
       # qui ne se voit qu'une fois le téléphone en main. L'empreinte imprimée
       # ici doit rester la même d'un build à l'autre.
+      # Étape temporaire : le proxy de sortie de l'environnement de
+      # développement empêche de télécharger l'artefact, et le schéma Room
+      # généré doit pourtant être committé. Elle est retirée aussitôt après.
+      - name: Dump Room schemas (base64)
+        run: tar -czf - app/schemas | base64 -w 120
+
       - name: Verify the APK signature
         run: |
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
