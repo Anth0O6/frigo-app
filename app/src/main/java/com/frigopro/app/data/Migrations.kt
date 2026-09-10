@@ -49,3 +49,21 @@ val MIGRATION_2_3: Migration = object : Migration(2, 3) {
         db.execSQL("ALTER TABLE `interventions` ADD COLUMN `clientId` TEXT")
     }
 }
+
+/**
+ * L'adresse et le téléphone rejoignent la fiche client.
+ *
+ * Les deux colonnes arrivent vides sur les clients déjà inscrits, ce qui est
+ * leur état réel : le carnet les a créés depuis une intervention, où seuls le
+ * nom et la ville sont demandés. Elles se rempliront depuis l'onglet Clients.
+ *
+ * Même remarque que pour [MIGRATION_1_2] sur les `DEFAULT` : ils existent au
+ * niveau SQL dans une base migrée, pas dans une base neuve.
+ */
+val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `clients` ADD COLUMN `adresse` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `clients` ADD COLUMN `telephone` TEXT NOT NULL DEFAULT ''")
+    }
+}

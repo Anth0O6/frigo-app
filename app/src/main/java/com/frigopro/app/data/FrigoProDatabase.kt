@@ -15,7 +15,7 @@ import androidx.room.TypeConverters
  */
 @Database(
     entities = [Intervention::class, Client::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -35,7 +35,7 @@ abstract class FrigoProDatabase : RoomDatabase() {
                 FrigoProDatabase::class.java,
                 NOM,
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

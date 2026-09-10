@@ -38,6 +38,8 @@ class ClientRepository(private val dao: ClientDao) {
         val nettoye = client.copy(
             nom = client.nom.trim(),
             ville = client.ville.trim(),
+            adresse = client.adresse.trim(),
+            telephone = client.telephone.trim(),
             modifieLe = Instant.now(),
         )
         dao.enregistrer(nettoye)
