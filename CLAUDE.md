@@ -5,7 +5,8 @@ Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
 et permet de les créer, les modifier, les supprimer et de suivre leur
 avancement. Un onglet Clients tient le carnet — adresse et téléphone compris —
 et, depuis la tournée, appeler un client ou ouvrir l'itinéraire tient en un
-geste. Les données sont persistées localement.
+geste. Les données sont persistées localement, et exportables dans un fichier
+de sauvegarde.
 
 ## Stack
 
@@ -39,6 +40,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   ├── data/               # modèle, base et source de données
 │       │   │   ├── Intervention.kt
 │       │   │   ├── Client.kt
+│       │   │   ├── Sauvegarde.kt          # format du fichier de sauvegarde
+│       │   │   ├── SauvegardeRepository.kt
+│       │   │   ├── FichiersExternes.kt    # fichiers désignés par l'utilisateur
 │       │   │   ├── Convertisseurs.kt
 │       │   │   ├── Migrations.kt
 │       │   │   ├── InterventionDao.kt
@@ -60,6 +64,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
+│       │       ├── MenuSauvegarde.kt
+│       │       ├── SauvegardeViewModel.kt
 │       │       └── theme/
 │       └── res/                    # chaînes, couleurs, thème XML, icône
 ├── gradle/libs.versions.toml       # versions centralisées
@@ -200,6 +206,7 @@ l'APK : un test rouge bloque la publication.
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées |
 
 Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
@@ -217,6 +224,38 @@ Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
 
 Le SDK Android est requis (`ANDROID_HOME`, ou `sdk.dir` dans `local.properties`,
 fichier non versionné).
+
+## Sauvegarde des données
+
+Les données ne vivent que sur le téléphone. La sauvegarde automatique d'Android
+fait le minimum, mais ne se restaure qu'à la réinstallation et suppose un compte
+Google : le menu de la tournée offre donc un export explicite.
+
+Le fichier est du JSON, et son **format est volontairement distinct du schéma
+Room** : le schéma suit les besoins de l'application et change à chaque
+migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
+versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
+facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
+version plus récente est refusée plutôt que devinée.
+
+Trois décisions à connaître :
+
+- **Les écritures passent par les DAO, pas par les dépôts.** Ceux-ci horodatent
+  chaque écriture, ce qui effacerait le `modifieLe` transporté par le fichier —
+  or c'est précisément ce qui départagera deux versions d'une même ligne.
+- **La restauration fusionne, elle ne remplace pas.** Chaque ligne écrase celle
+  qui porte le même identifiant et laisse les autres en place ; rien n'est donc
+  jamais supprimé par une restauration, et les identifiants étant des UUID, deux
+  lignes réellement distinctes ne peuvent se confondre. Restaurer deux fois le
+  même fichier ne crée aucun doublon.
+- **Une valeur illisible fait refuser le fichier entier**, avant toute écriture :
+  une tournée restaurée à moitié serait pire qu'une restauration refusée.
+
+L'accès aux fichiers passe par le sélecteur du système
+(`ActivityResultContracts.CreateDocument` / `OpenDocument`), d'où l'absence de
+toute permission de stockage. Le filtre de lecture est `*/*` à dessein : selon
+l'endroit où la sauvegarde a été rangée, le système lui attribue parfois un
+autre type, et `application/json` la rendrait invisible dans le sélecteur.
 
 ## Signature et mises à jour
 

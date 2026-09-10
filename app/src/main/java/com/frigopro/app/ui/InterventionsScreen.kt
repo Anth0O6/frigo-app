@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -85,6 +86,7 @@ fun InterventionsRoute(
         onNouvelleIntervention = viewModel::onNouvelleIntervention,
         onModifierIntervention = viewModel::onModifierIntervention,
         onChangerStatut = viewModel::onChangerStatut,
+        actions = { MenuSauvegarde() },
         modifier = modifier,
     )
 
@@ -114,6 +116,8 @@ fun InterventionsScreen(
     onModifierIntervention: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
     modifier: Modifier = Modifier,
+    /** Posé dans la barre du haut : la sauvegarde s'y branche sans que l'écran la connaisse. */
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     var calendrierOuvert by rememberSaveable { mutableStateOf(false) }
 
@@ -126,6 +130,7 @@ fun InterventionsScreen(
             Column {
                 CenterAlignedTopAppBar(
                     title = { Text(text = "Interventions") },
+                    actions = actions,
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,

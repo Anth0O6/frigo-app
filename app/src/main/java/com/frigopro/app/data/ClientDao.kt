@@ -25,6 +25,14 @@ interface ClientDao {
     @Query("SELECT * FROM clients WHERE nom = :nom COLLATE NOCASE LIMIT 1")
     suspend fun trouverParNom(nom: String): Client?
 
+    /** Tout le carnet, pour la sauvegarde. Le tri est l'affaire du dépôt. */
+    @Query("SELECT * FROM clients")
+    suspend fun tous(): List<Client>
+
     @Upsert
     suspend fun enregistrer(client: Client)
+
+    /** Room enveloppe une écriture multiple dans une transaction : tout ou rien. */
+    @Upsert
+    suspend fun enregistrerTous(clients: List<Client>)
 }

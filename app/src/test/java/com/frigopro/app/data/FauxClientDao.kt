@@ -18,7 +18,14 @@ class FauxClientDao : ClientDao {
     override suspend fun trouverParNom(nom: String): Client? =
         lignes.value.firstOrNull { it.nom.equals(nom, ignoreCase = true) }
 
+    override suspend fun tous(): List<Client> = lignes.value
+
     override suspend fun enregistrer(client: Client) {
         lignes.update { liste -> liste.filterNot { it.id == client.id } + client }
+    }
+
+    override suspend fun enregistrerTous(clients: List<Client>) {
+        val identifiants = clients.map { it.id }.toSet()
+        lignes.update { liste -> liste.filterNot { it.id in identifiants } + clients }
     }
 }
