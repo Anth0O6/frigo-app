@@ -42,6 +42,12 @@ object Convertisseurs {
     fun versInstant(valeur: Long?): Instant? = valeur?.let(Instant::ofEpochMilli)
 
     @TypeConverter
+    fun depuisCategorie(categorie: CategoriePhoto?): String? = categorie?.name
+
+    @TypeConverter
+    fun versCategorie(valeur: String?): CategoriePhoto? = valeur?.let(CategoriePhoto::valueOf)
+
+    @TypeConverter
     fun depuisStatut(statut: StatutIntervention?): String? = statut?.name
 
     @TypeConverter

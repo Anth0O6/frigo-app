@@ -25,6 +25,8 @@ data class Sauvegarde(
     val exporteeLe: String,
     val types: List<TypeInterventionSauvegarde> = emptyList(),
     val clients: List<ClientSauvegarde> = emptyList(),
+    val equipements: List<EquipementSauvegarde> = emptyList(),
+    val photos: List<PhotoSauvegarde> = emptyList(),
     val interventions: List<InterventionSauvegarde> = emptyList(),
 )
 
@@ -46,6 +48,28 @@ data class ClientSauvegarde(
 )
 
 @Serializable
+data class EquipementSauvegarde(
+    val id: String,
+    val clientId: String,
+    val nom: String,
+    val modifieLe: Long = 0L,
+)
+
+/**
+ * Une photo, décrite ici, rangée dans `photos/` de l'archive : le JSON dit à
+ * quelle machine et à quelle catégorie appartient chaque image, [fichier] fait
+ * le lien entre les deux.
+ */
+@Serializable
+data class PhotoSauvegarde(
+    val id: String,
+    val equipementId: String,
+    val categorie: String,
+    val fichier: String,
+    val priseLe: Long = 0L,
+)
+
+@Serializable
 data class InterventionSauvegarde(
     val id: String,
     val date: String,
@@ -62,12 +86,21 @@ data class InterventionSauvegarde(
      */
     val typePanne: String? = null,
     val clientId: String? = null,
+    val equipementId: String? = null,
+    val equipementNom: String = "",
     val notes: String = "",
     val modifieLe: Long = 0L,
 )
 
-/** Version courante du format de fichier. */
-const val FORMAT_COURANT: Int = 2
+/**
+ * Version courante du format de fichier.
+ *
+ * Le format 3 ajoute le parc de machines et leurs photos, et sort du seul
+ * fichier texte : la sauvegarde est désormais une archive (voir
+ * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
+ * exporté par une version antérieure reste restaurable tel quel.
+ */
+const val FORMAT_COURANT: Int = 3
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -118,6 +151,21 @@ internal fun Client.versSauvegarde(): ClientSauvegarde = ClientSauvegarde(
     modifieLe = modifieLe.toEpochMilli(),
 )
 
+internal fun Equipement.versSauvegarde(): EquipementSauvegarde = EquipementSauvegarde(
+    id = id,
+    clientId = clientId,
+    nom = nom,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun Photo.versSauvegarde(): PhotoSauvegarde = PhotoSauvegarde(
+    id = id,
+    equipementId = equipementId,
+    categorie = categorie.name,
+    fichier = fichier,
+    priseLe = priseLe.toEpochMilli(),
+)
+
 internal fun Intervention.versSauvegarde(): InterventionSauvegarde = InterventionSauvegarde(
     id = id,
     date = date.format(FORMAT_DATE),
@@ -128,6 +176,8 @@ internal fun Intervention.versSauvegarde(): InterventionSauvegarde = Interventio
     typeId = typeId,
     typeLibelle = typeLibelle,
     clientId = clientId,
+    equipementId = equipementId,
+    equipementNom = equipementNom,
     notes = notes,
     modifieLe = modifieLe.toEpochMilli(),
 )
@@ -146,6 +196,32 @@ internal fun ClientSauvegarde.versClient(): Client = Client(
     telephone = telephone,
     modifieLe = Instant.ofEpochMilli(modifieLe),
 )
+
+internal fun EquipementSauvegarde.versEquipement(): Equipement = Equipement(
+    id = id,
+    clientId = clientId,
+    nom = nom,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+/**
+ * `null` pour une photo qui ne se relit pas : une catégorie inconnue, comme un
+ * statut inconnu, est une valeur fixe de l'application et non du texte libre —
+ * et un nom de fichier qui n'en est pas un (un chemin, un `..`) trahit une
+ * archive bricolée. Dans les deux cas le fichier entier sera refusé, ce qui
+ * vaut mieux qu'une photo rangée hors de son dossier.
+ */
+internal fun PhotoSauvegarde.versPhoto(): Photo? {
+    val rangement = CategoriePhoto.entries.firstOrNull { it.name == categorie } ?: return null
+    val nom = StockagePhotos.nomSur(fichier) ?: return null
+    return Photo(
+        id = id,
+        equipementId = equipementId,
+        categorie = rangement,
+        fichier = nom,
+        priseLe = Instant.ofEpochMilli(priseLe),
+    )
+}
 
 /**
  * `null` quand une valeur du fichier ne se relit pas — un statut inconnu, une
@@ -170,6 +246,8 @@ internal fun InterventionSauvegarde.versIntervention(): Intervention? {
         typeId = typeId,
         typeLibelle = typeLibelle.ifBlank { intituleHistorique() },
         clientId = clientId,
+        equipementId = equipementId,
+        equipementNom = equipementNom,
         statut = avancement,
         notes = notes,
         modifieLe = Instant.ofEpochMilli(modifieLe),

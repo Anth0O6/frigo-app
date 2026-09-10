@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Le seul dossier que le FileProvider expose : `files/photos/`, là où
+    StockagePhotos range les images. Rien d'autre du stockage de l'application
+    n'est atteignable par un URI, en particulier pas la base de données.
+-->
+<paths>
+    <files-path
+        name="photos"
+        path="photos/" />
+</paths>
