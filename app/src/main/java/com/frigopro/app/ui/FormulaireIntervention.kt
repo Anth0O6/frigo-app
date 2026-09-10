@@ -18,9 +18,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,7 +55,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.StatutIntervention
-import com.frigopro.app.data.TypePanne
+import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
 import java.time.LocalTime
@@ -80,8 +83,11 @@ private val OPTIONS_NOTES = KeyboardOptions(
 fun FormulaireIntervention(
     etat: EtatFormulaire,
     clients: List<Client>,
+    types: List<TypeIntervention>,
     onEtatChange: (EtatFormulaire) -> Unit,
     onClientChoisi: (Client) -> Unit,
+    onTypeChoisi: (TypeIntervention?) -> Unit,
+    onNouveauType: (String) -> Unit,
     onValider: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
@@ -89,6 +95,7 @@ fun FormulaireIntervention(
 ) {
     var choixDateOuvert by rememberSaveable { mutableStateOf(false) }
     var choixHeureOuvert by rememberSaveable { mutableStateOf(false) }
+    var nouveauTypeOuvert by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onFermer,
@@ -173,7 +180,7 @@ fun FormulaireIntervention(
             )
 
             Text(
-                text = "Type de panne",
+                text = "Type d'intervention",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -181,13 +188,36 @@ fun FormulaireIntervention(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TypePanne.entries.forEach { type ->
+                types.forEach { type ->
                     FilterChip(
-                        selected = etat.typePanne == type,
-                        onClick = { onEtatChange(etat.copy(typePanne = type)) },
+                        selected = etat.typeId == type.id,
+                        // Retoucher le type choisi l'enlève : il est facultatif,
+                        // et se tromper ne doit pas être définitif.
+                        onClick = { onTypeChoisi(if (etat.typeId == type.id) null else type) },
                         label = { Text(text = type.libelle) },
                     )
                 }
+                // Intitulé venu d'avant la liste, ou dont le type a été
+                // supprimé : il s'affiche quand même, sinon l'ouvrir pour
+                // changer l'heure effacerait silencieusement le type.
+                if (etat.typeId == null && etat.typeLibelle.isNotBlank()) {
+                    FilterChip(
+                        selected = true,
+                        onClick = { onTypeChoisi(null) },
+                        label = { Text(text = etat.typeLibelle) },
+                    )
+                }
+                AssistChip(
+                    onClick = { nouveauTypeOuvert = true },
+                    label = { Text(text = "Nouveau type") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(AssistChipDefaults.IconSize),
+                        )
+                    },
+                )
             }
 
             Text(
@@ -253,6 +283,18 @@ fun FormulaireIntervention(
                 choixDateOuvert = false
             },
             onFermer = { choixDateOuvert = false },
+        )
+    }
+
+    if (nouveauTypeOuvert) {
+        DialogueType(
+            titre = "Nouveau type d'intervention",
+            libelleAction = "Ajouter",
+            onValider = {
+                onNouveauType(it)
+                nouveauTypeOuvert = false
+            },
+            onFermer = { nouveauTypeOuvert = false },
         )
     }
 
@@ -390,14 +432,21 @@ private fun FormulaireInterventionPreview() {
     FrigoProTheme {
         FormulaireIntervention(
             clients = emptyList(),
+            types = listOf(
+                TypeIntervention(id = "t1", libelle = "Entretien annuel"),
+                TypeIntervention(id = "t2", libelle = "Fuite de fluide"),
+            ),
             onClientChoisi = {},
+            onTypeChoisi = {},
+            onNouveauType = {},
             etat = EtatFormulaire(
                 id = "1",
                 date = LocalDate.now(),
                 heure = LocalTime.of(10, 30),
                 client = "Boucherie Lemoine",
                 ville = "Rouen",
-                typePanne = TypePanne.COMPRESSEUR,
+                typeId = "t2",
+                typeLibelle = "Fuite de fluide",
                 statut = StatutIntervention.EN_COURS,
                 notes = "Manque de fluide, à recontrôler la semaine prochaine.",
             ),

@@ -42,12 +42,6 @@ object Convertisseurs {
     fun versInstant(valeur: Long?): Instant? = valeur?.let(Instant::ofEpochMilli)
 
     @TypeConverter
-    fun depuisTypePanne(type: TypePanne?): String? = type?.name
-
-    @TypeConverter
-    fun versTypePanne(valeur: String?): TypePanne? = valeur?.let(TypePanne::valueOf)
-
-    @TypeConverter
     fun depuisStatut(statut: StatutIntervention?): String? = statut?.name
 
     @TypeConverter

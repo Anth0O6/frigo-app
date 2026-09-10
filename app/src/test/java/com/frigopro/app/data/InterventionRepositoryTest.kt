@@ -83,7 +83,7 @@ class InterventionRepositoryTest {
         heure = heure,
         client = client,
         ville = ville,
-        typePanne = TypePanne.COMPRESSEUR,
+        typeLibelle = "Compresseur",
     )
 }
 

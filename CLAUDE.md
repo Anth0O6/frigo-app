@@ -3,7 +3,9 @@
 Application Android native destinée aux techniciens frigoristes en tournée.
 Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
 et permet de les créer, les modifier, les supprimer et de suivre leur
-avancement. Un onglet Clients tient le carnet — adresse et téléphone compris —
+avancement, chacune rangée sous un type que le technicien nomme lui-même dans
+l'onglet Réglages. Un onglet Clients tient le carnet — adresse et téléphone
+compris —
 et, depuis la tournée, appeler un client ou ouvrir l'itinéraire tient en un
 geste. Les données sont persistées localement, et exportables dans un fichier
 de sauvegarde.
@@ -40,6 +42,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   ├── data/               # modèle, base et source de données
 │       │   │   ├── Intervention.kt
 │       │   │   ├── Client.kt
+│       │   │   ├── TypeIntervention.kt
+│       │   │   ├── TypeInterventionDao.kt
+│       │   │   ├── TypeInterventionRepository.kt
 │       │   │   ├── Sauvegarde.kt          # format du fichier de sauvegarde
 │       │   │   ├── SauvegardeRepository.kt
 │       │   │   ├── FichiersExternes.kt    # fichiers désignés par l'utilisateur
@@ -64,6 +69,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
+│       │       ├── DialogueType.kt     # saisie d'un intitulé de type
+│       │       ├── ReglagesScreen.kt
+│       │       ├── ReglagesViewModel.kt
 │       │       ├── MenuSauvegarde.kt
 │       │       ├── SauvegardeViewModel.kt
 │       │       └── theme/
@@ -77,8 +85,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 
 Découpage en trois couches, sens de dépendance `ui → data` uniquement :
 
-- **`data`** — `Intervention` (date, heure, client, ville, type de panne,
-  statut, notes) et `Client` (nom, ville) sont à la fois modèles du domaine et
+- **`data`** — `Intervention` (date, heure, client, ville, type, statut, notes)
+  et `Client` (nom, ville) sont à la fois modèles du domaine et
   entités Room ; les deux se confondent tant que le stockage épouse le domaine, et se
   sépareront le jour où ils divergeront. `Convertisseurs` traduit les types
   `java.time` en colonnes : dates et heures sont stockées en texte de largeur
@@ -91,13 +99,26 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   c'est le cas normal, le carnet se remplissant depuis les interventions où
   seuls le nom et la ville sont demandés ; `appelable` et `localisable` disent à
   l'écran ce qu'il peut proposer.
+  `TypeIntervention` est la liste des types, **vide au premier lancement** :
+  « fuite de fluide » et « entretien préventif » sont le vocabulaire d'un métier,
+  pas celui d'une entreprise. L'intervention en porte à la fois le lien
+  (`typeId`) et une copie de l'intitulé (`typeLibelle`), et c'est ce doublon qui
+  réconcilie deux exigences contradictoires : le lien permet de répercuter un
+  renommage sur les tournées passées, la copie garantit qu'une intervention
+  affiche toujours quelque chose — celle d'avant la liste, qui ne peut désigner
+  aucun type, comme celle dont le type a été supprimé depuis. Le type est
+  **facultatif** : l'exiger alors que la liste démarre vide interdirait la
+  première saisie. `TypeInterventionDao` est la seule classe à écrire dans deux
+  tables, par `@Transaction` : un type renommé sans ses interventions, ou
+  l'inverse, laisserait la base incohérente.
   `ClientRepository` tient le carnet. Son tri passe par un `Collator` français
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `FrigoProApp` est la coquille : deux onglets, `Tournée` et
-  `Clients`, et la barre qui en change. **Pas de graphe de navigation** : deux
-  sections sans lien hiérarchique se passent d'une pile arrière, et une variable
+- **`ui`** — `FrigoProApp` est la coquille : trois onglets, `Tournée`,
+  `Clients` et `Réglages`, et la barre qui en change. **Pas de graphe de
+  navigation** : des sections sans lien hiérarchique se passent d'une pile
+  arrière, et une variable
   `rememberSaveable` suffit. La bibliothèque de navigation s'imposera le jour
   d'une vraie destination à empiler ou d'un lien profond. Corollaire à ne pas
   perdre de vue : la barre d'onglets pose elle-même la marge de la barre système
@@ -112,7 +133,13 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   fait là plutôt que par une jointure SQL : les deux flux sont déjà observés, et
   l'écran reçoit de quoi afficher comme de quoi agir. `ClientsViewModel` tient
   l'onglet Clients sur le même modèle, `EtatFicheClient` jouant pour la fiche le
-  rôle d'`EtatFormulaire` pour l'intervention.
+  rôle d'`EtatFormulaire` pour l'intervention. `ReglagesViewModel` tient l'onglet
+  Réglages — la liste des types pour l'instant — et n'expose qu'un seul
+  `StateFlow<DialogueReglages?>` plutôt que trois booléens : deux boîtes de
+  dialogue ne peuvent pas être ouvertes en même temps, et le dire au type
+  supprime la question. `DialogueType` est partagée par le formulaire et les
+  réglages : ajouter un type et le corriger demandent la même saisie, et deux
+  boîtes jumelles finiraient par diverger.
   Appeler et ouvrir un itinéraire passent par des intentions Android
   (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
   pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
@@ -163,6 +190,13 @@ Le schéma est produit à la compilation. Chaque build en publie une copie en
 artefact `room-schemas`, d'où il se récupère sans construire le projet
 localement.
 
+Une colonne qui **disparaît** impose de reconstruire la table : `DROP COLUMN`
+n'existe dans SQLite que depuis la version 3.35, absente des appareils couverts
+par `minSdk 26`. C'est le cas de `MIGRATION_4_5`, qui en profite pour traduire
+les anciennes constantes en intitulés. Attention à reposer les index : ils
+suivent la table détruite, et Room refuse d'ouvrir une base dont le schéma ne
+correspond plus — `MigrationTest` le vérifie explicitement.
+
 `MigrationTest` recrée une base telle que la version précédente l'écrivait —
 empreinte d'identité comprise — puis l'ouvre par `FrigoProDatabase.creer` : la
 migration est ainsi vérifiée dans les conditions réelles, y compris son
@@ -204,10 +238,12 @@ l'APK : un test rouge bloque la publication.
 | `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées |
+| `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
-| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux |
-| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées |
+| `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1 |
+| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
 `FauxClientDao`, qui reproduisent le contrat SQL des vrais ; seul
@@ -238,6 +274,13 @@ versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
 
+Le format 2 ajoute la liste des types. Un fichier du format 1 reste lisible :
+`InterventionSauvegarde` conserve l'ancien champ `typePanne` en lecture seule et
+en déduit l'intitulé français, avec les mêmes correspondances que
+`MIGRATION_4_5` — une sauvegarde d'alors et une base d'alors doivent donner le
+même résultat. Tout champ retiré d'un format doit être conservé ainsi, sinon une
+sauvegarde devient irrécupérable sans qu'on s'en aperçoive.
+
 Trois décisions à connaître :
 
 - **Les écritures passent par les DAO, pas par les dépôts.** Ceux-ci horodatent
@@ -249,7 +292,9 @@ Trois décisions à connaître :
   lignes réellement distinctes ne peuvent se confondre. Restaurer deux fois le
   même fichier ne crée aucun doublon.
 - **Une valeur illisible fait refuser le fichier entier**, avant toute écriture :
-  une tournée restaurée à moitié serait pire qu'une restauration refusée.
+  une tournée restaurée à moitié serait pire qu'une restauration refusée. Un
+  *intitulé* de type inconnu ne compte pas : il est libre par nature, au
+  contraire d'un statut, qui est une valeur fixe de l'application.
 
 L'accès aux fichiers passe par le sélecteur du système
 (`ActivityResultContracts.CreateDocument` / `OpenDocument`), d'où l'absence de
@@ -315,7 +360,8 @@ place » venant en tête :
 - Photos avant / après, prises depuis l'intervention.
 - Compte-rendu client exportable, éventuellement signé.
 - Suppression d'un client, qui devra décider du sort du `clientId` des
-  interventions passées.
+  interventions passées — les types d'intervention montrent une façon de le
+  faire : couper le lien, garder la copie.
 - Confirmation avant suppression d'une intervention (ou annulation par
   `Snackbar`).
 - Tests d'UI Compose.

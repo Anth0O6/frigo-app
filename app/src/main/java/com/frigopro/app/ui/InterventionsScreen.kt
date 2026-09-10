@@ -61,7 +61,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
-import com.frigopro.app.data.TypePanne
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
 import java.time.LocalTime
@@ -75,6 +74,7 @@ fun InterventionsRoute(
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
     val clients by viewModel.clients.collectAsStateWithLifecycle()
+    val types by viewModel.types.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
 
     InterventionsScreen(
@@ -94,8 +94,11 @@ fun InterventionsRoute(
         FormulaireIntervention(
             etat = etat,
             clients = clients,
+            types = types,
             onEtatChange = viewModel::onFormulaireChange,
             onClientChoisi = viewModel::onClientChoisi,
+            onTypeChoisi = viewModel::onTypeChoisi,
+            onNouveauType = viewModel::onNouveauType,
             onValider = viewModel::onValiderFormulaire,
             onSupprimer = viewModel::onSupprimerIntervention,
             onFermer = viewModel::onFermerFormulaire,
@@ -332,11 +335,13 @@ fun InterventionCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        text = intervention.typePanne.libelle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
+                    if (intervention.typeLibelle.isNotBlank()) {
+                        Text(
+                            text = intervention.typeLibelle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
                     if (intervention.notes.isNotBlank()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -470,7 +475,7 @@ private fun InterventionsScreenPreview() {
                             heure = LocalTime.of(8, 30),
                             client = "Boucherie Lemoine",
                             ville = "Rouen",
-                            typePanne = TypePanne.FUITE_FLUIDE,
+                            typeLibelle = "Fuite de fluide",
                             statut = StatutIntervention.TERMINEE,
                         ),
                         client = Client(
@@ -487,7 +492,7 @@ private fun InterventionsScreenPreview() {
                             heure = LocalTime.of(10, 0),
                             client = "Supérette Val-Fleuri",
                             ville = "Elbeuf",
-                            typePanne = TypePanne.COMPRESSEUR,
+                            typeLibelle = "Compresseur",
                             statut = StatutIntervention.EN_COURS,
                             notes = "Compresseur bruyant, pièce commandée.",
                         ),
@@ -500,7 +505,7 @@ private fun InterventionsScreenPreview() {
                             heure = LocalTime.of(14, 15),
                             client = "Traiteur Delaunay",
                             ville = "Barentin",
-                            typePanne = TypePanne.GIVRAGE,
+                            typeLibelle = "Entretien annuel",
                         ),
                         client = Client(
                             nom = "Traiteur Delaunay",

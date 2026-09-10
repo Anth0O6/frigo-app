@@ -67,3 +67,58 @@ val MIGRATION_3_4: Migration = object : Migration(3, 4) {
         db.execSQL("ALTER TABLE `clients` ADD COLUMN `telephone` TEXT NOT NULL DEFAULT ''")
     }
 }
+
+/**
+ * Le type de panne devient un type d'intervention, choisi dans une liste que le
+ * technicien tient lui-même.
+ *
+ * La colonne `typePanne` disparaît, ce qui impose de **reconstruire la table** :
+ * `DROP COLUMN` n'existe dans SQLite que depuis la version 3.35, absente des
+ * appareils couverts par `minSdk 26`. La reconstruction est de toute façon la
+ * méthode recommandée, et Room exécute la migration dans une transaction : ou
+ * tout passe, ou rien ne change.
+ *
+ * Les interventions déjà saisies reçoivent leur intitulé d'alors et aucun lien.
+ * La liste démarrant vide, elles ne peuvent désigner aucun type ; elles
+ * continuent pourtant d'afficher « Fuite de fluide » ou « Entretien préventif »,
+ * parce que l'intitulé est recopié sur la ligne. C'est le rôle de cette copie.
+ *
+ * Le `CASE` traduit les constantes de l'ancienne énumération en français. Le
+ * `ELSE` recopie la valeur brute : une énumération inconnue — impossible en
+ * principe, mais une base abîmée existe — vaut mieux qu'une cellule vide.
+ */
+val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `types_intervention` (" +
+                "`id` TEXT NOT NULL, `libelle` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `interventions_nouvelle` (" +
+                "`id` TEXT NOT NULL, `date` TEXT NOT NULL, `heure` TEXT NOT NULL, " +
+                "`client` TEXT NOT NULL, `ville` TEXT NOT NULL, `typeId` TEXT, " +
+                "`typeLibelle` TEXT NOT NULL, `clientId` TEXT, `statut` TEXT NOT NULL, " +
+                "`notes` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "INSERT INTO `interventions_nouvelle` " +
+                "(`id`, `date`, `heure`, `client`, `ville`, `typeId`, `typeLibelle`, " +
+                "`clientId`, `statut`, `notes`, `modifieLe`) " +
+                "SELECT `id`, `date`, `heure`, `client`, `ville`, NULL, " +
+                "CASE `typePanne` " +
+                "WHEN 'FUITE_FLUIDE' THEN 'Fuite de fluide' " +
+                "WHEN 'COMPRESSEUR' THEN 'Compresseur' " +
+                "WHEN 'REGULATION' THEN 'Régulation' " +
+                "WHEN 'GIVRAGE' THEN 'Givrage' " +
+                "WHEN 'ENTRETIEN' THEN 'Entretien préventif' " +
+                "ELSE `typePanne` END, " +
+                "`clientId`, `statut`, `notes`, `modifieLe` FROM `interventions`",
+        )
+        db.execSQL("DROP TABLE `interventions`")
+        db.execSQL("ALTER TABLE `interventions_nouvelle` RENAME TO `interventions`")
+        // L'index suivait la table détruite : il faut le reposer.
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)")
+    }
+}

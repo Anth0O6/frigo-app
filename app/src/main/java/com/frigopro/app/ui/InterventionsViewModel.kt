@@ -10,6 +10,8 @@ import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,12 +27,13 @@ import java.time.LocalDate
 /**
  * Détient l'état de l'écran « Interventions ».
  *
- * L'UI observe [jour], [lignes], [clients] et [formulaire], et remonte
+ * L'UI observe [jour], [lignes], [clients], [types] et [formulaire], et remonte
  * les intentions utilisateur via les méthodes `on…`.
  */
 class InterventionsViewModel(
     private val interventionRepository: InterventionRepository,
     private val clientRepository: ClientRepository,
+    private val typeRepository: TypeInterventionRepository,
 ) : ViewModel() {
 
     private val _jour = MutableStateFlow(LocalDate.now())
@@ -70,6 +73,14 @@ class InterventionsViewModel(
             )
         }
     }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    /** Types d'intervention proposés par le formulaire. Vide au premier lancement. */
+    val types: StateFlow<List<TypeIntervention>> = typeRepository.types
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
@@ -125,6 +136,29 @@ class InterventionsViewModel(
         }
     }
 
+    /**
+     * Choisit un type, ou l'enlève quand [type] vaut `null` : le type est
+     * facultatif, et revenir en arrière doit être aussi simple que choisir.
+     */
+    fun onTypeChoisi(type: TypeIntervention?) {
+        _formulaire.update { etat ->
+            etat?.copy(typeId = type?.id, typeLibelle = type?.libelle ?: "")
+        }
+    }
+
+    /**
+     * Ajoute un type à la liste depuis le formulaire, et le choisit aussitôt :
+     * rencontrer un type qui manque ne doit pas obliger à quitter sa saisie.
+     */
+    fun onNouveauType(libelle: String) {
+        if (libelle.isBlank()) return
+
+        viewModelScope.launch {
+            val type = typeRepository.trouverOuCreer(libelle)
+            _formulaire.update { etat -> etat?.copy(typeId = type.id, typeLibelle = type.libelle) }
+        }
+    }
+
     fun onFermerFormulaire() {
         _formulaire.value = null
     }
@@ -171,7 +205,11 @@ class InterventionsViewModel(
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                InterventionsViewModel(conteneur.interventions, conteneur.clients)
+                InterventionsViewModel(
+                    conteneur.interventions,
+                    conteneur.clients,
+                    conteneur.typesIntervention,
+                )
             }
         }
     }

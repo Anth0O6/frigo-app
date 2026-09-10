@@ -4,10 +4,12 @@ import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.StatutIntervention
-import com.frigopro.app.data.TypePanne
+import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -31,6 +33,7 @@ class InterventionsViewModelTest {
 
     private val dao = FauxInterventionDao()
     private val daoClients = FauxClientDao()
+    private val daoTypes = FauxTypeInterventionDao(dao)
 
     @After
     fun nettoyer() {
@@ -280,7 +283,7 @@ class InterventionsViewModelTest {
                 heure = LocalTime.of(9, 0),
                 client = "Client de passage",
                 ville = "Rouen",
-                typePanne = TypePanne.FUITE_FLUIDE,
+                typeLibelle = "Fuite de fluide",
                 clientId = null,
             ),
         )
@@ -294,6 +297,70 @@ class InterventionsViewModelTest {
         assertNull(ligne.client)
         assertFalse(ligne.appelable)
         assertFalse(ligne.localisable)
+    }
+
+    @Test
+    fun `choisir un type le pose sur le formulaire, le rechoisir l'enleve`() = runTest {
+        val viewModel = creerViewModel()
+        val type = TypeIntervention(id = "t1", libelle = "Entretien annuel")
+        daoTypes.enregistrer(type)
+        viewModel.onNouvelleIntervention()
+
+        viewModel.onTypeChoisi(type)
+
+        assertEquals("t1", viewModel.formulaire.value!!.typeId)
+        assertEquals("Entretien annuel", viewModel.formulaire.value!!.typeLibelle)
+
+        viewModel.onTypeChoisi(null)
+
+        assertNull(viewModel.formulaire.value!!.typeId)
+        assertEquals("", viewModel.formulaire.value!!.typeLibelle)
+    }
+
+    /** Rencontrer un type qui manque ne doit pas obliger à quitter sa saisie. */
+    @Test
+    fun `un nouveau type rejoint la liste et est choisi aussitot`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+
+        viewModel.onNouveauType("  Mise en service ")
+        advanceUntilIdle()
+
+        val cree = daoTypes.contenu.single()
+        assertEquals("Mise en service", cree.libelle)
+        assertEquals(cree.id, viewModel.formulaire.value!!.typeId)
+        assertEquals("Mise en service", viewModel.formulaire.value!!.typeLibelle)
+    }
+
+    @Test
+    fun `un intitule vide ne cree pas de type`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+
+        viewModel.onNouveauType("   ")
+        advanceUntilIdle()
+
+        assertTrue(daoTypes.contenu.isEmpty())
+        assertNull(viewModel.formulaire.value!!.typeId)
+    }
+
+    @Test
+    fun `l'intitule du type est enregistre avec l'intervention`() = runTest {
+        val viewModel = creerViewModel()
+        val type = TypeIntervention(id = "t1", libelle = "Dépannage")
+        daoTypes.enregistrer(type)
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(client = "Client", ville = "Rouen"),
+        )
+        viewModel.onTypeChoisi(type)
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val enregistree = dao.contenu.single()
+        assertEquals("t1", enregistree.typeId)
+        assertEquals("Dépannage", enregistree.typeLibelle)
     }
 
     private fun enregistrer(
@@ -315,6 +382,10 @@ class InterventionsViewModelTest {
      */
     private fun TestScope.creerViewModel(): InterventionsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        return InterventionsViewModel(InterventionRepository(dao), ClientRepository(daoClients))
+        return InterventionsViewModel(
+            InterventionRepository(dao),
+            ClientRepository(daoClients),
+            TypeInterventionRepository(daoTypes),
+        )
     }
 }

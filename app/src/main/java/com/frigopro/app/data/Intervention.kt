@@ -19,7 +19,14 @@ import java.util.UUID
  * @param heure heure de passage prévue.
  * @param client raison sociale du client.
  * @param ville commune où se déroule l'intervention.
- * @param typePanne nature de la panne signalée.
+ * @param typeId type d'intervention choisi dans la liste du technicien, ou
+ *   `null` quand l'intitulé ne vient pas d'elle — une intervention saisie
+ *   avant que la liste existe, ou dont le type a été supprimé depuis.
+ * @param typeLibelle intitulé du type, recopié sur la ligne. Renommer un type
+ *   met cette copie à jour partout où il est employé ; la copie sert à
+ *   afficher quelque chose même sans lien, et à survivre à la suppression du
+ *   type. Vide tant qu'aucun type n'est choisi, ce qui est permis : exiger un
+ *   type alors que la liste démarre vide interdirait la première saisie.
  * @param clientId client du carnet, quand l'intervention y est rattachée.
  *   `client` et `ville` restent stockés sur la ligne : ce sont les
  *   coordonnées **au moment de l'intervention**, qu'un compte-rendu d'il y a
@@ -40,7 +47,8 @@ data class Intervention(
     val heure: LocalTime,
     val client: String,
     val ville: String,
-    val typePanne: TypePanne,
+    val typeId: String? = null,
+    val typeLibelle: String = "",
     val clientId: String? = null,
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
@@ -60,13 +68,4 @@ enum class StatutIntervention(val libelle: String) {
      * toit, gants aux mains, sans rouvrir le formulaire.
      */
     fun suivant(): StatutIntervention = entries[(ordinal + 1) % entries.size]
-}
-
-/** Nature de la panne signalée. */
-enum class TypePanne(val libelle: String) {
-    FUITE_FLUIDE("Fuite de fluide"),
-    COMPRESSEUR("Compresseur"),
-    REGULATION("Régulation"),
-    GIVRAGE("Givrage"),
-    ENTRETIEN("Entretien préventif"),
 }

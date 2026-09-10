@@ -22,6 +22,7 @@ class InterventionRepository(private val dao: InterventionDao) {
             intervention.copy(
                 client = intervention.client.trim(),
                 ville = intervention.ville.trim(),
+                typeLibelle = intervention.typeLibelle.trim(),
                 modifieLe = Instant.now(),
             ),
         )

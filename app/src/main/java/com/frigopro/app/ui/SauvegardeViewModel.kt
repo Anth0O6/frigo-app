@@ -39,8 +39,11 @@ class SauvegardeViewModel(
         viewModelScope.launch {
             val export = sauvegardes.exporter()
             _message.value = if (fichiers.ecrire(destination, export.contenu)) {
-                "Sauvegarde enregistrée : ${compte(export.interventions, "intervention")} " +
-                    "et ${compte(export.clients, "client")}."
+                "Sauvegarde enregistrée : " + inventaire(
+                    interventions = export.interventions,
+                    clients = export.clients,
+                    types = export.types,
+                ) + "."
             } else {
                 "Impossible d'écrire dans ce fichier. Essayez un autre emplacement."
             }
@@ -57,8 +60,11 @@ class SauvegardeViewModel(
 
             _message.value = when (val resultat = sauvegardes.restaurer(contenu)) {
                 is ResultatRestauration.Reussie ->
-                    "Restauration terminée : ${compte(resultat.interventions, "intervention")} " +
-                        "et ${compte(resultat.clients, "client")}."
+                    "Restauration terminée : " + inventaire(
+                        interventions = resultat.interventions,
+                        clients = resultat.clients,
+                        types = resultat.types,
+                    ) + "."
 
                 is ResultatRestauration.TropRecente ->
                     "Cette sauvegarde vient d'une version plus récente de FrigoPro. " +
@@ -72,6 +78,20 @@ class SauvegardeViewModel(
 
     fun onMessageLu() {
         _message.value = null
+    }
+
+    /**
+     * Les types ne sont mentionnés que s'il y en a : annoncer « 0 type »
+     * attirerait l'œil sur ce qui n'a aucune importance.
+     */
+    private fun inventaire(interventions: Int, clients: Int, types: Int): String {
+        val parties = buildList {
+            add(compte(interventions, "intervention"))
+            add(compte(clients, "client"))
+            if (types > 0) add(compte(types, "type"))
+        }
+
+        return parties.dropLast(1).joinToString(", ") + " et " + parties.last()
     }
 
     private fun compte(nombre: Int, nom: String): String =
