@@ -6,6 +6,7 @@ import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.SauvegardeRepository
+import com.frigopro.app.data.TypeInterventionRepository
 
 /**
  * Assemblage manuel des dépendances de l'application.
@@ -22,8 +23,12 @@ class ConteneurApp(private val contexte: Context) {
 
     val clients: ClientRepository by lazy { ClientRepository(base.clientDao()) }
 
+    val typesIntervention: TypeInterventionRepository by lazy {
+        TypeInterventionRepository(base.typeInterventionDao())
+    }
+
     val sauvegardes: SauvegardeRepository by lazy {
-        SauvegardeRepository(base.interventionDao(), base.clientDao())
+        SauvegardeRepository(base.interventionDao(), base.clientDao(), base.typeInterventionDao())
     }
 
     val fichiers: FichiersExternes by lazy {

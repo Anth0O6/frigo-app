@@ -36,4 +36,22 @@ class FauxInterventionDao : InterventionDao {
     override suspend fun supprimer(id: String) {
         lignes.update { liste -> liste.filterNot { it.id == id } }
     }
+
+    /**
+     * Reproduit le `UPDATE … SET typeLibelle` que lance [TypeInterventionDao] :
+     * la propagation d'un renommage touche cette table, et c'est ici qu'elle
+     * peut être vérifiée sans SQLite.
+     */
+    fun propagerLibelle(typeId: String, libelle: String) {
+        lignes.update { liste ->
+            liste.map { if (it.typeId == typeId) it.copy(typeLibelle = libelle) else it }
+        }
+    }
+
+    /** Reproduit le `UPDATE … SET typeId = NULL` de [TypeInterventionDao]. */
+    fun detacher(typeId: String) {
+        lignes.update { liste ->
+            liste.map { if (it.typeId == typeId) it.copy(typeId = null) else it }
+        }
+    }
 }

@@ -1,7 +1,6 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.Intervention
-import com.frigopro.app.data.TypePanne
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -54,7 +53,8 @@ class EtatFormulaireTest {
             heure = LocalTime.of(10, 30),
             client = "Boucherie Lemoine",
             ville = "Rouen",
-            typePanne = TypePanne.GIVRAGE,
+            typeId = "t1",
+            typeLibelle = "Givrage",
         )
 
         val etat = EtatFormulaire.depuis(intervention)

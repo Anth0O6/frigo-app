@@ -2,7 +2,6 @@ package com.frigopro.app.ui
 
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
-import com.frigopro.app.data.TypePanne
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.UUID
@@ -21,7 +20,10 @@ data class EtatFormulaire(
     val ville: String = "",
     /** Renseigné quand le client vient du carnet ; `null` s'il est saisi à la main. */
     val clientId: String? = null,
-    val typePanne: TypePanne = TypePanne.FUITE_FLUIDE,
+    /** Type choisi dans la liste du technicien ; `null` s'il n'en vient pas. */
+    val typeId: String? = null,
+    /** Intitulé affiché, recopié du type. Vide quand aucun n'est choisi. */
+    val typeLibelle: String = "",
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
 ) {
@@ -38,7 +40,8 @@ data class EtatFormulaire(
         heure = heure,
         client = client,
         ville = ville,
-        typePanne = typePanne,
+        typeId = typeId,
+        typeLibelle = typeLibelle,
         clientId = clientId,
         statut = statut,
         notes = notes,
@@ -52,7 +55,8 @@ data class EtatFormulaire(
             heure = intervention.heure,
             client = intervention.client,
             ville = intervention.ville,
-            typePanne = intervention.typePanne,
+            typeId = intervention.typeId,
+            typeLibelle = intervention.typeLibelle,
             clientId = intervention.clientId,
             statut = intervention.statut,
             notes = intervention.notes,

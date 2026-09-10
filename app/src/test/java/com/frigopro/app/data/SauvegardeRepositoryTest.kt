@@ -2,6 +2,7 @@ package com.frigopro.app.data
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -16,18 +17,23 @@ class SauvegardeRepositoryTest {
 
     private val daoInterventions = FauxInterventionDao()
     private val daoClients = FauxClientDao()
-    private val repository = SauvegardeRepository(daoInterventions, daoClients)
+    private val daoTypes = FauxTypeInterventionDao(daoInterventions)
+    private val repository = SauvegardeRepository(daoInterventions, daoClients, daoTypes)
 
     @Test
     fun `ce qui est exporte revient identique`() = runTest {
         daoClients.enregistrer(CLIENT)
         daoInterventions.enregistrer(INTERVENTION)
 
-        val export = repository.exporter()
-        val vierge = SauvegardeRepository(FauxInterventionDao(), FauxClientDao())
-        val resultat = vierge.restaurer(export.contenu)
+        daoTypes.enregistrer(TYPE)
 
-        assertEquals(ResultatRestauration.Reussie(clients = 1, interventions = 1), resultat)
+        val export = repository.exporter()
+        val resultat = vierge().restaurer(export.contenu)
+
+        assertEquals(
+            ResultatRestauration.Reussie(types = 1, clients = 1, interventions = 1),
+            resultat,
+        )
     }
 
     /**
@@ -42,7 +48,8 @@ class SauvegardeRepositoryTest {
 
         val autreInterventions = FauxInterventionDao()
         val autreClients = FauxClientDao()
-        SauvegardeRepository(autreInterventions, autreClients).restaurer(contenu)
+        val autreTypes = FauxTypeInterventionDao(autreInterventions)
+        SauvegardeRepository(autreInterventions, autreClients, autreTypes).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())
         assertEquals(INTERVENTION, autreInterventions.contenu.single())
@@ -93,34 +100,128 @@ class SauvegardeRepositoryTest {
     }
 
     /**
-     * Un type de panne inconnu fait rejeter le fichier **en entier** : une
-     * tournée restaurée à moitié serait pire qu'une restauration refusée.
+     * Un statut inconnu fait rejeter le fichier **en entier** : une tournée
+     * restaurée à moitié serait pire qu'une restauration refusée.
      */
     @Test
     fun `une valeur inconnue fait refuser tout le fichier`() = runTest {
         daoClients.enregistrer(CLIENT)
         daoInterventions.enregistrer(INTERVENTION)
-        val contenu = repository.exporter().contenu.replace("FUITE_FLUIDE", "PANNE_INVENTEE")
+        val contenu = repository.exporter().contenu.replace("EN_COURS", "STATUT_INVENTE")
 
-        val vierge = FauxInterventionDao()
+        val viergeInterventions = FauxInterventionDao()
         val viergeClients = FauxClientDao()
-        val resultat = SauvegardeRepository(vierge, viergeClients).restaurer(contenu)
+        val viergeTypes = FauxTypeInterventionDao(viergeInterventions)
+        val resultat = SauvegardeRepository(viergeInterventions, viergeClients, viergeTypes)
+            .restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
         assertTrue("rien ne doit être écrit avant la vérification", viergeClients.contenu.isEmpty())
-        assertTrue(vierge.contenu.isEmpty())
+        assertTrue(viergeInterventions.contenu.isEmpty())
+        assertTrue(viergeTypes.contenu.isEmpty())
+    }
+
+    /**
+     * L'intitulé du type est libre : une valeur qu'aucune liste ne contient ne
+     * rend pas le fichier illisible, contrairement au statut.
+     */
+    @Test
+    fun `un intitule de type inconnu passe tel quel`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION.copy(typeId = null, typeLibelle = "Carotte"))
+
+        val resultat = vierge().restaurer(repository.exporter().contenu)
+
+        assertEquals(ResultatRestauration.Reussie(types = 0, clients = 0, interventions = 1), resultat)
+    }
+
+    @Test
+    fun `la liste des types fait partie de la sauvegarde`() = runTest {
+        daoTypes.enregistrer(TYPE)
+        daoTypes.enregistrer(TYPE.copy(id = "t2", libelle = "Entretien annuel"))
+
+        val export = repository.exporter()
+        val autreInterventions = FauxInterventionDao()
+        val autreTypes = FauxTypeInterventionDao(autreInterventions)
+        SauvegardeRepository(autreInterventions, FauxClientDao(), autreTypes)
+            .restaurer(export.contenu)
+
+        assertEquals(2, export.types)
+        assertEquals(setOf("Fuite de fluide", "Entretien annuel"), autreTypes.contenu.map { it.libelle }.toSet())
+    }
+
+    /**
+     * Le plus important des cas de compatibilité : une sauvegarde faite avant
+     * que les types deviennent modifiables doit rester restaurable, et retrouver
+     * l'intitulé français que l'application affichait alors.
+     */
+    @Test
+    fun `une sauvegarde du format 1 se restaure avec l'intitule d'alors`() = runTest {
+        val contenu = """
+            {
+              "format": 1,
+              "exporteeLe": "2026-09-09T08:00:00Z",
+              "interventions": [
+                {
+                  "id": "id-1", "date": "2026-09-10", "heure": "08:30",
+                  "client": "Boucherie Lemoine", "ville": "Rouen",
+                  "typePanne": "ENTRETIEN", "statut": "A_FAIRE"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val resultat = repository.restaurer(contenu)
+
+        assertEquals(ResultatRestauration.Reussie(types = 0, clients = 0, interventions = 1), resultat)
+        val restauree = daoInterventions.contenu.single()
+        assertEquals("Entretien préventif", restauree.typeLibelle)
+        assertNull("le format 1 ne connaissait pas de liste", restauree.typeId)
+    }
+
+    /** Une valeur fixe que l'application n'a jamais connue vaut mieux qu'un vide. */
+    @Test
+    fun `un type inconnu du format 1 est recopie tel quel`() = runTest {
+        val contenu = """
+            {
+              "format": 1,
+              "exporteeLe": "2026-09-09T08:00:00Z",
+              "interventions": [
+                {
+                  "id": "id-1", "date": "2026-09-10", "heure": "08:30",
+                  "client": "Boucherie Lemoine", "ville": "Rouen",
+                  "typePanne": "AUTRE_CHOSE", "statut": "A_FAIRE"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        repository.restaurer(contenu)
+
+        assertEquals("AUTRE_CHOSE", daoInterventions.contenu.single().typeLibelle)
     }
 
     @Test
     fun `l'export annonce ce qu'il contient`() = runTest {
+        daoTypes.enregistrer(TYPE)
         daoClients.enregistrer(CLIENT)
         daoInterventions.enregistrer(INTERVENTION)
         daoInterventions.enregistrer(INTERVENTION.copy(id = "id-2"))
 
         val export = repository.exporter()
 
+        assertEquals(1, export.types)
         assertEquals(1, export.clients)
         assertEquals(2, export.interventions)
+    }
+
+    /** Un dépôt dont les trois tables sont vides, pour restaurer à froid. */
+    private fun vierge(): SauvegardeRepository {
+        val interventions = FauxInterventionDao()
+        return SauvegardeRepository(
+            interventions,
+            FauxClientDao(),
+            FauxTypeInterventionDao(interventions),
+        )
     }
 
     private companion object {
@@ -134,13 +235,20 @@ class SauvegardeRepositoryTest {
             modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
         )
 
+        val TYPE = TypeIntervention(
+            id = "t1",
+            libelle = "Fuite de fluide",
+            modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
+        )
+
         val INTERVENTION = Intervention(
             id = "id-1",
             date = LocalDate.of(2026, 9, 10),
             heure = LocalTime.of(8, 30),
             client = "Boucherie Lemoine",
             ville = "Rouen",
-            typePanne = TypePanne.FUITE_FLUIDE,
+            typeId = "t1",
+            typeLibelle = "Fuite de fluide",
             clientId = "cl-1",
             statut = StatutIntervention.EN_COURS,
             notes = "Fuite au détendeur.",

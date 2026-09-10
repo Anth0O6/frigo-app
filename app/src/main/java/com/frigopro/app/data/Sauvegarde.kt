@@ -23,8 +23,16 @@ import java.time.format.DateTimeFormatter
 data class Sauvegarde(
     val format: Int,
     val exporteeLe: String,
+    val types: List<TypeInterventionSauvegarde> = emptyList(),
     val clients: List<ClientSauvegarde> = emptyList(),
     val interventions: List<InterventionSauvegarde> = emptyList(),
+)
+
+@Serializable
+data class TypeInterventionSauvegarde(
+    val id: String,
+    val libelle: String,
+    val modifieLe: Long = 0L,
 )
 
 @Serializable
@@ -44,15 +52,22 @@ data class InterventionSauvegarde(
     val heure: String,
     val client: String,
     val ville: String,
-    val typePanne: String,
     val statut: String,
+    val typeId: String? = null,
+    val typeLibelle: String = "",
+    /**
+     * Format 1 : le type était une valeur fixe de l'application
+     * (`FUITE_FLUIDE`, `ENTRETIEN`…). Conservé en lecture seule pour qu'une
+     * sauvegarde faite avant ce changement reste restaurable.
+     */
+    val typePanne: String? = null,
     val clientId: String? = null,
     val notes: String = "",
     val modifieLe: Long = 0L,
 )
 
 /** Version courante du format de fichier. */
-const val FORMAT_COURANT: Int = 1
+const val FORMAT_COURANT: Int = 2
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -63,7 +78,23 @@ internal val JSON_SAUVEGARDE: Json = Json {
     prettyPrint = true
     ignoreUnknownKeys = true
     encodeDefaults = true
+    // Sans cela, chaque champ facultatif non renseigné écrirait une ligne
+    // `null` : un fichier que l'on veut pouvoir relire à l'œil n'y gagne rien.
+    explicitNulls = false
 }
+
+/**
+ * Intitulés des types figés de l'époque du format 1, pour relire ces fichiers.
+ * Les mêmes que ceux posés par `MIGRATION_4_5` : une sauvegarde d'alors et une
+ * base d'alors doivent donner le même résultat.
+ */
+private val LIBELLES_HISTORIQUES = mapOf(
+    "FUITE_FLUIDE" to "Fuite de fluide",
+    "COMPRESSEUR" to "Compresseur",
+    "REGULATION" to "Régulation",
+    "GIVRAGE" to "Givrage",
+    "ENTRETIEN" to "Entretien préventif",
+)
 
 /**
  * Formats du fichier, dupliqués à dessein de ceux de [Convertisseurs] : le
@@ -71,6 +102,12 @@ internal val JSON_SAUVEGARDE: Json = Json {
  */
 private val FORMAT_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 private val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+internal fun TypeIntervention.versSauvegarde(): TypeInterventionSauvegarde = TypeInterventionSauvegarde(
+    id = id,
+    libelle = libelle,
+    modifieLe = modifieLe.toEpochMilli(),
+)
 
 internal fun Client.versSauvegarde(): ClientSauvegarde = ClientSauvegarde(
     id = id,
@@ -87,11 +124,18 @@ internal fun Intervention.versSauvegarde(): InterventionSauvegarde = Interventio
     heure = heure.format(FORMAT_HEURE),
     client = client,
     ville = ville,
-    typePanne = typePanne.name,
     statut = statut.name,
+    typeId = typeId,
+    typeLibelle = typeLibelle,
     clientId = clientId,
     notes = notes,
     modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun TypeInterventionSauvegarde.versType(): TypeIntervention = TypeIntervention(
+    id = id,
+    libelle = libelle,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
 )
 
 internal fun ClientSauvegarde.versClient(): Client = Client(
@@ -104,12 +148,15 @@ internal fun ClientSauvegarde.versClient(): Client = Client(
 )
 
 /**
- * `null` quand une valeur du fichier ne se relit pas — un type de panne ou un
- * statut inconnu, une date mal formée. Plutôt que de deviner, la restauration
- * refusera le fichier en entier : à moitié restaurée, une tournée ne vaut rien.
+ * `null` quand une valeur du fichier ne se relit pas — un statut inconnu, une
+ * date mal formée. Plutôt que de deviner, la restauration refusera le fichier
+ * en entier : à moitié restaurée, une tournée ne vaut rien.
+ *
+ * L'intitulé du type, lui, ne peut pas rendre un fichier illisible : il est
+ * libre, et un fichier du format 1 n'en portait pas — on le déduit alors de
+ * l'ancienne valeur fixe.
  */
 internal fun InterventionSauvegarde.versIntervention(): Intervention? {
-    val panne = TypePanne.entries.firstOrNull { it.name == typePanne } ?: return null
     val avancement = StatutIntervention.entries.firstOrNull { it.name == statut } ?: return null
     val jour = runCatching { LocalDate.parse(date, FORMAT_DATE) }.getOrNull() ?: return null
     val moment = runCatching { LocalTime.parse(heure, FORMAT_HEURE) }.getOrNull() ?: return null
@@ -120,10 +167,21 @@ internal fun InterventionSauvegarde.versIntervention(): Intervention? {
         heure = moment,
         client = client,
         ville = ville,
-        typePanne = panne,
+        typeId = typeId,
+        typeLibelle = typeLibelle.ifBlank { intituleHistorique() },
         clientId = clientId,
         statut = avancement,
         notes = notes,
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
+}
+
+/**
+ * Intitulé d'une intervention venue d'un fichier du format 1. Une valeur
+ * inconnue est recopiée telle quelle plutôt que perdue, et l'absence de type
+ * donne une chaîne vide — ce qui est désormais permis.
+ */
+private fun InterventionSauvegarde.intituleHistorique(): String {
+    val ancien = typePanne ?: return ""
+    return LIBELLES_HISTORIQUES[ancien] ?: ancien
 }
