@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -288,7 +287,9 @@ fun FormulaireIntervention(
     }
 
     if (nouveauTypeOuvert) {
-        NouveauType(
+        DialogueType(
+            titre = "Nouveau type d'intervention",
+            libelleAction = "Ajouter",
             onValider = {
                 onNouveauType(it)
                 nouveauTypeOuvert = false
@@ -307,47 +308,6 @@ fun FormulaireIntervention(
             onFermer = { choixHeureOuvert = false },
         )
     }
-}
-
-/**
- * Saisie d'un nouveau type d'intervention, sans quitter le formulaire.
- *
- * Le type créé rejoint la liste et sera proposé aux interventions suivantes :
- * c'est ainsi que le technicien se constitue son vocabulaire, au fil des
- * tournées plutôt qu'en remplissant un écran de configuration d'avance.
- */
-@Composable
-private fun NouveauType(
-    onValider: (String) -> Unit,
-    onFermer: () -> Unit,
-) {
-    var intitule by rememberSaveable { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onFermer,
-        title = { Text(text = "Nouveau type d'intervention") },
-        text = {
-            OutlinedTextField(
-                value = intitule,
-                onValueChange = { intitule = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Intitulé") },
-                singleLine = true,
-                keyboardOptions = OPTIONS_CLAVIER,
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onValider(intitule) },
-                enabled = intitule.isNotBlank(),
-            ) {
-                Text(text = "Ajouter")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onFermer) { Text(text = "Annuler") }
-        },
-    )
 }
 
 /**

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -24,12 +25,13 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
     // à gauche, ce que `Icons.Filled` ne fait pas : c'est elle qu'il faut.
     TOURNEE("Tournée", Icons.AutoMirrored.Filled.EventNote),
     CLIENTS("Clients", Icons.Filled.Contacts),
+    REGLAGES("Réglages", Icons.Filled.Tune),
 }
 
 /**
  * Coquille de l'application : la section affichée et la barre qui en change.
  *
- * Pas de graphe de navigation. Avec deux sections sans lien hiérarchique, une
+ * Pas de graphe de navigation. Avec trois sections sans lien hiérarchique, une
  * variable d'état suffit, et `rememberSaveable` la fait survivre à une rotation
  * comme à la mise en arrière-plan. La bibliothèque de navigation aura son
  * intérêt le jour où il faudra une pile arrière — une fiche client ouverte en
@@ -48,6 +50,7 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
             when (onglet) {
                 Onglet.TOURNEE -> InterventionsRoute()
                 Onglet.CLIENTS -> ClientsRoute()
+                Onglet.REGLAGES -> ReglagesRoute()
             }
         }
         NavigationBar {

@@ -70,12 +70,6 @@ jobs:
       # est le seul moyen de pouvoir l'ajouter au dépôt, et donc d'écrire un jour
       # une migration. `error` plutôt qu'un silence : un schéma manquant est un
       # défaut de configuration, pas un cas normal.
-      # Temporaire : l'artefact n'est pas téléchargeable depuis cette session, et
-      # le schéma doit rejoindre le dépôt pour qu'une migration puisse s'écrire.
-      # À retirer dès le schéma versé.
-      - name: Dump Room schemas (base64)
-        run: tar -czf - app/schemas | base64 -w 120
-
       - name: Publish Room schemas
         uses: actions/upload-artifact@v4
         with:

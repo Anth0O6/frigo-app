@@ -3,8 +3,9 @@
 Application Android native destinée aux techniciens frigoristes en tournée.
 Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
 et permet de les créer, les modifier, les supprimer et de suivre leur
-avancement, chacune rangée sous un type que le technicien nomme lui-même. Un
-onglet Clients tient le carnet — adresse et téléphone compris —
+avancement, chacune rangée sous un type que le technicien nomme lui-même dans
+l'onglet Réglages. Un onglet Clients tient le carnet — adresse et téléphone
+compris —
 et, depuis la tournée, appeler un client ou ouvrir l'itinéraire tient en un
 geste. Les données sont persistées localement, et exportables dans un fichier
 de sauvegarde.
@@ -68,6 +69,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
+│       │       ├── DialogueType.kt     # saisie d'un intitulé de type
+│       │       ├── ReglagesScreen.kt
+│       │       ├── ReglagesViewModel.kt
 │       │       ├── MenuSauvegarde.kt
 │       │       ├── SauvegardeViewModel.kt
 │       │       └── theme/
@@ -111,9 +115,10 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `FrigoProApp` est la coquille : deux onglets, `Tournée` et
-  `Clients`, et la barre qui en change. **Pas de graphe de navigation** : deux
-  sections sans lien hiérarchique se passent d'une pile arrière, et une variable
+- **`ui`** — `FrigoProApp` est la coquille : trois onglets, `Tournée`,
+  `Clients` et `Réglages`, et la barre qui en change. **Pas de graphe de
+  navigation** : des sections sans lien hiérarchique se passent d'une pile
+  arrière, et une variable
   `rememberSaveable` suffit. La bibliothèque de navigation s'imposera le jour
   d'une vraie destination à empiler ou d'un lien profond. Corollaire à ne pas
   perdre de vue : la barre d'onglets pose elle-même la marge de la barre système
@@ -128,7 +133,13 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   fait là plutôt que par une jointure SQL : les deux flux sont déjà observés, et
   l'écran reçoit de quoi afficher comme de quoi agir. `ClientsViewModel` tient
   l'onglet Clients sur le même modèle, `EtatFicheClient` jouant pour la fiche le
-  rôle d'`EtatFormulaire` pour l'intervention.
+  rôle d'`EtatFormulaire` pour l'intervention. `ReglagesViewModel` tient l'onglet
+  Réglages — la liste des types pour l'instant — et n'expose qu'un seul
+  `StateFlow<DialogueReglages?>` plutôt que trois booléens : deux boîtes de
+  dialogue ne peuvent pas être ouvertes en même temps, et le dire au type
+  supprime la question. `DialogueType` est partagée par le formulaire et les
+  réglages : ajouter un type et le corriger demandent la même saisie, et deux
+  boîtes jumelles finiraient par diverger.
   Appeler et ouvrir un itinéraire passent par des intentions Android
   (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
   pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
@@ -230,6 +241,7 @@ l'APK : un test rouge bloque la publication.
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
+| `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1 |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
@@ -348,7 +360,8 @@ place » venant en tête :
 - Photos avant / après, prises depuis l'intervention.
 - Compte-rendu client exportable, éventuellement signé.
 - Suppression d'un client, qui devra décider du sort du `clientId` des
-  interventions passées.
+  interventions passées — les types d'intervention montrent une façon de le
+  faire : couper le lien, garder la copie.
 - Confirmation avant suppression d'une intervention (ou annulation par
   `Snackbar`).
 - Tests d'UI Compose.
