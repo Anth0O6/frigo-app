@@ -29,7 +29,7 @@ import java.util.UUID
  * [ReductionPhoto]) : l'original de l'appareil photo ne sert à rien, et sa
  * taille se paierait dans l'archive de sauvegarde.
  */
-class StockagePhotos(private val contexte: Context) {
+class StockagePhotos(private val contexte: Context) : RangementPhotos {
 
     /** Autorité du [FileProvider] déclaré au manifeste, par où passe l'appareil photo. */
     val autorite: String get() = "${contexte.packageName}.photos"
@@ -51,7 +51,7 @@ class StockagePhotos(private val contexte: Context) {
      * transite pas par la galerie, où elle n'a rien à faire, et aucune
      * permission de stockage n'est nécessaire.
      */
-    fun preparerCapture(): Capture {
+    override fun preparerCapture(): Capture {
         val nom = nomNeuf()
         val cible = fichier(nom)
         return Capture(nom, FileProvider.getUriForFile(contexte, autorite, cible))
@@ -62,7 +62,7 @@ class StockagePhotos(private val contexte: Context) {
      * d'exploitable n'est arrivé — prise de vue abandonnée, fichier vide — après
      * avoir fait le ménage.
      */
-    suspend fun finaliserCapture(nom: String): String? = withContext(Dispatchers.IO) {
+    override suspend fun finaliserCapture(nom: String): String? = withContext(Dispatchers.IO) {
         if (reduire(fichier(nom))) nom else null.also { effacer(nom) }
     }
 
@@ -73,7 +73,7 @@ class StockagePhotos(private val contexte: Context) {
      * La recopie est indispensable : l'URI du sélecteur n'est valable que le
      * temps de l'écran, et la photo doit rester lisible dans six mois.
      */
-    suspend fun importer(source: Uri): String? = withContext(Dispatchers.IO) {
+    override suspend fun importer(source: Uri): String? = withContext(Dispatchers.IO) {
         val nom = nomNeuf()
         val copie = try {
             contexte.contentResolver.openInputStream(source)?.use { flux ->
@@ -101,7 +101,7 @@ class StockagePhotos(private val contexte: Context) {
     }
 
     /** Oublie la photo. Un fichier absent n'est pas une erreur : le but est qu'il n'y soit plus. */
-    suspend fun supprimer(nom: String) {
+    override suspend fun supprimer(nom: String) {
         withContext(Dispatchers.IO) { effacer(nom) }
     }
 
@@ -111,7 +111,7 @@ class StockagePhotos(private val contexte: Context) {
      * Le grand côté voulu est un argument parce qu'une vignette de liste et une
      * photo plein écran n'ont pas à coûter la même mémoire.
      */
-    suspend fun charger(nom: String, coteMax: Int): Bitmap? = withContext(Dispatchers.IO) {
+    override suspend fun charger(nom: String, coteMax: Int): Bitmap? = withContext(Dispatchers.IO) {
         val source = fichier(nom)
         if (!source.isFile) return@withContext null
         val bornes = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -204,9 +204,6 @@ class StockagePhotos(private val contexte: Context) {
         val matrice = Matrix().apply { postRotate(degres.toFloat()) }
         return Bitmap.createBitmap(image, 0, 0, image.width, image.height, matrice, true)
     }
-
-    /** Le fichier qu'une capture va remplir, et l'URI à confier à l'appareil photo. */
-    data class Capture(val nom: String, val uri: Uri)
 
     companion object {
 

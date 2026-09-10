@@ -5,10 +5,11 @@ Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
 et permet de les créer, les modifier, les supprimer et de suivre leur
 avancement, chacune rangée sous un type que le technicien nomme lui-même dans
 l'onglet Réglages. Un onglet Clients tient le carnet — adresse et téléphone
-compris —
-et, depuis la tournée, appeler un client ou ouvrir l'itinéraire tient en un
-geste. Les données sont persistées localement, et exportables dans un fichier
-de sauvegarde.
+compris — ainsi que le parc de machines de chaque client : leur plaque
+signalétique et leur emplacement en photos, et l'historique de ce qu'on a déjà
+fait sur chacune. Depuis la tournée, appeler un client ou ouvrir l'itinéraire
+tient en un geste. Les données sont persistées localement, et exportables dans
+une archive de sauvegarde.
 
 ## Stack
 
@@ -45,8 +46,16 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── TypeIntervention.kt
 │       │   │   ├── TypeInterventionDao.kt
 │       │   │   ├── TypeInterventionRepository.kt
+│       │   │   ├── Equipement.kt
+│       │   │   ├── Photo.kt
+│       │   │   ├── EquipementDao.kt
+│       │   │   ├── EquipementRepository.kt
+│       │   │   ├── RangementPhotos.kt     # ce que le dépôt attend du stockage
+│       │   │   ├── StockagePhotos.kt      # les images, dans files/photos/
+│       │   │   ├── ReductionPhoto.kt      # arithmétique de la réduction
 │       │   │   ├── Sauvegarde.kt          # format du fichier de sauvegarde
 │       │   │   ├── SauvegardeRepository.kt
+│       │   │   ├── ArchiveSauvegarde.kt   # l'archive : le json et les images
 │       │   │   ├── FichiersExternes.kt    # fichiers désignés par l'utilisateur
 │       │   │   ├── Convertisseurs.kt
 │       │   │   ├── Migrations.kt
@@ -56,7 +65,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── InterventionRepository.kt
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
-│       │       ├── FrigoProApp.kt      # coquille : les deux onglets
+│       │       ├── FrigoProApp.kt      # coquille : les trois onglets
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
 │       │       ├── LigneTournee.kt     # intervention + fiche de son client
@@ -69,13 +78,18 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
-│       │       ├── DialogueType.kt     # saisie d'un intitulé de type
+│       │       ├── EcranEquipement.kt  # photos et historique d'une machine
+│       │       ├── EquipementsViewModel.kt
+│       │       ├── PhotoChargee.kt     # décodage d'une image à la demande
+│       │       ├── VisionneusePhoto.kt # une photo en plein écran
+│       │       ├── DialogueIntitule.kt # saisie d'un intitulé ou d'un nom
 │       │       ├── ReglagesScreen.kt
 │       │       ├── ReglagesViewModel.kt
 │       │       ├── MenuSauvegarde.kt
 │       │       ├── SauvegardeViewModel.kt
 │       │       └── theme/
-│       └── res/                    # chaînes, couleurs, thème XML, icône
+│       └── res/                    # chaînes, couleurs, thème XML, icône,
+│                                   # chemins du FileProvider (xml/)
 ├── gradle/libs.versions.toml       # versions centralisées
 ├── gradle/wrapper/                 # wrapper committé (jar inclus)
 └── .github/workflows/build.yml     # CI : tests, APK et Release
@@ -111,6 +125,30 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   première saisie. `TypeInterventionDao` est la seule classe à écrire dans deux
   tables, par `@Transaction` : un type renommé sans ses interventions, ou
   l'inverse, laisserait la base incohérente.
+  `Equipement` est le parc d'un client, et `Photo` ce qu'on en a photographié.
+  La fiche d'une machine ne porte **qu'un nom d'usage** : marque, modèle et
+  numéro de série sont écrits sur la plaque signalétique, et la photographier
+  vaut mieux que les retaper sur un toit. La contrepartie est assumée — un
+  numéro de série ne se cherche pas en texte, il se lit sur la photo — et ces
+  champs s'ajouteront par une migration le jour où commander une pièce depuis
+  l'application aura un sens. L'intervention porte `equipementId` et
+  `equipementNom`, même couple lien / copie que pour le type et pour les mêmes
+  raisons. `EquipementDao` touche trois tables par `@Transaction` : supprimer une
+  machine doit effacer ses photos, détacher ses interventions et disparaître d'un
+  bloc.
+  Les images ne vont pas en base : SQLite n'est pas un entrepôt de fichiers, et
+  une photo dans une colonne alourdirait chaque lecture de la ligne. Elles vivent
+  dans `files/photos/`, la base ne portant que leur nom — un chemin absolu
+  changerait d'une installation à l'autre, et une sauvegarde restaurée sur un
+  autre téléphone doit retrouver ses images. Toute photo entrante est **réduite**
+  (`ReductionPhoto`, grand côté à 2048) : l'original de l'appareil photo ne sert
+  à rien et se paierait dans l'archive de sauvegarde. `EquipementRepository` est
+  le seul endroit où la base et les fichiers avancent ensemble, et toujours dans
+  le même ordre — la ligne d'abord, le fichier ensuite : une ligne sans fichier se
+  voit à l'écran, un fichier sans ligne ne se voit nulle part. `RangementPhotos`
+  est l'interface qui permet d'éprouver cette coordination sans Android ;
+  `StockagePhotos` en est la seule implémentation, et la seule à connaître
+  `BitmapFactory`, l'EXIF et le `FileProvider`.
   `ClientRepository` tient le carnet. Son tri passe par un `Collator` français
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
@@ -133,13 +171,25 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   fait là plutôt que par une jointure SQL : les deux flux sont déjà observés, et
   l'écran reçoit de quoi afficher comme de quoi agir. `ClientsViewModel` tient
   l'onglet Clients sur le même modèle, `EtatFicheClient` jouant pour la fiche le
-  rôle d'`EtatFormulaire` pour l'intervention. `ReglagesViewModel` tient l'onglet
+  rôle d'`EtatFormulaire` pour l'intervention. `EquipementsViewModel` tient le
+  parc : la carte d'un client se déplie sur ses machines, et une machine s'ouvre
+  en plein onglet — on y regarde des photos, ce qu'une feuille à mi-hauteur ne
+  permet pas. Il retient la fiche ouverte **par son identifiant** et non par sa
+  valeur : ce qu'affiche l'écran vient alors toujours de la base, si bien qu'un
+  renommage s'y voit sans rien recopier et qu'une suppression le referme
+  d'elle-même. Le retour système tient en un `BackHandler` : une seule profondeur
+  à défaire ne justifie toujours pas un graphe de navigation. `PhotoChargee`
+  décode une image à la taille demandée, sans bibliothèque de chargement : les
+  fichiers sont locaux, peu nombreux et déjà réduits, et ce qu'une bibliothèque
+  apporterait — cache réseau, préchargement — ne servirait à rien ici.
+  `ReglagesViewModel` tient l'onglet
   Réglages — la liste des types pour l'instant — et n'expose qu'un seul
   `StateFlow<DialogueReglages?>` plutôt que trois booléens : deux boîtes de
   dialogue ne peuvent pas être ouvertes en même temps, et le dire au type
-  supprime la question. `DialogueType` est partagée par le formulaire et les
-  réglages : ajouter un type et le corriger demandent la même saisie, et deux
-  boîtes jumelles finiraient par diverger.
+  supprime la question. `DialogueIntitule` est partagée par les types et
+  les machines : nommer, renommer et refuser un doublon se font de la même façon,
+  et des boîtes jumelles finiraient par diverger — seuls le vocabulaire et le
+  test du doublon sont des paramètres.
   Appeler et ouvrir un itinéraire passent par des intentions Android
   (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
   pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
@@ -197,6 +247,11 @@ les anciennes constantes en intitulés. Attention à reposer les index : ils
 suivent la table détruite, et Room refuse d'ouvrir une base dont le schéma ne
 correspond plus — `MigrationTest` le vérifie explicitement.
 
+Une table qui **arrive** est plus simple : `MIGRATION_5_6` crée `equipements` et
+`photos` et ajoute deux colonnes aux interventions, sans rien reconstruire. Ses
+index sont aussi obligatoires que les tables, Room validant le schéma entier à
+l'ouverture. Les fichiers image, eux, ne sont pas du ressort d'une migration.
+
 `MigrationTest` recrée une base telle que la version précédente l'écrivait —
 empreinte d'identité comprise — puis l'ouvre par `FrigoProDatabase.creer` : la
 migration est ainsi vérifiée dans les conditions réelles, y compris son
@@ -243,11 +298,18 @@ l'APK : un test rouge bloque la publication.
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1 |
+| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers |
+| `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
+| `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
+| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
-Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
-`FauxClientDao`, qui reproduisent le contrat SQL des vrais ; seul
-`MigrationTest` a besoin d'un vrai SQLite, fourni par Robolectric.
+Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
+`FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao` — qui reproduisent
+le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
+fichiers qui tient lieu de stockage d'images. Seul `MigrationTest` a besoin d'un
+vrai SQLite, fourni par Robolectric. Rien ne décode d'image : ce qui se vérifie
+sans téléphone est isolé dans `ReductionPhoto`.
 
 ## Build
 
@@ -267,14 +329,28 @@ Les données ne vivent que sur le téléphone. La sauvegarde automatique d'Andro
 fait le minimum, mais ne se restaure qu'à la réinstallation et suppose un compte
 Google : le menu de la tournée offre donc un export explicite.
 
-Le fichier est du JSON, et son **format est volontairement distinct du schéma
+La sauvegarde est une **archive zip** (`ArchiveSauvegarde`) : `sauvegarde.json`
+à la racine, les images dans `photos/`. Depuis que les machines portent des
+photos, un export de texte seul serait un piège — on croirait tout avoir sauvé,
+et un téléphone perdu emporterait les plaques signalétiques. Le zip est un
+format ordinaire, ouvrable sur n'importe quel ordinateur, où le JSON reste
+lisible à l'œil. Le JSON y est écrit **en premier**, ce qui permet de le relire
+seul : le fichier est validé avant que la moindre image ne soit écrite sur le
+téléphone, et les photos ne sont extraites qu'ensuite, par une seconde lecture
+du même fichier.
+
+Le JSON, lui, a un **format volontairement distinct du schéma
 Room** : le schéma suit les besoins de l'application et change à chaque
 migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
 
-Le format 2 ajoute la liste des types. Un fichier du format 1 reste lisible :
+Le format 3 ajoute le parc de machines et leurs photos. Le format 2 avait ajouté
+la liste des types. Un fichier du format 1 ou 2 reste lisible — et, s'il est du
+JSON en clair, reconnu comme tel : la signature `PK` distingue une archive d'un
+ancien export, et rien n'oblige l'utilisateur à savoir lequel il a sous la main.
+Pour le format 1 :
 `InterventionSauvegarde` conserve l'ancien champ `typePanne` en lecture seule et
 en déduit l'intitulé français, avec les mêmes correspondances que
 `MIGRATION_4_5` — une sauvegarde d'alors et une base d'alors doivent donner le
@@ -294,13 +370,24 @@ Trois décisions à connaître :
 - **Une valeur illisible fait refuser le fichier entier**, avant toute écriture :
   une tournée restaurée à moitié serait pire qu'une restauration refusée. Un
   *intitulé* de type inconnu ne compte pas : il est libre par nature, au
-  contraire d'un statut, qui est une valeur fixe de l'application.
+  contraire d'un statut ou d'une catégorie de photo, qui sont des valeurs fixes
+  de l'application. Un **nom de fichier** de photo qui n'en est pas un non plus :
+  une archive nommant une image `../databases/frigopro.db` chercherait à faire
+  écrire ailleurs que dans le dossier des photos, et `StockagePhotos.nomSur` est
+  le seul rempart contre cela — le fichier vient de l'extérieur, son contenu
+  aussi.
 
 L'accès aux fichiers passe par le sélecteur du système
 (`ActivityResultContracts.CreateDocument` / `OpenDocument`), d'où l'absence de
 toute permission de stockage. Le filtre de lecture est `*/*` à dessein : selon
 l'endroit où la sauvegarde a été rangée, le système lui attribue parfois un
-autre type, et `application/json` la rendrait invisible dans le sélecteur.
+autre type, et un filtre strict la rendrait invisible dans le sélecteur — c'est
+aussi ce qui laisse restaurer un ancien export `.json`.
+
+Les photos entrent par l'appareil photo, via un `FileProvider` qui lui ouvre le
+dossier `files/photos/` et rien d'autre, ou par le sélecteur d'images du système.
+Aucune permission dans les deux cas : ni caméra — l'application ne photographie
+pas elle-même, elle délègue —, ni stockage.
 
 ## Signature et mises à jour
 
@@ -350,18 +437,19 @@ dans le journal du build, où elle doit rester identique d'une build à l'autre.
 Dans l'ordre souhaité par l'utilisateur, « ce qui s'est vraiment passé sur
 place » venant en tête :
 
-- L'équipement concerné — marque, modèle, numéro de série — rattaché au client,
-  avec son historique d'interventions. Un même client a souvent plusieurs
-  machines, et « qu'a-t-on déjà fait sur celle-ci ? » est la question du
-  terrain.
 - Le temps passé : heure d'arrivée, heure de départ, durée réelle.
 - Les pièces et le fluide utilisés. Le fluide frigorigène a ses obligations de
   traçabilité.
-- Photos avant / après, prises depuis l'intervention.
+- Photos avant / après, prises depuis l'intervention — par opposition aux photos
+  de la machine, qui décrivent un état durable et vivent sur sa fiche.
+- Marque, modèle et numéro de série en champs sur la fiche machine, le jour où
+  commander une pièce depuis l'application aura un sens : aujourd'hui la photo de
+  la plaque les porte, au prix de ne pas être cherchables.
 - Compte-rendu client exportable, éventuellement signé.
 - Suppression d'un client, qui devra décider du sort du `clientId` des
-  interventions passées — les types d'intervention montrent une façon de le
-  faire : couper le lien, garder la copie.
+  interventions passées — les types et les machines montrent une façon de le
+  faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
+  aucune existence sans client.
 - Confirmation avant suppression d'une intervention (ou annulation par
   `Snackbar`).
 - Tests d'UI Compose.

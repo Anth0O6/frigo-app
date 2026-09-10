@@ -59,10 +59,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Equipement
-import com.frigopro.app.data.StockagePhotos
 import com.frigopro.app.ui.theme.FrigoProTheme
 
 /**
@@ -92,7 +92,7 @@ fun ClientsRoute(
 
     // La prise de vue quitte l'application : la catégorie visée et le fichier à
     // remplir doivent donc survivre à l'aller-retour.
-    var capture by remember { mutableStateOf<Pair<CategoriePhoto, StockagePhotos.Capture>?>(null) }
+    var capture by remember { mutableStateOf<Pair<CategoriePhoto, Capture>?>(null) }
     val appareilPhoto = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
     ) { _ ->

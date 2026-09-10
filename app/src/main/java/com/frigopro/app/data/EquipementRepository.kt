@@ -1,5 +1,6 @@
 package com.frigopro.app.data
 
+import android.graphics.Bitmap
 import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -19,7 +20,7 @@ import java.util.Locale
  */
 class EquipementRepository(
     private val dao: EquipementDao,
-    private val stockage: StockagePhotos,
+    private val stockage: RangementPhotos,
 ) {
 
     /**
@@ -68,7 +69,7 @@ class EquipementRepository(
     }
 
     /** Le fichier qu'une application d'appareil photo viendra remplir. */
-    fun preparerCapture(): StockagePhotos.Capture = stockage.preparerCapture()
+    fun preparerCapture(): Capture = stockage.preparerCapture()
 
     /**
      * Enregistre la photo que l'appareil vient de prendre. Renvoie `null` si la
@@ -92,6 +93,12 @@ class EquipementRepository(
         val rangee = stockage.importer(source) ?: return null
         return enregistrerPhoto(equipementId, categorie, rangee)
     }
+
+    /**
+     * Décode une image à la taille demandée. Le dépôt s'en charge plutôt que
+     * l'écran : les images sont rangées ici, c'est donc ici qu'on sait les lire.
+     */
+    suspend fun charger(fichier: String, coteMax: Int): Bitmap? = stockage.charger(fichier, coteMax)
 
     suspend fun supprimerPhoto(photo: Photo) {
         dao.effacerPhoto(photo.id)

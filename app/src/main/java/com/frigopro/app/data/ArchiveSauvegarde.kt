@@ -56,7 +56,14 @@ object ArchiveSauvegarde {
     fun estUneArchive(flux: BufferedInputStream): Boolean {
         flux.mark(SIGNATURE.size)
         val debut = ByteArray(SIGNATURE.size)
-        val lus = flux.read(debut)
+        // Lecture en boucle : un flux a le droit de rendre moins d'octets que
+        // demandé sans être pour autant à sa fin.
+        var lus = 0
+        while (lus < debut.size) {
+            val recus = flux.read(debut, lus, debut.size - lus)
+            if (recus < 0) break
+            lus += recus
+        }
         flux.reset()
         return lus == SIGNATURE.size && debut.contentEquals(SIGNATURE)
     }

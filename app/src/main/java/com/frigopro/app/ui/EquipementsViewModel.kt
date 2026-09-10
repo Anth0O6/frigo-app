@@ -8,13 +8,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.Photo
-import com.frigopro.app.data.StockagePhotos
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,7 +49,6 @@ sealed interface DialogueEquipement {
 class EquipementsViewModel(
     private val equipements: EquipementRepository,
     private val interventions: InterventionRepository,
-    private val photos: StockagePhotos,
 ) : ViewModel() {
 
     /** Tout le parc, trié par nom. L'écran en tire les machines de chaque client. */
@@ -158,7 +157,7 @@ class EquipementsViewModel(
     }
 
     /** Le fichier que l'application d'appareil photo va remplir. */
-    fun preparerCapture(): StockagePhotos.Capture = equipements.preparerCapture()
+    fun preparerCapture(): Capture = equipements.preparerCapture()
 
     /**
      * Range la photo qui vient d'être prise. Une prise de vue abandonnée ne
@@ -191,7 +190,7 @@ class EquipementsViewModel(
      * Décode une image à la taille demandée. Exposé comme fonction plutôt que
      * comme flux : chaque vignette charge la sienne, quand elle s'affiche.
      */
-    suspend fun charger(nom: String, coteMax: Int): Bitmap? = photos.charger(nom, coteMax)
+    suspend fun charger(nom: String, coteMax: Int): Bitmap? = equipements.charger(nom, coteMax)
 
     companion object {
 
@@ -202,11 +201,7 @@ class EquipementsViewModel(
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                EquipementsViewModel(
-                    conteneur.equipements,
-                    conteneur.interventions,
-                    conteneur.photos,
-                )
+                EquipementsViewModel(conteneur.equipements, conteneur.interventions)
             }
         }
     }

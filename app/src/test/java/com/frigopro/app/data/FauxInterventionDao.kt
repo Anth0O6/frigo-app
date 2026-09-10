@@ -22,6 +22,12 @@ class FauxInterventionDao : InterventionDao {
     override fun observerJournee(date: LocalDate): Flow<List<Intervention>> =
         lignes.map { liste -> liste.filter { it.date == date }.sortedBy { it.heure } }
 
+    override fun observerParEquipement(equipementId: String): Flow<List<Intervention>> =
+        lignes.map { liste ->
+            liste.filter { it.equipementId == equipementId }
+                .sortedWith(compareByDescending<Intervention> { it.date }.thenByDescending { it.heure })
+        }
+
     override suspend fun toutes(): List<Intervention> = lignes.value
 
     override suspend fun enregistrer(intervention: Intervention) {
@@ -52,6 +58,20 @@ class FauxInterventionDao : InterventionDao {
     fun detacher(typeId: String) {
         lignes.update { liste ->
             liste.map { if (it.typeId == typeId) it.copy(typeId = null) else it }
+        }
+    }
+
+    /** Même rôle pour le parc : voir [EquipementDao.propagerNom]. */
+    fun propagerNom(equipementId: String, nom: String) {
+        lignes.update { liste ->
+            liste.map { if (it.equipementId == equipementId) it.copy(equipementNom = nom) else it }
+        }
+    }
+
+    /** Voir [EquipementDao.detacher] : le lien tombe, le nom reste. */
+    fun detacherEquipement(equipementId: String) {
+        lignes.update { liste ->
+            liste.map { if (it.equipementId == equipementId) it.copy(equipementId = null) else it }
         }
     }
 }
