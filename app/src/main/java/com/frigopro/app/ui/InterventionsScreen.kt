@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,8 +23,10 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pending
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +58,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypePanne
@@ -66,19 +73,20 @@ fun InterventionsRoute(
     viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
 ) {
     val jour by viewModel.jour.collectAsStateWithLifecycle()
-    val interventions by viewModel.interventions.collectAsStateWithLifecycle()
+    val lignes by viewModel.lignes.collectAsStateWithLifecycle()
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
 
     InterventionsScreen(
         jour = jour,
-        interventions = interventions,
+        lignes = lignes,
         onJourPrecedent = viewModel::onJourPrecedent,
         onJourSuivant = viewModel::onJourSuivant,
         onJourChoisi = viewModel::onJourChoisi,
         onNouvelleIntervention = viewModel::onNouvelleIntervention,
         onModifierIntervention = viewModel::onModifierIntervention,
         onChangerStatut = viewModel::onChangerStatut,
+        actions = { MenuSauvegarde() },
         modifier = modifier,
     )
 
@@ -100,7 +108,7 @@ fun InterventionsRoute(
 @Composable
 fun InterventionsScreen(
     jour: LocalDate,
-    interventions: List<Intervention>,
+    lignes: List<LigneTournee>,
     onJourPrecedent: () -> Unit,
     onJourSuivant: () -> Unit,
     onJourChoisi: (LocalDate) -> Unit,
@@ -108,15 +116,21 @@ fun InterventionsScreen(
     onModifierIntervention: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
     modifier: Modifier = Modifier,
+    /** Posé dans la barre du haut : la sauvegarde s'y branche sans que l'écran la connaisse. */
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     var calendrierOuvert by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        // La barre d'onglets, sous cet écran, pose déjà la marge du bas ;
+        // l'y ajouter ici la compterait deux fois.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Column {
                 CenterAlignedTopAppBar(
                     title = { Text(text = "Interventions") },
+                    actions = actions,
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -124,7 +138,7 @@ fun InterventionsScreen(
                 )
                 BarreJour(
                     jour = jour,
-                    sousTitre = sousTitre(interventions),
+                    sousTitre = sousTitre(lignes),
                     onPrecedent = onJourPrecedent,
                     onSuivant = onJourSuivant,
                     onOuvrirCalendrier = { calendrierOuvert = true },
@@ -140,7 +154,7 @@ fun InterventionsScreen(
             }
         },
     ) { innerPadding ->
-        if (interventions.isEmpty()) {
+        if (lignes.isEmpty()) {
             JourneeVide(
                 modifier = Modifier
                     .fillMaxSize()
@@ -154,11 +168,11 @@ fun InterventionsScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(items = interventions, key = { it.id }) { intervention ->
+                items(items = lignes, key = { it.intervention.id }) { ligne ->
                     InterventionCard(
-                        intervention = intervention,
-                        onClick = { onModifierIntervention(intervention) },
-                        onChangerStatut = { onChangerStatut(intervention) },
+                        ligne = ligne,
+                        onClick = { onModifierIntervention(ligne.intervention) },
+                        onChangerStatut = { onChangerStatut(ligne.intervention) },
                     )
                 }
             }
@@ -242,16 +256,20 @@ private fun BarreJour(
 /**
  * Carte d'une intervention. Le corps ouvre le formulaire ; l'icône de droite
  * fait avancer le statut sans le rouvrir, pour marquer un passage terminé
- * d'un seul geste.
+ * d'un seul geste. Appeler et se rendre sur place s'ajoutent en bas de carte
+ * dès que la fiche du client le permet : c'est depuis la tournée, pas depuis le
+ * carnet, qu'on en a besoin.
  */
 @Composable
 fun InterventionCard(
-    intervention: Intervention,
+    ligne: LigneTournee,
     onClick: () -> Unit,
     onChangerStatut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val intervention = ligne.intervention
     val terminee = intervention.statut == StatutIntervention.TERMINEE
+    val actions = ligne.appelable || ligne.localisable
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -271,7 +289,11 @@ fun InterventionCard(
                 modifier = Modifier
                     .weight(1f)
                     .clickable(onClick = onClick)
-                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
+                    .padding(
+                        start = 16.dp,
+                        top = 16.dp,
+                        bottom = if (actions) 8.dp else 16.dp,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -301,10 +323,12 @@ fun InterventionCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = intervention.ville,
+                            // L'adresse de la fiche quand elle existe : en
+                            // tournée, « 12 rue des Carmes » vaut mieux que « Rouen ».
+                            text = ligne.client?.adresseComplete ?: intervention.ville,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -327,6 +351,47 @@ fun InterventionCard(
             }
             BoutonStatut(statut = intervention.statut, onClick = onChangerStatut)
             Spacer(modifier = Modifier.width(4.dp))
+        }
+        if (actions) {
+            ActionsClient(ligne = ligne)
+        }
+    }
+}
+
+/** Appeler le client, ou ouvrir l'itinéraire : deux gestes de terrain. */
+@Composable
+private fun ActionsClient(
+    ligne: LigneTournee,
+    modifier: Modifier = Modifier,
+) {
+    val contexte = LocalContext.current
+    val client = ligne.client ?: return
+
+    Row(
+        modifier = modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (ligne.appelable) {
+            TextButton(onClick = { contexte.appeler(client.telephone) }) {
+                Icon(
+                    imageVector = Icons.Filled.Phone,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Appeler")
+            }
+        }
+        if (ligne.localisable) {
+            TextButton(onClick = { contexte.ouvrirItineraire(client.adresseComplete) }) {
+                Icon(
+                    imageVector = Icons.Filled.Directions,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Itinéraire")
+            }
         }
     }
 }
@@ -375,12 +440,12 @@ private fun JourneeVide(modifier: Modifier = Modifier) {
  * décompte des interventions terminées répond à la question qu'un technicien
  * se pose en cours de journée : ce qu'il lui reste.
  */
-private fun sousTitre(interventions: List<Intervention>): String {
-    if (interventions.isEmpty()) return "Aucun rendez-vous"
+private fun sousTitre(lignes: List<LigneTournee>): String {
+    if (lignes.isEmpty()) return "Aucun rendez-vous"
 
-    val total = interventions.size
+    val total = lignes.size
     val base = if (total == 1) "1 rendez-vous" else "$total rendez-vous"
-    val terminees = interventions.count { it.statut == StatutIntervention.TERMINEE }
+    val terminees = lignes.count { it.intervention.statut == StatutIntervention.TERMINEE }
 
     return when {
         terminees == 0 -> base
@@ -397,33 +462,51 @@ private fun InterventionsScreenPreview() {
         Surface {
             InterventionsScreen(
                 jour = LocalDate.now(),
-                interventions = listOf(
-                    Intervention(
-                        id = "1",
-                        date = LocalDate.now(),
-                        heure = LocalTime.of(8, 30),
-                        client = "Boucherie Lemoine",
-                        ville = "Rouen",
-                        typePanne = TypePanne.FUITE_FLUIDE,
-                        statut = StatutIntervention.TERMINEE,
+                lignes = listOf(
+                    LigneTournee(
+                        intervention = Intervention(
+                            id = "1",
+                            date = LocalDate.now(),
+                            heure = LocalTime.of(8, 30),
+                            client = "Boucherie Lemoine",
+                            ville = "Rouen",
+                            typePanne = TypePanne.FUITE_FLUIDE,
+                            statut = StatutIntervention.TERMINEE,
+                        ),
+                        client = Client(
+                            nom = "Boucherie Lemoine",
+                            ville = "Rouen",
+                            adresse = "12 rue des Carmes",
+                            telephone = "02 35 00 00 00",
+                        ),
                     ),
-                    Intervention(
-                        id = "2",
-                        date = LocalDate.now(),
-                        heure = LocalTime.of(10, 0),
-                        client = "Supérette Val-Fleuri",
-                        ville = "Elbeuf",
-                        typePanne = TypePanne.COMPRESSEUR,
-                        statut = StatutIntervention.EN_COURS,
-                        notes = "Compresseur bruyant, pièce commandée.",
+                    LigneTournee(
+                        intervention = Intervention(
+                            id = "2",
+                            date = LocalDate.now(),
+                            heure = LocalTime.of(10, 0),
+                            client = "Supérette Val-Fleuri",
+                            ville = "Elbeuf",
+                            typePanne = TypePanne.COMPRESSEUR,
+                            statut = StatutIntervention.EN_COURS,
+                            notes = "Compresseur bruyant, pièce commandée.",
+                        ),
+                        client = null,
                     ),
-                    Intervention(
-                        id = "3",
-                        date = LocalDate.now(),
-                        heure = LocalTime.of(14, 15),
-                        client = "Traiteur Delaunay",
-                        ville = "Barentin",
-                        typePanne = TypePanne.GIVRAGE,
+                    LigneTournee(
+                        intervention = Intervention(
+                            id = "3",
+                            date = LocalDate.now(),
+                            heure = LocalTime.of(14, 15),
+                            client = "Traiteur Delaunay",
+                            ville = "Barentin",
+                            typePanne = TypePanne.GIVRAGE,
+                        ),
+                        client = Client(
+                            nom = "Traiteur Delaunay",
+                            ville = "Barentin",
+                            adresse = "5 place de la Gare",
+                        ),
                     ),
                 ),
                 onJourPrecedent = {},

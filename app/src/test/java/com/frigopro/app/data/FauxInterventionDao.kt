@@ -22,8 +22,15 @@ class FauxInterventionDao : InterventionDao {
     override fun observerJournee(date: LocalDate): Flow<List<Intervention>> =
         lignes.map { liste -> liste.filter { it.date == date }.sortedBy { it.heure } }
 
+    override suspend fun toutes(): List<Intervention> = lignes.value
+
     override suspend fun enregistrer(intervention: Intervention) {
         lignes.update { liste -> liste.filterNot { it.id == intervention.id } + intervention }
+    }
+
+    override suspend fun enregistrerToutes(interventions: List<Intervention>) {
+        val identifiants = interventions.map { it.id }.toSet()
+        lignes.update { liste -> liste.filterNot { it.id in identifiants } + interventions }
     }
 
     override suspend fun supprimer(id: String) {

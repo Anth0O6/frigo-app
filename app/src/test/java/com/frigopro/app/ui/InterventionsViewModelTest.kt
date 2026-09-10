@@ -4,8 +4,10 @@ import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.StatutIntervention
+import com.frigopro.app.data.TypePanne
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -17,10 +19,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class InterventionsViewModelTest {
@@ -213,7 +217,7 @@ class InterventionsViewModelTest {
         val mardi = lundi.plusDays(1)
 
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            viewModel.interventions.collect { }
+            viewModel.lignes.collect { }
         }
 
         enregistrer(viewModel, client = "Le jour même", ville = "Rouen")
@@ -221,12 +225,75 @@ class InterventionsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(mardi, viewModel.jour.value)
-        assertEquals(listOf("Le lendemain"), viewModel.interventions.value.map { it.client })
+        assertEquals(listOf("Le lendemain"), viewModel.lignes.value.map { it.intervention.client })
 
         viewModel.onJourPrecedent()
         advanceUntilIdle()
 
-        assertEquals(listOf("Le jour même"), viewModel.interventions.value.map { it.client })
+        assertEquals(listOf("Le jour même"), viewModel.lignes.value.map { it.intervention.client })
+    }
+
+    /**
+     * Ce que la tournée doit savoir pour agir : le numéro et l'adresse ne sont
+     * pas sur l'intervention, mais sur la fiche du client qu'elle désigne.
+     */
+    @Test
+    fun `une ligne de tournee porte la fiche du client rattache`() = runTest {
+        val viewModel = creerViewModel()
+        val client = Client(
+            id = "cl-1",
+            nom = "Boucherie Lemoine",
+            ville = "Rouen",
+            adresse = "12 rue des Carmes",
+            telephone = "02 35 00 00 00",
+        )
+        daoClients.enregistrer(client)
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.lignes.collect { }
+        }
+
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(viewModel.formulaire.value!!.copy(ville = "Rouen"))
+        viewModel.onClientChoisi(client)
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val ligne = viewModel.lignes.value.single()
+        assertEquals(client, ligne.client)
+        assertTrue(ligne.appelable)
+        assertTrue(ligne.localisable)
+    }
+
+    /**
+     * Une intervention saisie avant l'arrivée du carnet porte un `clientId`
+     * nul. L'écran doit tenir sans fiche plutôt que de refuser de l'afficher,
+     * et ne proposer ni appel ni itinéraire.
+     */
+    @Test
+    fun `une intervention sans client rattache donne une ligne sans fiche`() = runTest {
+        val viewModel = creerViewModel()
+        dao.enregistrer(
+            Intervention(
+                id = "ancienne",
+                date = viewModel.jour.value,
+                heure = LocalTime.of(9, 0),
+                client = "Client de passage",
+                ville = "Rouen",
+                typePanne = TypePanne.FUITE_FLUIDE,
+                clientId = null,
+            ),
+        )
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.lignes.collect { }
+        }
+        advanceUntilIdle()
+
+        val ligne = viewModel.lignes.value.single()
+        assertNull(ligne.client)
+        assertFalse(ligne.appelable)
+        assertFalse(ligne.localisable)
     }
 
     private fun enregistrer(

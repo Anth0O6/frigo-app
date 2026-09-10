@@ -3,8 +3,10 @@
 Application Android native destinée aux techniciens frigoristes en tournée.
 Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
 et permet de les créer, les modifier, les supprimer et de suivre leur
-avancement. Un carnet de clients évite d'en retaper les coordonnées. Les
-données sont persistées localement.
+avancement. Un onglet Clients tient le carnet — adresse et téléphone compris —
+et, depuis la tournée, appeler un client ou ouvrir l'itinéraire tient en un
+geste. Les données sont persistées localement, et exportables dans un fichier
+de sauvegarde.
 
 ## Stack
 
@@ -38,6 +40,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   ├── data/               # modèle, base et source de données
 │       │   │   ├── Intervention.kt
 │       │   │   ├── Client.kt
+│       │   │   ├── Sauvegarde.kt          # format du fichier de sauvegarde
+│       │   │   ├── SauvegardeRepository.kt
+│       │   │   ├── FichiersExternes.kt    # fichiers désignés par l'utilisateur
 │       │   │   ├── Convertisseurs.kt
 │       │   │   ├── Migrations.kt
 │       │   │   ├── InterventionDao.kt
@@ -46,12 +51,21 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── InterventionRepository.kt
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
+│       │       ├── FrigoProApp.kt      # coquille : les deux onglets
 │       │       ├── Dates.kt            # formats et conversions de dates
+│       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
+│       │       ├── LigneTournee.kt     # intervention + fiche de son client
 │       │       ├── EtatFormulaire.kt
 │       │       ├── FormulaireIntervention.kt
 │       │       ├── SelecteurDate.kt
 │       │       ├── InterventionsScreen.kt
 │       │       ├── InterventionsViewModel.kt
+│       │       ├── EtatFicheClient.kt
+│       │       ├── FicheClient.kt
+│       │       ├── ClientsScreen.kt
+│       │       ├── ClientsViewModel.kt
+│       │       ├── MenuSauvegarde.kt
+│       │       ├── SauvegardeViewModel.kt
 │       │       └── theme/
 │       └── res/                    # chaînes, couleurs, thème XML, icône
 ├── gradle/libs.versions.toml       # versions centralisées
@@ -73,13 +87,36 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `InterventionRepository` expose un `Flow` par journée et deux écritures
   (`enregistrer`, `supprimer`) ; Room réémet le `Flow` à chaque écriture, donc
   l'UI se remet à jour sans que personne n'ait à la prévenir.
+  `Client` porte aussi l'adresse et le téléphone, qui peuvent rester vides —
+  c'est le cas normal, le carnet se remplissant depuis les interventions où
+  seuls le nom et la ville sont demandés ; `appelable` et `localisable` disent à
+  l'écran ce qu'il peut proposer.
   `ClientRepository` tient le carnet. Son tri passe par un `Collator` français
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `InterventionsViewModel` détient la journée consultée
+- **`ui`** — `FrigoProApp` est la coquille : deux onglets, `Tournée` et
+  `Clients`, et la barre qui en change. **Pas de graphe de navigation** : deux
+  sections sans lien hiérarchique se passent d'une pile arrière, et une variable
+  `rememberSaveable` suffit. La bibliothèque de navigation s'imposera le jour
+  d'une vraie destination à empiler ou d'un lien profond. Corollaire à ne pas
+  perdre de vue : la barre d'onglets pose elle-même la marge de la barre système
+  du bas, donc les écrans qu'elle surmonte passent `contentWindowInsets =
+  WindowInsets(0, 0, 0, 0)` à leur `Scaffold`, sans quoi la marge serait comptée
+  deux fois.
+  `InterventionsViewModel` détient la journée consultée
   (`StateFlow<LocalDate>`) et en dérive la liste par `flatMapLatest` : changer
-  la date suffit à recharger l'écran. Il détient aussi le formulaire ouvert
+  la date suffit à recharger l'écran. Il la rapproche du carnet par `combine`
+  pour produire des `LigneTournee` — l'intervention *et* la fiche du client chez
+  qui elle a lieu, `null` pour une ligne d'avant le carnet. Le rapprochement se
+  fait là plutôt que par une jointure SQL : les deux flux sont déjà observés, et
+  l'écran reçoit de quoi afficher comme de quoi agir. `ClientsViewModel` tient
+  l'onglet Clients sur le même modèle, `EtatFicheClient` jouant pour la fiche le
+  rôle d'`EtatFormulaire` pour l'intervention.
+  Appeler et ouvrir un itinéraire passent par des intentions Android
+  (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
+  pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
+  l'utilisateur choisir sa cartographie. Il détient aussi le formulaire ouvert
   (`StateFlow<EtatFormulaire?>`, `null` quand l'écran n'affiche que la liste).
   `EtatFormulaire` porte la saisie en cours ; son `id` vaut `null` en création
   et identifie la ligne éditée sinon, ce qui distingue « Ajouter » d'«
@@ -164,8 +201,12 @@ l'APK : un test rouge bloque la publication.
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id` |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
-| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète |
-| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près |
+| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet |
+| `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
+| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées |
+| `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
+| `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées |
 
 Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
@@ -183,6 +224,38 @@ Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
 
 Le SDK Android est requis (`ANDROID_HOME`, ou `sdk.dir` dans `local.properties`,
 fichier non versionné).
+
+## Sauvegarde des données
+
+Les données ne vivent que sur le téléphone. La sauvegarde automatique d'Android
+fait le minimum, mais ne se restaure qu'à la réinstallation et suppose un compte
+Google : le menu de la tournée offre donc un export explicite.
+
+Le fichier est du JSON, et son **format est volontairement distinct du schéma
+Room** : le schéma suit les besoins de l'application et change à chaque
+migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
+versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
+facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
+version plus récente est refusée plutôt que devinée.
+
+Trois décisions à connaître :
+
+- **Les écritures passent par les DAO, pas par les dépôts.** Ceux-ci horodatent
+  chaque écriture, ce qui effacerait le `modifieLe` transporté par le fichier —
+  or c'est précisément ce qui départagera deux versions d'une même ligne.
+- **La restauration fusionne, elle ne remplace pas.** Chaque ligne écrase celle
+  qui porte le même identifiant et laisse les autres en place ; rien n'est donc
+  jamais supprimé par une restauration, et les identifiants étant des UUID, deux
+  lignes réellement distinctes ne peuvent se confondre. Restaurer deux fois le
+  même fichier ne crée aucun doublon.
+- **Une valeur illisible fait refuser le fichier entier**, avant toute écriture :
+  une tournée restaurée à moitié serait pire qu'une restauration refusée.
+
+L'accès aux fichiers passe par le sélecteur du système
+(`ActivityResultContracts.CreateDocument` / `OpenDocument`), d'où l'absence de
+toute permission de stockage. Le filtre de lecture est `*/*` à dessein : selon
+l'endroit où la sauvegarde a été rangée, le système lui attribue parfois un
+autre type, et `application/json` la rendrait invisible dans le sélecteur.
 
 ## Signature et mises à jour
 
@@ -229,9 +302,21 @@ dans le journal du build, où elle doit rester identique d'une build à l'autre.
 
 ## Pistes pour la suite
 
-- Adresse et téléphone sur la fiche client, avec un écran pour les saisir.
+Dans l'ordre souhaité par l'utilisateur, « ce qui s'est vraiment passé sur
+place » venant en tête :
+
+- L'équipement concerné — marque, modèle, numéro de série — rattaché au client,
+  avec son historique d'interventions. Un même client a souvent plusieurs
+  machines, et « qu'a-t-on déjà fait sur celle-ci ? » est la question du
+  terrain.
+- Le temps passé : heure d'arrivée, heure de départ, durée réelle.
+- Les pièces et le fluide utilisés. Le fluide frigorigène a ses obligations de
+  traçabilité.
 - Photos avant / après, prises depuis l'intervention.
 - Compte-rendu client exportable, éventuellement signé.
-- Confirmation avant suppression (ou annulation par `Snackbar`).
+- Suppression d'un client, qui devra décider du sort du `clientId` des
+  interventions passées.
+- Confirmation avant suppression d'une intervention (ou annulation par
+  `Snackbar`).
 - Tests d'UI Compose.
 - Synchronisation serveur, le jour où plusieurs techniciens partagent un planning.

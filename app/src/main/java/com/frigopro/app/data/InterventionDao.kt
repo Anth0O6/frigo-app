@@ -13,8 +13,16 @@ interface InterventionDao {
     @Query("SELECT * FROM interventions WHERE date = :date ORDER BY heure ASC")
     fun observerJournee(date: LocalDate): Flow<List<Intervention>>
 
+    /** Toutes les interventions, pour la sauvegarde. Aucun tri : le fichier n'en demande pas. */
+    @Query("SELECT * FROM interventions")
+    suspend fun toutes(): List<Intervention>
+
     @Upsert
     suspend fun enregistrer(intervention: Intervention)
+
+    /** Room enveloppe une écriture multiple dans une transaction : tout ou rien. */
+    @Upsert
+    suspend fun enregistrerToutes(interventions: List<Intervention>)
 
     @Query("DELETE FROM interventions WHERE id = :id")
     suspend fun supprimer(id: String)

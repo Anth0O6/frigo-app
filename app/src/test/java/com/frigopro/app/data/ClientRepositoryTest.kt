@@ -58,6 +58,21 @@ class ClientRepositoryTest {
     }
 
     @Test
+    fun `l'adresse et le telephone sont nettoyes a l'enregistrement`() = runTest {
+        val client = repository.enregistrer(
+            Client(
+                nom = "Fromagerie Hardy",
+                ville = "Caudebec",
+                adresse = "  12 rue des Halles ",
+                telephone = " 02 35 00 00 00  ",
+            ),
+        )
+
+        assertEquals("12 rue des Halles", client.adresse)
+        assertEquals("02 35 00 00 00", client.telephone)
+    }
+
+    @Test
     fun `l'horodatage de modification est pose par le depot`() = runTest {
         val avant = Instant.now()
 
