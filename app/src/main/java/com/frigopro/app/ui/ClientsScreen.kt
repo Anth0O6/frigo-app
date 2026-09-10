@@ -1,5 +1,9 @@
 package com.frigopro.app.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,24 +20,36 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Kitchen
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,33 +59,195 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.StockagePhotos
 import com.frigopro.app.ui.theme.FrigoProTheme
 
-/** Point d'entrée de l'onglet, branché sur le [ClientsViewModel]. */
+/**
+ * Point d'entrée de l'onglet, branché sur le [ClientsViewModel] et sur le
+ * [EquipementsViewModel].
+ *
+ * La fiche d'une machine prend tout l'onglet au lieu de s'empiler dans une
+ * feuille : on y regarde des photos, et une feuille à mi-hauteur n'est pas
+ * faite pour cela. Le retour système la referme, ce qui tient ici en un
+ * [BackHandler] — une seule profondeur à défaire ne justifie pas encore un
+ * graphe de navigation.
+ */
 @Composable
 fun ClientsRoute(
     modifier: Modifier = Modifier,
     viewModel: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
+    machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
 ) {
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val fiche by viewModel.fiche.collectAsStateWithLifecycle()
+    val parc by machines.parc.collectAsStateWithLifecycle()
+    val ouverte by machines.ouverte.collectAsStateWithLifecycle()
+    val photos by machines.photosOuvertes.collectAsStateWithLifecycle()
+    val historique by machines.historique.collectAsStateWithLifecycle()
+    val dialogue by machines.dialogue.collectAsStateWithLifecycle()
+    val agrandie by machines.agrandie.collectAsStateWithLifecycle()
 
-    ClientsScreen(
-        clients = clients,
-        onNouveauClient = viewModel::onNouveauClient,
-        onOuvrirFiche = viewModel::onOuvrirFiche,
-        modifier = modifier,
-    )
+    // La prise de vue quitte l'application : la catégorie visée et le fichier à
+    // remplir doivent donc survivre à l'aller-retour.
+    var capture by remember { mutableStateOf<Pair<CategoriePhoto, StockagePhotos.Capture>?>(null) }
+    val appareilPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { _ ->
+        // L'issue annoncée par l'appareil photo n'est pas consultée : un fichier
+        // vide — prise de vue abandonnée — est écarté par le dépôt, qui
+        // n'enregistre alors aucune photo.
+        capture?.let { (categorie, prise) -> machines.onCapture(categorie, prise.nom) }
+        capture = null
+    }
 
-    fiche?.let { etat ->
-        FicheClient(
-            etat = etat,
-            onEtatChange = viewModel::onFicheChange,
-            onEnregistrer = viewModel::onEnregistrerFiche,
-            onFermer = viewModel::onFermerFiche,
+    var categorieGalerie by remember { mutableStateOf<CategoriePhoto?>(null) }
+    val galerie = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { source ->
+        val categorie = categorieGalerie
+        if (source != null && categorie != null) machines.onPhotoChoisie(categorie, source)
+        categorieGalerie = null
+    }
+
+    BackHandler(enabled = ouverte != null) { machines.onFermer() }
+
+    val machineOuverte = ouverte
+    if (machineOuverte != null) {
+        EcranEquipement(
+            equipement = machineOuverte,
+            photos = photos,
+            historique = historique,
+            chargerPhoto = machines::charger,
+            onPhotographier = { categorie ->
+                val prise = machines.preparerCapture()
+                capture = categorie to prise
+                appareilPhoto.launch(prise.uri)
+            },
+            onChoisirImage = { categorie ->
+                categorieGalerie = categorie
+                galerie.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            },
+            onAgrandir = machines::onAgrandir,
+            onRenommer = { machines.onRenommerMachine(machineOuverte) },
+            onSupprimer = { machines.onSupprimerMachine(machineOuverte) },
+            onFermer = machines::onFermer,
+            modifier = modifier,
+        )
+    } else {
+        ClientsScreen(
+            clients = clients,
+            parc = parc,
+            onNouveauClient = viewModel::onNouveauClient,
+            onOuvrirFiche = viewModel::onOuvrirFiche,
+            onOuvrirMachine = machines::onOuvrir,
+            onAjouterMachine = machines::onAjouterMachine,
+            modifier = modifier,
+        )
+
+        fiche?.let { etat ->
+            FicheClient(
+                etat = etat,
+                onEtatChange = viewModel::onFicheChange,
+                onEnregistrer = viewModel::onEnregistrerFiche,
+                onFermer = viewModel::onFermerFiche,
+            )
+        }
+    }
+
+    agrandie?.let { photo ->
+        VisionneusePhoto(
+            photo = photo,
+            chargerPhoto = machines::charger,
+            onSupprimer = machines::onSupprimerPhoto,
+            onFermer = machines::onFermerAgrandissement,
         )
     }
+
+    DialoguesMachine(dialogue = dialogue, parc = parc, viewModel = machines)
+}
+
+/**
+ * Les boîtes de dialogue du parc. Le test du doublon se fait sur les machines
+ * *du même client* : deux clients peuvent chacun avoir leur « vitrine salle 2 ».
+ */
+@Composable
+private fun DialoguesMachine(
+    dialogue: DialogueEquipement?,
+    parc: List<Equipement>,
+    viewModel: EquipementsViewModel,
+) {
+    val dejaPris = { clientId: String, nom: String, exclu: String? ->
+        parc.any { it.clientId == clientId && it.nom.equals(nom, ignoreCase = true) && it.id != exclu }
+    }
+
+    when (dialogue) {
+        is DialogueEquipement.Creation -> DialogueIntitule(
+            titre = "Nouvelle machine",
+            libelleAction = "Ajouter",
+            libelleChamp = "Nom de la machine",
+            messageConflit = MESSAGE_MACHINE_EXISTANTE,
+            estDejaPris = { dejaPris(dialogue.clientId, it, null) },
+            onValider = viewModel::onValiderNom,
+            onFermer = viewModel::onFermerDialogue,
+        )
+
+        is DialogueEquipement.Renommage -> DialogueIntitule(
+            titre = "Renommer la machine",
+            libelleAction = "Enregistrer",
+            libelleChamp = "Nom de la machine",
+            messageConflit = MESSAGE_MACHINE_EXISTANTE,
+            intituleInitial = dialogue.equipement.nom,
+            estDejaPris = {
+                dejaPris(dialogue.equipement.clientId, it, dialogue.equipement.id)
+            },
+            onValider = viewModel::onValiderNom,
+            onFermer = viewModel::onFermerDialogue,
+        )
+
+        is DialogueEquipement.Suppression -> ConfirmationSuppressionMachine(
+            equipement = dialogue.equipement,
+            onConfirmer = viewModel::onConfirmerSuppression,
+            onFermer = viewModel::onFermerDialogue,
+        )
+
+        null -> Unit
+    }
+}
+
+private const val MESSAGE_MACHINE_EXISTANTE = "Ce client a déjà une machine de ce nom."
+
+/**
+ * Supprimer une machine efface ses photos, et cela doit être dit : c'est la
+ * seule chose qu'une suppression fait disparaître pour de bon. Les interventions
+ * passées, elles, gardent son nom.
+ */
+@Composable
+private fun ConfirmationSuppressionMachine(
+    equipement: Equipement,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Supprimer « ${equipement.nom} » ?") },
+        text = {
+            Text(
+                text = "Ses photos seront effacées. Les interventions déjà faites sur " +
+                    "cette machine gardent son nom.",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmer) { Text(text = "Supprimer") }
+        },
+        dismissButton = {
+            TextButton(onClick = onFermer) { Text(text = "Annuler") }
+        },
+    )
 }
 
 /** Écran sans état : le carnet, trié alphabétiquement par le dépôt. */
@@ -77,10 +255,15 @@ fun ClientsRoute(
 @Composable
 fun ClientsScreen(
     clients: List<Client>,
+    parc: List<Equipement>,
     onNouveauClient: () -> Unit,
     onOuvrirFiche: (Client) -> Unit,
+    onOuvrirMachine: (Equipement) -> Unit,
+    onAjouterMachine: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val parClient = parc.groupBy { it.clientId }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         // La barre d'onglets, sous cet écran, pose déjà la marge du bas ;
@@ -119,7 +302,13 @@ fun ClientsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(items = clients, key = { it.id }) { client ->
-                    ClientCard(client = client, onClick = { onOuvrirFiche(client) })
+                    ClientCard(
+                        client = client,
+                        machines = parClient[client.id].orEmpty(),
+                        onClick = { onOuvrirFiche(client) },
+                        onOuvrirMachine = onOuvrirMachine,
+                        onAjouterMachine = { onAjouterMachine(client.id) },
+                    )
                 }
             }
         }
@@ -130,11 +319,17 @@ fun ClientsScreen(
  * Fiche résumée d'un client. Le corps ouvre la fiche complète ; les deux icônes
  * de droite appellent et ouvrent l'itinéraire sans passer par elle — depuis le
  * carnet comme depuis la tournée, agir doit tenir en un geste.
+ *
+ * Le parc est replié par défaut : un carnet de cinquante clients déployés
+ * deviendrait illisible, et c'est le nom du client qu'on cherche d'abord.
  */
 @Composable
 fun ClientCard(
     client: Client,
+    machines: List<Equipement>,
     onClick: () -> Unit,
+    onOuvrirMachine: (Equipement) -> Unit,
+    onAjouterMachine: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val contexte = LocalContext.current
@@ -145,67 +340,162 @@ fun ClientCard(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onClick)
-                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = client.nom,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onClick)
+                        .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp),
+                ) {
                     Text(
-                        text = client.adresseComplete,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        text = client.nom,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = client.adresseComplete,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (client.appelable) {
+                        Text(
+                            text = client.telephone,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
                 }
                 if (client.appelable) {
-                    Text(
-                        text = client.telephone,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
+                    IconButton(onClick = { contexte.appeler(client.telephone) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Phone,
+                            contentDescription = "Appeler ${client.nom}",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
-            }
-            if (client.appelable) {
-                IconButton(onClick = { contexte.appeler(client.telephone) }) {
-                    Icon(
-                        imageVector = Icons.Filled.Phone,
-                        contentDescription = "Appeler ${client.nom}",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
+                if (client.localisable) {
+                    IconButton(onClick = { contexte.ouvrirItineraire(client.adresseComplete) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Directions,
+                            contentDescription = "Itinéraire vers ${client.nom}",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.width(4.dp))
             }
-            if (client.localisable) {
-                IconButton(onClick = { contexte.ouvrirItineraire(client.adresseComplete) }) {
-                    Icon(
-                        imageVector = Icons.Filled.Directions,
-                        contentDescription = "Itinéraire vers ${client.nom}",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(4.dp))
+            SectionMachines(
+                client = client,
+                machines = machines,
+                onOuvrirMachine = onOuvrirMachine,
+                onAjouterMachine = onAjouterMachine,
+            )
         }
     }
+}
+
+/** Le parc d'un client, dépliable depuis sa carte. */
+@Composable
+private fun SectionMachines(
+    client: Client,
+    machines: List<Equipement>,
+    onOuvrirMachine: (Equipement) -> Unit,
+    onAjouterMachine: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Clé sur l'identifiant du client : la liste recycle ses cartes, et sans
+    // cela l'état déplié sauterait d'un client à l'autre au défilement.
+    var deplie by rememberSaveable(client.id) { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        HorizontalDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { deplie = !deplie }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Kitchen,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = libelleParc(machines.size),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (deplie) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (deplie) "Replier le parc" else "Déplier le parc",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (deplie) {
+            machines.forEach { machine ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOuvrirMachine(machine) }
+                        .padding(start = 42.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = machine.nom,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            TextButton(
+                onClick = onAjouterMachine,
+                modifier = Modifier.padding(start = 30.dp, bottom = 4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "Ajouter une machine")
+            }
+        }
+    }
+}
+
+/** « Aucune machine », « 1 machine », « 3 machines ». */
+private fun libelleParc(nombre: Int): String = when (nombre) {
+    0 -> "Aucune machine"
+    1 -> "1 machine"
+    else -> "$nombre machines"
 }
 
 /**
@@ -247,8 +537,14 @@ private fun ClientsScreenPreview() {
                         adresse = "5 place de la Gare",
                     ),
                 ),
+                parc = listOf(
+                    Equipement(id = "e1", clientId = "1", nom = "Vitrine salle 2"),
+                    Equipement(id = "e2", clientId = "1", nom = "Chambre froide positive"),
+                ),
                 onNouveauClient = {},
                 onOuvrirFiche = {},
+                onOuvrirMachine = {},
+                onAjouterMachine = {},
             )
         }
     }

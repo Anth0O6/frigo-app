@@ -37,12 +37,13 @@ fun MenuSauvegarde(
     val message by viewModel.message.collectAsStateWithLifecycle()
 
     val enregistrer = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
+        ActivityResultContracts.CreateDocument("application/zip"),
     ) { destination -> destination?.let(viewModel::onExporterVers) }
 
-    // `*/*` plutôt que `application/json` : selon l'endroit où la sauvegarde a
-    // été rangée, le système lui attribue parfois un autre type, et un filtre
-    // strict la rendrait tout simplement invisible dans le sélecteur.
+    // `*/*` plutôt qu'un type précis : selon l'endroit où la sauvegarde a été
+    // rangée, le système lui attribue parfois un autre type, et un filtre
+    // strict la rendrait tout simplement invisible dans le sélecteur. C'est
+    // aussi ce qui laisse restaurer un ancien export `.json`.
     val restaurer = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { source -> source?.let(viewModel::onRestaurerDepuis) }

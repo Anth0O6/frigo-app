@@ -22,25 +22,29 @@ private val OPTIONS_INTITULE = KeyboardOptions(
 )
 
 /**
- * Saisie de l'intitulé d'un type d'intervention, en création comme en
- * renommage. Partagée par le formulaire et l'écran Réglages : ajouter un type
- * et le corriger demandent la même chose, et deux boîtes de dialogue jumelles
- * finiraient par diverger.
+ * Saisie d'un intitulé, en création comme en renommage.
+ *
+ * Partagée par les types d'intervention et les machines : nommer, renommer,
+ * refuser un doublon, tout cela se fait de la même façon, et des boîtes de
+ * dialogue jumelles finiraient par diverger. Seuls le vocabulaire et le test du
+ * doublon changent, donc seuls eux sont des paramètres.
  *
  * L'état de saisie est réinitialisé dès que [intituleInitial] change, faute de
  * quoi renommer un type après un autre reprendrait l'intitulé du précédent.
  */
 @Composable
-fun DialogueType(
+fun DialogueIntitule(
     titre: String,
     libelleAction: String,
+    libelleChamp: String = "Intitulé",
+    messageConflit: String = "Cet intitulé existe déjà.",
     intituleInitial: String = "",
     estDejaPris: (String) -> Boolean = { false },
     onValider: (String) -> Unit,
     onFermer: () -> Unit,
 ) {
     var intitule by rememberSaveable(intituleInitial) { mutableStateOf(intituleInitial) }
-    // Deux types du même intitulé donneraient deux boutons identiques dans le
+    // Deux entrées du même intitulé donneraient deux boutons identiques dans le
     // formulaire, impossibles à distinguer. Mieux vaut l'empêcher que l'expliquer.
     val conflit = estDejaPris(intitule.trim())
 
@@ -52,11 +56,11 @@ fun DialogueType(
                 value = intitule,
                 onValueChange = { intitule = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Intitulé") },
+                label = { Text(text = libelleChamp) },
                 singleLine = true,
                 isError = conflit,
                 supportingText = if (conflit) {
-                    { Text(text = "Ce type existe déjà.") }
+                    { Text(text = messageConflit) }
                 } else {
                     null
                 },

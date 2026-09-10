@@ -24,6 +24,10 @@ data class EtatFormulaire(
     val typeId: String? = null,
     /** Intitulé affiché, recopié du type. Vide quand aucun n'est choisi. */
     val typeLibelle: String = "",
+    /** Machine du parc du client ; `null` quand l'intervention n'en désigne pas. */
+    val equipementId: String? = null,
+    /** Nom affiché, recopié de la machine. Vide quand aucune n'est choisie. */
+    val equipementNom: String = "",
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
 ) {
@@ -43,6 +47,8 @@ data class EtatFormulaire(
         typeId = typeId,
         typeLibelle = typeLibelle,
         clientId = clientId,
+        equipementId = equipementId,
+        equipementNom = equipementNom,
         statut = statut,
         notes = notes,
     )
@@ -58,6 +64,8 @@ data class EtatFormulaire(
             typeId = intervention.typeId,
             typeLibelle = intervention.typeLibelle,
             clientId = intervention.clientId,
+            equipementId = intervention.equipementId,
+            equipementNom = intervention.equipementNom,
             statut = intervention.statut,
             notes = intervention.notes,
         )

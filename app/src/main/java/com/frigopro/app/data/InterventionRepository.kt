@@ -16,6 +16,10 @@ class InterventionRepository(private val dao: InterventionDao) {
     /** Interventions d'une journée, triées par heure, réémises à chaque écriture. */
     fun observerJournee(date: LocalDate): Flow<List<Intervention>> = dao.observerJournee(date)
 
+    /** Historique d'une machine, du plus récent au plus ancien. */
+    fun observerParEquipement(equipementId: String): Flow<List<Intervention>> =
+        dao.observerParEquipement(equipementId)
+
     /** Crée l'intervention ou remplace celle qui porte le même identifiant. */
     suspend fun enregistrer(intervention: Intervention) {
         dao.enregistrer(
