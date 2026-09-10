@@ -177,20 +177,55 @@ Les dépôts et le ViewModel s'exercent sur `FauxInterventionDao` et
 ```bash
 ./gradlew testDebugUnitTest # tests unitaires
 ./gradlew assembleDebug     # APK debug : app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease   # APK publiée ; non signée sans les variables de signature
 ./gradlew lint              # analyse statique Android
 ```
 
 Le SDK Android est requis (`ANDROID_HOME`, ou `sdk.dir` dans `local.properties`,
 fichier non versionné).
 
+## Signature et mises à jour
+
+Android n'installe une mise à jour que si elle porte **la même signature** que
+l'application déjà présente ; sinon il répond « Application non installée ». Une
+APK construite sans clé déclarée est signée par la clé de debug de la machine
+qui la construit — donc par une clé différente à chaque runner de CI. C'est
+pourquoi le projet a sa propre clé, stable, et sans laquelle chaque nouvelle
+version imposerait une désinstallation, c'est-à-dire la perte des tournées
+saisies.
+
+Cette clé ne peut pas vivre dans le dépôt, qui est public : elle est stockée en
+secrets GitHub (`FRIGOPRO_KEYSTORE_BASE64`, `FRIGOPRO_KEYSTORE_PASSWORD`) et
+reconstituée par la CI dans un répertoire temporaire du runner. Le
+`build.gradle.kts` la lit dans l'environnement (`FRIGOPRO_KEYSTORE`,
+`FRIGOPRO_KEYSTORE_PASSWORD`) ; en son absence — build local, fork — l'APK sort
+non signée, ce qui permet de vérifier une compilation mais rien d'installer.
+`*.keystore` et `*.jks` sont ignorés par git.
+
+`versionCode` vient du numéro de run de la CI (`FRIGOPRO_VERSION_CODE`) : Android
+refuse d'installer une version dont le code est inférieur à celui déjà posé, il
+doit donc croître à chaque publication. Il vaut 1 en local, et `versionName`
+affiche ce numéro (`0.2.0 (17)`) pour identifier une build depuis les
+paramètres du téléphone.
+
+**La clé est irremplaçable** : la perdre, c'est ne plus pouvoir mettre à jour
+l'application sans une désinstallation chez chaque utilisateur. C'est aussi
+elle qui signera les versions publiées sur le Play Store.
+
 ## Intégration continue
 
 `.github/workflows/build.yml` s'exécute à chaque push sur `main` et sur
 déclenchement manuel (`workflow_dispatch`) : checkout, JDK Temurin 17,
-`gradle/actions/setup-gradle`, `./gradlew testDebugUnitTest`,
-`./gradlew assembleDebug`, publication du schéma Room en artefact, puis
-publication de `app-debug.apk` dans une GitHub Release taguée
+`gradle/actions/setup-gradle`, `./gradlew testDebugUnitTest`, restitution de la
+clé de signature, `./gradlew assembleRelease`, vérification de la signature par
+`apksigner verify --print-certs`, publication du schéma Room en artefact, puis
+publication de `app-release.apk` dans une GitHub Release taguée
 `build-<numéro de run>` (`permissions: contents: write`).
+
+Deux filets protègent la signature : sans clé, Gradle nomme sa sortie
+`app-release-unsigned.apk` et l'étape de publication ne trouve plus son fichier ;
+et `apksigner verify` échoue de son côté. L'empreinte du certificat est imprimée
+dans le journal du build, où elle doit rester identique d'une build à l'autre.
 
 ## Pistes pour la suite
 

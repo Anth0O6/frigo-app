@@ -1,4 +1,4 @@
-name: Build debug APK
+name: Build APK
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: assembleDebug
+    name: assembleRelease
     runs-on: ubuntu-latest
 
     steps:
@@ -32,8 +32,39 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      # Sans clé stable, chaque runner en fabriquerait une au hasard et Android
+      # refuserait la mise à jour : « Application non installée ». Le magasin
+      # atterrit hors du dépôt, dans un répertoire temporaire du runner, pour
+      # qu'aucune étape ultérieure ne puisse le publier par mégarde.
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FRIGOPRO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Secret FRIGOPRO_KEYSTORE_BASE64 absent : l'APK ne serait pas signée, donc pas installable en mise à jour."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/frigopro.keystore"
+
+      - name: Build release APK
+        env:
+          FRIGOPRO_KEYSTORE: ${{ runner.temp }}/frigopro.keystore
+          FRIGOPRO_KEYSTORE_PASSWORD: ${{ secrets.FRIGOPRO_KEYSTORE_PASSWORD }}
+          FRIGOPRO_VERSION_CODE: ${{ github.run_number }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      # Une APK non signée s'appellerait `app-release-unsigned.apk` et
+      # `apksigner verify` échouerait : deux filets pour la même erreur, celle
+      # qui ne se voit qu'une fois le téléphone en main. L'empreinte imprimée
+      # ici doit rester la même d'un build à l'autre.
+      - name: Verify the APK signature
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner introuvable sous $ANDROID_HOME/build-tools."
+            exit 1
+          fi
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
 
       # Le schéma Room n'existe qu'après compilation : le publier à chaque build
       # est le seul moyen de pouvoir l'ajouter au dépôt, et donc d'écrire un jour
@@ -51,8 +82,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "build-${{ github.run_number }}" \
-            app/build/outputs/apk/debug/app-debug.apk \
+            app/build/outputs/apk/release/app-release.apk \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "FrigoPro build ${{ github.run_number }}" \
-            --notes "Build automatique #${{ github.run_number }} depuis ${{ github.sha }}."
+            --notes "Build automatique #${{ github.run_number }} depuis ${{ github.sha }}. S'installe par-dessus la précédente, sans désinstallation."

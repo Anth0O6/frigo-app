@@ -19,3 +19,7 @@ captures/
 
 # Logs
 *.log
+
+# Signature : jamais dans le dépôt, il est public.
+*.keystore
+*.jks
