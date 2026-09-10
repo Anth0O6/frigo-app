@@ -5,6 +5,24 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// L'alias n'est pas un secret : il désigne une clé, il ne l'ouvre pas.
+val aliasCle = "frigopro"
+
+// La clé de signature vient de l'environnement, jamais du dépôt : celui-ci est
+// public. La CI la reconstitue depuis un secret ; en local ces variables sont
+// absentes et l'APK sort non signée, donc bonne à vérifier une compilation et
+// à rien d'autre.
+val magasinCles = System.getenv("FRIGOPRO_KEYSTORE")?.let { file(it) }
+val motDePasseCles = System.getenv("FRIGOPRO_KEYSTORE_PASSWORD")
+val signatureDisponible = magasinCles?.exists() == true && !motDePasseCles.isNullOrBlank()
+
+// Android refuse d'installer une version dont le code est inférieur à celui déjà
+// posé sur l'appareil : il doit croître à chaque publication. La CI y injecte son
+// numéro de run. En local il vaut 1, donc une APK construite à la main ne
+// s'installera pas par-dessus une APK de la CI — c'est voulu, les deux ne sont
+// pas signées par la même clé de toute façon.
+val numeroBuild = System.getenv("FRIGOPRO_VERSION_CODE")?.toIntOrNull() ?: 1
+
 android {
     namespace = "com.frigopro.app"
     compileSdk = 36
@@ -13,8 +31,20 @@ android {
         applicationId = "com.frigopro.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = numeroBuild
+        versionName = "0.2.0 ($numeroBuild)"
+    }
+
+    signingConfigs {
+        if (signatureDisponible) {
+            create("release") {
+                storeFile = magasinCles
+                storePassword = motDePasseCles
+                keyAlias = aliasCle
+                // PKCS12 n'accepte qu'un seul mot de passe pour le magasin et la clé.
+                keyPassword = motDePasseCles
+            }
+        }
     }
 
     buildTypes {
@@ -27,6 +57,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // `null` en l'absence de clé : Gradle produit alors une APK
+            // « unsigned », que la CI refusera de publier faute de la trouver.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
