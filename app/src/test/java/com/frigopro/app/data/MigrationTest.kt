@@ -1,6 +1,7 @@
 package com.frigopro.app.data
 
 import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -27,13 +28,22 @@ class MigrationTest {
 
     private val contexte: Context = RuntimeEnvironment.getApplication()
 
+    private var base: FrigoProDatabase? = null
+
     @Before
     fun partirDeRien() {
         contexte.deleteDatabase(FrigoProDatabase.NOM)
     }
 
+    /**
+     * Fermer la base ouverte par le test : sans cela, Robolectric signale une
+     * ressource SQLite abandonnée — et le verrou sur le fichier peut survivre
+     * au test suivant, qui échouerait alors pour une raison sans rapport.
+     */
     @After
     fun effacerLaBase() {
+        base?.close()
+        base = null
         contexte.deleteDatabase(FrigoProDatabase.NOM)
     }
 
@@ -227,7 +237,11 @@ class MigrationTest {
      * L'ouverture déclenche les migrations puis la validation du schéma : une
      * migration incohérente fait échouer cette ligne, pas une assertion.
      */
-    private fun ouvrirEtMigrer() = FrigoProDatabase.creer(contexte).openHelper.writableDatabase
+    private fun ouvrirEtMigrer(): SupportSQLiteDatabase {
+        val ouverte = FrigoProDatabase.creer(contexte)
+        base = ouverte
+        return ouverte.openHelper.writableDatabase
+    }
 
     private fun creerBase(version: Int, empreinte: String, ddl: List<String>, insertions: List<String>) {
         contexte.openOrCreateDatabase(FrigoProDatabase.NOM, Context.MODE_PRIVATE, null).use { db ->
