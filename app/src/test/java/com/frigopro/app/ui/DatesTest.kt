@@ -70,6 +70,26 @@ class DatesTest {
  */
 class NombresTest {
 
+    /**
+     * Le bug que ce test garde fermé : `enTexte` coupait les zéros de fin pour
+     * retirer « 6,20 » → « 6,2 », et le faisait aussi **sans virgule**. « 450 »
+     * devenait donc « 45 » dès qu'on demandait zéro décimale — un montant faux
+     * d'un facteur dix, et parfaitement plausible à l'œil.
+     */
+    @Test
+    fun `un entier ne perd pas ses zeros`() {
+        assertEquals("450", Nombres.enTexte(450.0, decimales = 0))
+        assertEquals("9800", Nombres.enTexte(9_800.0, decimales = 0))
+        assertEquals("100", Nombres.enTexte(100.0, decimales = 0))
+    }
+
+    @Test
+    fun `les zeros apres la virgule disparaissent toujours`() {
+        assertEquals("6,2", Nombres.enTexte(6.20))
+        assertEquals("3", Nombres.enTexte(3.0))
+        assertEquals("50", Nombres.enTexte(50.0, decimales = 1))
+    }
+
     @Test
     fun `un petit montant garde ses unites`() {
         assertEquals("450 €", Nombres.enEurosCourt(450.0))

@@ -31,6 +31,10 @@ object Nombres {
     fun enTexte(valeur: Double?, decimales: Int = 2): String {
         if (valeur == null) return ""
         val arrondi = String.format(Locale.FRANCE, "%.${decimales}f", valeur)
+        // Les zéros inutiles ne se trouvent qu'après la virgule : sans elle,
+        // « 450 » deviendrait « 45 ». Le cas se présentait dès qu'on demandait
+        // zéro décimale, ce que fait le montant abrégé des tuiles.
+        if (!arrondi.contains(',')) return arrondi
         return arrondi.trimEnd('0').trimEnd(',').ifEmpty { "0" }
     }
 
