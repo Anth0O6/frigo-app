@@ -1,0 +1,263 @@
+package com.frigopro.app.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.frigopro.app.data.Parametres
+import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.ChampTexte
+import com.frigopro.app.ui.composants.IntituleSection
+import com.frigopro.app.ui.theme.StyleChiffrePetit
+
+/**
+ * Ce que les Réglages règlent, au-delà des types d'intervention.
+ *
+ * Trois blocs, dans l'ordre de la maquette : qui est le technicien, comment
+ * l'application se comporte, et ce qu'on fait des données.
+ */
+
+/** La fiche du technicien : son nom, et son attestation fluides. */
+@Composable
+fun SectionTechnicien(
+    parametres: Parametres,
+    onTechnicien: (String) -> Unit,
+    onAttestation: (String) -> Unit,
+) {
+    var ouverte by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        IntituleSection(texte = "Technicien")
+        Carte(relief = true, onClick = { ouverte = true }) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(48.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = parametres.initiales.ifEmpty { "?" },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = parametres.technicien.ifBlank { "Nom non renseigné" },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = parametres.attestation.ifBlank { "Attestation fluides non renseignée" },
+                        style = StyleChiffrePetit,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(text = "›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    if (ouverte) {
+        var nom by remember { mutableStateOf(parametres.technicien) }
+        var attestation by remember { mutableStateOf(parametres.attestation) }
+        AlertDialog(
+            onDismissRequest = { ouverte = false },
+            title = { Text(text = "Technicien") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ChampTexte(libelle = "Nom", valeur = nom, onValeur = { nom = it })
+                    ChampTexte(
+                        libelle = "Attestation fluides",
+                        valeur = attestation,
+                        onValeur = { attestation = it },
+                    )
+                    Text(
+                        text = "Ces mentions figurent sur les comptes-rendus remis au client.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onTechnicien(nom)
+                        onAttestation(attestation)
+                        ouverte = false
+                    },
+                ) {
+                    Text(text = "Enregistrer")
+                }
+            },
+            dismissButton = { TextButton(onClick = { ouverte = false }) { Text(text = "Annuler") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
+}
+
+/** Le comportement de l'application : thème, cibles, chronomètre, tarifs. */
+@Composable
+fun SectionGeneral(
+    parametres: Parametres,
+    onThemeSombre: (Boolean) -> Unit,
+    onModeGants: (Boolean) -> Unit,
+    onChronoAuto: (Boolean) -> Unit,
+    onTauxHoraire: (Double) -> Unit,
+    onTauxTva: (Double) -> Unit,
+) {
+    var tarifsOuverts by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        IntituleSection(texte = "Général")
+        Carte(contour = true) {
+            LigneInterrupteur(
+                intitule = "Thème sombre",
+                actif = parametres.themeSombre,
+                onChange = onThemeSombre,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            LigneInterrupteur(
+                intitule = "Mode gants",
+                detail = "Agrandit les boutons et les lignes touchables.",
+                actif = parametres.modeGants,
+                onChange = onModeGants,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            LigneInterrupteur(
+                intitule = "Chrono automatique à l'arrivée",
+                // Désactivé par défaut, et le dire : un chrono qui démarre à
+                // l'insu du technicien fausse le temps facturé, et il vaut
+                // mieux un chrono oublié qu'un chrono faux.
+                detail = "Démarre le temps dès qu'une intervention passe en cours.",
+                actif = parametres.chronoAuto,
+                onChange = onChronoAuto,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Tarifs", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = "${Nombres.enEuros(parametres.tauxHoraire)} HT · " +
+                            "TVA ${Nombres.enTexte(parametres.tauxTva)} %",
+                        style = StyleChiffrePetit,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { tarifsOuverts = true }) { Text(text = "Modifier") }
+            }
+        }
+    }
+
+    if (tarifsOuverts) {
+        var taux by remember { mutableStateOf(Nombres.enTexte(parametres.tauxHoraire)) }
+        var tva by remember { mutableStateOf(Nombres.enTexte(parametres.tauxTva)) }
+        AlertDialog(
+            onDismissRequest = { tarifsOuverts = false },
+            title = { Text(text = "Tarifs") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ChampTexte(
+                        libelle = "Taux horaire HT",
+                        valeur = taux,
+                        onValeur = { taux = it },
+                        clavier = KeyboardType.Decimal,
+                    )
+                    ChampTexte(
+                        libelle = "TVA par défaut (%)",
+                        valeur = tva,
+                        onValeur = { tva = it },
+                        clavier = KeyboardType.Decimal,
+                    )
+                    Text(
+                        text = "Un devis garde le taux en vigueur au moment où il est créé : " +
+                            "changer ce réglage ne recalcule aucun devis déjà établi.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        Nombres.versDecimal(taux)?.let(onTauxHoraire)
+                        Nombres.versDecimal(tva)?.let(onTauxTva)
+                        tarifsOuverts = false
+                    },
+                ) {
+                    Text(text = "Enregistrer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { tarifsOuverts = false }) { Text(text = "Annuler") }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
+}
+
+@Composable
+private fun LigneInterrupteur(
+    intitule: String,
+    actif: Boolean,
+    onChange: (Boolean) -> Unit,
+    detail: String? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = intitule, style = MaterialTheme.typography.bodyLarge)
+            if (detail != null) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(
+            checked = actif,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ),
+        )
+    }
+}

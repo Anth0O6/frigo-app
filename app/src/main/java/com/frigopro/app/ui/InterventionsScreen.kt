@@ -1,6 +1,8 @@
 package com.frigopro.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,9 +85,30 @@ fun InterventionsRoute(
     val machines by viewModel.machines.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
+    val semaineOuverte by viewModel.semaineOuverte.collectAsStateWithLifecycle()
+    val semaine by viewModel.semaine.collectAsStateWithLifecycle()
 
     if (ouverte != null) {
         InterventionRoute(modifier = modifier, viewModel = detail)
+        return
+    }
+
+    BackHandler(enabled = semaineOuverte) { viewModel.onFermerSemaine() }
+
+    if (semaineOuverte) {
+        EcranSemaine(
+            lundi = lundiDe(jour),
+            jourRetenu = jour,
+            interventions = semaine,
+            onJourRetenu = {
+                viewModel.onJourChoisi(it)
+                viewModel.onFermerSemaine()
+            },
+            onSemainePrecedente = viewModel::onSemainePrecedente,
+            onSemaineSuivante = viewModel::onSemaineSuivante,
+            onOuvrir = detail::onOuvrir,
+            modifier = modifier,
+        )
         return
     }
 
@@ -96,6 +119,7 @@ fun InterventionsRoute(
         onJourSuivant = viewModel::onJourSuivant,
         onJourChoisi = viewModel::onJourChoisi,
         onNouvelleIntervention = viewModel::onNouvelleIntervention,
+        onOuvrirSemaine = viewModel::onOuvrirSemaine,
         onOuvrirIntervention = detail::onOuvrir,
         onModifierIntervention = viewModel::onModifierIntervention,
         onChangerStatut = viewModel::onChangerStatut,
@@ -141,6 +165,7 @@ fun InterventionsScreen(
     onJourSuivant: () -> Unit,
     onJourChoisi: (LocalDate) -> Unit,
     onNouvelleIntervention: () -> Unit,
+    onOuvrirSemaine: () -> Unit,
     onOuvrirIntervention: (Intervention) -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
@@ -171,6 +196,7 @@ fun InterventionsScreen(
                 onJourPrecedent = onJourPrecedent,
                 onJourSuivant = onJourSuivant,
                 onOuvrirSelecteur = { selecteurOuvert = true },
+                onOuvrirSemaine = onOuvrirSemaine,
                 actions = actions,
             )
             BandeauJournee(lignes = lignes)
@@ -226,6 +252,7 @@ private fun EnTeteTournee(
     onJourPrecedent: () -> Unit,
     onJourSuivant: () -> Unit,
     onOuvrirSelecteur: () -> Unit,
+    onOuvrirSemaine: () -> Unit,
     actions: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -235,7 +262,11 @@ private fun EnTeteTournee(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onOuvrirSelecteur),
+        ) {
             Text(
                 text = libelleDate(jour).uppercase(),
                 style = StyleSection,
@@ -260,8 +291,8 @@ private fun EnTeteTournee(
         )
         BoutonCarre(
             icone = Icons.Filled.CalendarMonth,
-            description = "Choisir une date",
-            onClick = onOuvrirSelecteur,
+            description = "Voir la semaine",
+            onClick = onOuvrirSemaine,
         )
         actions()
     }
@@ -574,6 +605,7 @@ private fun ApercuTournee() {
             onJourSuivant = {},
             onJourChoisi = {},
             onNouvelleIntervention = {},
+            onOuvrirSemaine = {},
             onOuvrirIntervention = {},
             onModifierIntervention = {},
             onChangerStatut = {},

@@ -44,6 +44,44 @@ class InterventionsViewModel(
     /** Journée affichée. Changer sa valeur suffit à recharger la liste. */
     val jour: StateFlow<LocalDate> = _jour.asStateFlow()
 
+    private val _semaineOuverte = MutableStateFlow(false)
+
+    /**
+     * La vue semaine, par-dessus la tournée.
+     *
+     * Même onglet et non une section de plus : la journée et la semaine
+     * répondent à deux questions du même métier — « et maintenant ? » et
+     * « où puis-je caser jeudi ? » — et passer de l'une à l'autre ne doit pas
+     * coûter un aller-retour par la barre du bas.
+     */
+    val semaineOuverte: StateFlow<Boolean> = _semaineOuverte.asStateFlow()
+
+    /** Les interventions de la semaine où tombe la journée affichée. */
+    val semaine: StateFlow<List<Intervention>> = _jour
+        .flatMapLatest { interventionRepository.observerSemaine(lundiDe(it)) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    fun onOuvrirSemaine() {
+        _semaineOuverte.value = true
+    }
+
+    fun onFermerSemaine() {
+        _semaineOuverte.value = false
+    }
+
+    /** Recule ou avance d'une semaine entière, en gardant le jour de la semaine. */
+    fun onSemainePrecedente() {
+        _jour.value = _jour.value.minusWeeks(1)
+    }
+
+    fun onSemaineSuivante() {
+        _jour.value = _jour.value.plusWeeks(1)
+    }
+
     /**
      * Carnet de clients : il fournit les suggestions du formulaire et les
      * coordonnées qu'affiche la tournée.

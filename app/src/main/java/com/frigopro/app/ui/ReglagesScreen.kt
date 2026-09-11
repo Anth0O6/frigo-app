@@ -37,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.theme.FrigoProTheme
 
@@ -48,12 +49,21 @@ fun ReglagesRoute(
 ) {
     val types by viewModel.types.collectAsStateWithLifecycle()
     val dialogue by viewModel.dialogue.collectAsStateWithLifecycle()
+    val parametres by viewModel.parametres.collectAsStateWithLifecycle()
 
     ReglagesScreen(
         types = types,
+        parametres = parametres,
         onAjouterType = viewModel::onAjouterType,
         onRenommerType = viewModel::onRenommerType,
         onSupprimerType = viewModel::onSupprimerType,
+        onThemeSombre = viewModel::onThemeSombre,
+        onModeGants = viewModel::onModeGants,
+        onChronoAuto = viewModel::onChronoAuto,
+        onTechnicien = viewModel::onTechnicien,
+        onAttestation = viewModel::onAttestation,
+        onTauxHoraire = viewModel::onTauxHoraire,
+        onTauxTva = viewModel::onTauxTva,
         modifier = modifier,
     )
 
@@ -100,9 +110,17 @@ private const val MESSAGE_TYPE_EXISTANT = "Ce type existe déjà."
 @Composable
 fun ReglagesScreen(
     types: List<TypeIntervention>,
+    parametres: Parametres,
     onAjouterType: () -> Unit,
     onRenommerType: (TypeIntervention) -> Unit,
     onSupprimerType: (TypeIntervention) -> Unit,
+    onThemeSombre: (Boolean) -> Unit,
+    onModeGants: (Boolean) -> Unit,
+    onChronoAuto: (Boolean) -> Unit,
+    onTechnicien: (String) -> Unit,
+    onAttestation: (String) -> Unit,
+    onTauxHoraire: (Double) -> Unit,
+    onTauxTva: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -134,6 +152,23 @@ fun ReglagesScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item {
+                SectionTechnicien(
+                    parametres = parametres,
+                    onTechnicien = onTechnicien,
+                    onAttestation = onAttestation,
+                )
+            }
+            item {
+                SectionGeneral(
+                    parametres = parametres,
+                    onThemeSombre = onThemeSombre,
+                    onModeGants = onModeGants,
+                    onChronoAuto = onChronoAuto,
+                    onTauxHoraire = onTauxHoraire,
+                    onTauxTva = onTauxTva,
+                )
+            }
             item {
                 Column {
                     Text(
@@ -246,9 +281,17 @@ private fun ReglagesScreenPreview() {
                     TypeIntervention(id = "t2", libelle = "Fuite de fluide"),
                     TypeIntervention(id = "t3", libelle = "Mise en service"),
                 ),
+                parametres = Parametres(technicien = "Anthony O."),
                 onAjouterType = {},
                 onRenommerType = {},
                 onSupprimerType = {},
+                onThemeSombre = {},
+                onModeGants = {},
+                onChronoAuto = {},
+                onTechnicien = {},
+                onAttestation = {},
+                onTauxHoraire = {},
+                onTauxTva = {},
             )
         }
     }
