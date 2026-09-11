@@ -88,6 +88,7 @@ fun InterventionsRoute(
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val types by viewModel.types.collectAsStateWithLifecycle()
     val machines by viewModel.machines.collectAsStateWithLifecycle()
+    val techniciens by viewModel.techniciens.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val semaineOuverte by viewModel.semaineOuverte.collectAsStateWithLifecycle()
@@ -150,12 +151,14 @@ fun InterventionsRoute(
             // Seules les machines du client choisi : celles des autres clients
             // n'ont rien à faire dans cette saisie.
             machines = machines.filter { it.clientId == etat.clientId },
+            techniciens = techniciens,
             onEtatChange = viewModel::onFormulaireChange,
             onClientChoisi = viewModel::onClientChoisi,
             onTypeChoisi = viewModel::onTypeChoisi,
             onNouveauType = viewModel::onNouveauType,
             onMachineChoisie = viewModel::onMachineChoisie,
             onNouvelleMachine = viewModel::onNouvelleMachine,
+            onNouveauTechnicien = viewModel::onNouveauTechnicien,
             onValider = viewModel::onValiderFormulaire,
             onSupprimer = viewModel::onSupprimerIntervention,
             onFermer = viewModel::onFermerFormulaire,

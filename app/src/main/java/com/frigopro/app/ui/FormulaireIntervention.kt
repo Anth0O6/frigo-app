@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -56,7 +57,9 @@ import androidx.compose.ui.window.DialogProperties
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.StatutIntervention
+import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
 import java.time.LocalTime
@@ -86,12 +89,14 @@ fun FormulaireIntervention(
     clients: List<Client>,
     types: List<TypeIntervention>,
     machines: List<Equipement>,
+    techniciens: List<Technicien>,
     onEtatChange: (EtatFormulaire) -> Unit,
     onClientChoisi: (Client) -> Unit,
     onTypeChoisi: (TypeIntervention?) -> Unit,
     onNouveauType: (String) -> Unit,
     onMachineChoisie: (Equipement?) -> Unit,
     onNouvelleMachine: (String) -> Unit,
+    onNouveauTechnicien: (String) -> Unit,
     onValider: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
@@ -101,6 +106,7 @@ fun FormulaireIntervention(
     var choixHeureOuvert by rememberSaveable { mutableStateOf(false) }
     var nouveauTypeOuvert by rememberSaveable { mutableStateOf(false) }
     var nouvelleMachineOuverte by rememberSaveable { mutableStateOf(false) }
+    var nouveauTechnicienOuvert by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onFermer,
@@ -146,6 +152,26 @@ fun FormulaireIntervention(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "Heure de passage : ${etat.heure.format(FORMAT_HEURE)}")
             }
+
+            // La durée suit l'heure parce que les deux décrivent le même créneau,
+            // et c'est elle qui donne au planning la hauteur à dessiner. Des
+            // choix prédéfinis plutôt qu'un champ libre : une durée se pense en
+            // demi-heures sur une tournée, et taper « 90 » au clavier est plus
+            // long que toucher « 1 h 30 ».
+            Text(
+                text = "Durée prévue",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            RangeePastilles(
+                options = DUREES_PROPOSEES,
+                retenue = etat.dureeMin,
+                libelle = ::libelleDuree,
+                onChoisir = { onEtatChange(etat.copy(dureeMin = it)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+            )
 
             OutlinedTextField(
                 value = etat.client,
@@ -194,6 +220,61 @@ fun FormulaireIntervention(
                 singleLine = true,
                 keyboardOptions = OPTIONS_CLAVIER,
             )
+
+            Text(
+                text = "Technicien",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // « Personne » est une option et non une absence d'option : une
+                // tournée peut légitimement n'être confiée à personne — c'est le
+                // cas quand on travaille seul — et il faut pouvoir y revenir.
+                FilterChip(
+                    selected = etat.technicienId == null && etat.technicienNom.isBlank(),
+                    onClick = { onEtatChange(etat.copy(technicienId = null, technicienNom = "")) },
+                    label = { Text(text = "Personne") },
+                )
+                techniciens.forEach { technicien ->
+                    FilterChip(
+                        selected = etat.technicienId == technicien.id,
+                        onClick = {
+                            onEtatChange(
+                                etat.copy(
+                                    technicienId = technicien.id,
+                                    // Le nom est recopié, comme pour le type et
+                                    // la machine : une tournée de mars doit
+                                    // continuer de dire qui l'a faite même si la
+                                    // fiche disparaît depuis.
+                                    technicienNom = technicien.nom,
+                                ),
+                            )
+                        },
+                        label = { Text(text = technicien.nom) },
+                    )
+                }
+                // Nom venu d'avant la liste, ou dont la fiche a été retirée : il
+                // s'affiche quand même, sinon ouvrir le formulaire pour changer
+                // l'heure effacerait silencieusement le technicien.
+                if (etat.technicienId == null && etat.technicienNom.isNotBlank()) {
+                    FilterChip(
+                        selected = true,
+                        onClick = { onEtatChange(etat.copy(technicienNom = "")) },
+                        label = { Text(text = etat.technicienNom) },
+                    )
+                }
+                AssistChip(
+                    onClick = { nouveauTechnicienOuvert = true },
+                    label = { Text(text = "Nouveau technicien") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(AssistChipDefaults.IconSize),
+                        )
+                    },
+                )
+            }
 
             Text(
                 text = "Machine concernée",
@@ -380,6 +461,21 @@ fun FormulaireIntervention(
         )
     }
 
+    if (nouveauTechnicienOuvert) {
+        DialogueIntitule(
+            titre = "Nouveau technicien",
+            libelleAction = "Ajouter",
+            libelleChamp = "Nom du technicien",
+            messageConflit = "Ce technicien existe déjà.",
+            estDejaPris = { nom -> techniciens.any { it.nom.equals(nom, ignoreCase = true) } },
+            onValider = {
+                onNouveauTechnicien(it)
+                nouveauTechnicienOuvert = false
+            },
+            onFermer = { nouveauTechnicienOuvert = false },
+        )
+    }
+
     if (choixHeureOuvert) {
         SelecteurHeure(
             heure = etat.heure,
@@ -522,11 +618,16 @@ private fun FormulaireInterventionPreview() {
                 Equipement(id = "e1", clientId = "c1", nom = "Vitrine salle 2"),
                 Equipement(id = "e2", clientId = "c1", nom = "Chambre froide positive"),
             ),
+            techniciens = listOf(
+                Technicien(id = "tech-1", nom = "Karim Benali"),
+                Technicien(id = "tech-2", nom = "Mehdi Lacroix"),
+            ),
             onClientChoisi = {},
             onTypeChoisi = {},
             onNouveauType = {},
             onMachineChoisie = {},
             onNouvelleMachine = {},
+            onNouveauTechnicien = {},
             etat = EtatFormulaire(
                 id = "1",
                 date = LocalDate.now(),
@@ -540,11 +641,36 @@ private fun FormulaireInterventionPreview() {
                 equipementNom = "Vitrine salle 2",
                 statut = StatutIntervention.EN_COURS,
                 notes = "Manque de fluide, à recontrôler la semaine prochaine.",
+                dureeMin = 90,
+                technicienId = "tech-1",
+                technicienNom = "Karim Benali",
             ),
             onEtatChange = {},
             onValider = {},
             onSupprimer = {},
             onFermer = {},
         )
+    }
+}
+
+/**
+ * Les durées proposées, en minutes.
+ *
+ * Des choix prédéfinis plutôt qu'un champ libre : une tournée se pense en
+ * demi-heures, et toucher « 1 h 30 » est plus court que taper « 90 ». Une durée
+ * hors de cette liste — reprise d'une ancienne intervention, ou d'un format de
+ * sauvegarde — reste enregistrée telle quelle : aucune pastille n'est alors
+ * retenue, et n'en toucher aucune ne la change pas.
+ */
+private val DUREES_PROPOSEES = listOf(30, 60, 90, 120, 180, 240)
+
+/** « 30 min », « 1 h », « 1 h 30 ». */
+private fun libelleDuree(minutes: Int): String {
+    val heures = minutes / 60
+    val reste = minutes % 60
+    return when {
+        heures == 0 -> "$minutes min"
+        reste == 0 -> "$heures h"
+        else -> "$heures h $reste"
     }
 }

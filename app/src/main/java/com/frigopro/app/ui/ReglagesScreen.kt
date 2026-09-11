@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.theme.FrigoProTheme
 
@@ -50,6 +51,7 @@ fun ReglagesRoute(
     val types by viewModel.types.collectAsStateWithLifecycle()
     val dialogue by viewModel.dialogue.collectAsStateWithLifecycle()
     val parametres by viewModel.parametres.collectAsStateWithLifecycle()
+    val prestations by viewModel.prestations.collectAsStateWithLifecycle()
 
     ReglagesScreen(
         types = types,
@@ -64,6 +66,8 @@ fun ReglagesRoute(
         onAttestation = viewModel::onAttestation,
         onTauxHoraire = viewModel::onTauxHoraire,
         onTauxTva = viewModel::onTauxTva,
+        prestations = prestations,
+        onPrixPrestation = viewModel::onPrixPrestation,
         modifier = modifier,
     )
 
@@ -121,6 +125,8 @@ fun ReglagesScreen(
     onAttestation: (String) -> Unit,
     onTauxHoraire: (Double) -> Unit,
     onTauxTva: (Double) -> Unit,
+    prestations: List<Prestation>,
+    onPrixPrestation: (Prestation, Double, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -170,6 +176,9 @@ fun ReglagesScreen(
                     onTauxHoraire = onTauxHoraire,
                     onTauxTva = onTauxTva,
                 )
+            }
+            item {
+                SectionCatalogue(prestations = prestations, onPrix = onPrixPrestation)
             }
             item {
                 Column {
@@ -294,6 +303,8 @@ private fun ReglagesScreenPreview() {
                 onAttestation = {},
                 onTauxHoraire = {},
                 onTauxTva = {},
+                prestations = emptyList(),
+                onPrixPrestation = { _, _, _ -> },
             )
         }
     }

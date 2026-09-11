@@ -40,4 +40,21 @@ object Nombres {
     /** Un montant : deux décimales et un espace insécable avant l'euro. */
     fun enEuros(valeur: Double): String =
         String.format(Locale.FRANCE, "%,.2f €", valeur).replace(' ', ' ')
+
+    /**
+     * Un montant **abrégé**, pour une tuile large d'un tiers d'écran.
+     *
+     * « 12,4 k€ » plutôt que « 12 400,00 € » : sur trois tuiles côte à côte, la
+     * forme longue est tronquée, et un montant tronqué ne dit rien — ou, pire,
+     * dit autre chose. Les centimes disparaissent, et c'est voulu : on lit un
+     * chiffre d'affaires à l'euro près sur un document, pas sur une tuile.
+     *
+     * La forme longue reste celle des lignes et des totaux, où elle a la place
+     * et où elle doit être exacte.
+     */
+    fun enEurosCourt(valeur: Double): String = when {
+        valeur >= 1_000_000 -> "${enTexte(valeur / 1_000_000, decimales = 1)} M\u20ac"
+        valeur >= 10_000 -> "${enTexte(valeur / 1_000, decimales = 1)} k\u20ac"
+        else -> "${enTexte(valeur, decimales = 0)} \u20ac"
+    }
 }

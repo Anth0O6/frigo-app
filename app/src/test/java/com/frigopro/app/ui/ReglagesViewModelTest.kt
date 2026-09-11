@@ -4,8 +4,12 @@ import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.FauxParametresDao
+import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.Prestation
+import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -146,12 +150,55 @@ class ReglagesViewModelTest {
         typeLibelle = typeLibelle,
     )
 
+    private val daoPrestations = FauxPrestationDao()
+
     /** Même raison que dans [InterventionsViewModelTest]. */
     private fun TestScope.creerViewModel(): ReglagesViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         return ReglagesViewModel(
             TypeInterventionRepository(daoTypes),
             ParametresRepository(FauxParametresDao()),
+            PrestationRepository(daoPrestations),
         )
+    }
+
+    /**
+     * Le catalogue est livré sans prix : si les Réglages ne permettent pas de
+     * les poser, il ne sert à rien. Ce test tient le seul chemin qui les pose.
+     */
+    @Test
+    fun `renseigner un prix le garde, et l'unite avec`() = runTest {
+        val prestation = Prestation(
+            designation = "Recharge R-449A",
+            categorie = CategoriePrestation.FLUIDE,
+            rang = 9,
+        )
+        daoPrestations.enregistrer(prestation)
+        val viewModel = creerViewModel()
+
+        viewModel.onPrixPrestation(prestation, 38.0, "kg")
+        advanceUntilIdle()
+
+        val enregistree = daoPrestations.contenu.single()
+        assertEquals(38.0, enregistree.prixUnitaire, 0.001)
+        assertEquals("kg", enregistree.unite)
+        assertTrue("elle cesse d'être « à renseigner »", enregistree.tarifee)
+    }
+
+    /**
+     * Un prix négatif n'a pas de sens : une remise se saisit en baissant le
+     * prix, pas en inversant le signe, sinon un total devient faux sans qu'on
+     * le voie. Le dépôt le ramène à zéro, donc à « à renseigner ».
+     */
+    @Test
+    fun `un prix negatif est ramene a zero`() = runTest {
+        val prestation = Prestation(designation = "Déplacement", categorie = CategoriePrestation.DEPANNAGE)
+        daoPrestations.enregistrer(prestation)
+        val viewModel = creerViewModel()
+
+        viewModel.onPrixPrestation(prestation, -45.0, "forfait")
+        advanceUntilIdle()
+
+        assertEquals(0.0, daoPrestations.contenu.single().prixUnitaire, 0.001)
     }
 }

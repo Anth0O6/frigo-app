@@ -94,9 +94,19 @@ class NombresTest {
         assertEquals("0 €", Nombres.enEurosCourt(0.0))
     }
 
+    /**
+     * La forme longue groupe les milliers avec un espace insécable étroit, que
+     * la locale française choisit et qui n'est pas celui d'un clavier. On le
+     * normalise plutôt que de le recopier dans le test : une assertion qui
+     * dépend du caractère exact casse au premier changement de JDK.
+     */
     @Test
     fun `la forme longue reste exacte au centime`() {
-        assertEquals("12 400,00 €", Nombres.enEuros(12_400.0).replace(' ', ' '))
-        assertEquals("450,40 €", Nombres.enEuros(450.40).replace(' ', ' '))
+        assertEquals("12 400,00 €", espacesNormales(Nombres.enEuros(12_400.0)))
+        assertEquals("450,40 €", espacesNormales(Nombres.enEuros(450.40)))
     }
+
+    private fun espacesNormales(texte: String): String =
+        texte.map { if (it.isWhitespace() || it.code == 0x00A0 || it.code == 0x202F) ' ' else it }
+            .joinToString("")
 }

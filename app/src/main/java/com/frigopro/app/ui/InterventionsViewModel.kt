@@ -12,6 +12,8 @@ import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.Technicien
+import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,6 +39,7 @@ class InterventionsViewModel(
     private val clientRepository: ClientRepository,
     private val typeRepository: TypeInterventionRepository,
     private val equipementRepository: EquipementRepository,
+    private val technicienRepository: TechnicienRepository,
 ) : ViewModel() {
 
     private val _jour = MutableStateFlow(LocalDate.now())
@@ -155,6 +158,32 @@ class InterventionsViewModel(
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
             initialValue = emptyList(),
         )
+
+    /**
+     * Les techniciens, pour confier une tournée.
+     *
+     * La liste démarre vide, comme celle des types : l'application était celle
+     * d'un homme seul, et n'a pas à supposer une équipe. Le choix n'apparaît donc
+     * dans le formulaire que lorsqu'il y a quelqu'un à choisir.
+     */
+    val techniciens: StateFlow<List<Technicien>> = technicienRepository.techniciens
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    /** Inscrit un technicien au passage, comme le carnet inscrit un client. */
+    fun onNouveauTechnicien(nom: String) {
+        val etat = _formulaire.value ?: return
+        viewModelScope.launch {
+            val technicien = technicienRepository.trouverOuCreer(nom)
+            _formulaire.value = etat.copy(
+                technicienId = technicien.id,
+                technicienNom = technicien.nom,
+            )
+        }
+    }
 
     private val _formulaire = MutableStateFlow<EtatFormulaire?>(null)
 
@@ -319,6 +348,7 @@ class InterventionsViewModel(
                     conteneur.clients,
                     conteneur.typesIntervention,
                     conteneur.equipements,
+                    conteneur.techniciens,
                 )
             }
         }
