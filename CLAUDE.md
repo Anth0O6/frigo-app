@@ -1,15 +1,24 @@
 # FrigoPro
 
 Application Android native destinée aux techniciens frigoristes en tournée.
-Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre,
-et permet de les créer, les modifier, les supprimer et de suivre leur
-avancement, chacune rangée sous un type que le technicien nomme lui-même dans
-l'onglet Réglages. Un onglet Clients tient le carnet — adresse et téléphone
-compris — ainsi que le parc de machines de chaque client : leur plaque
-signalétique et leur emplacement en photos, et l'historique de ce qu'on a déjà
-fait sur chacune. Depuis la tournée, appeler un client ou ouvrir l'itinéraire
-tient en un geste. Les données sont persistées localement, et exportables dans
-une archive de sauvegarde.
+Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre ou
+d'une semaine à l'autre, et permet de les créer, les modifier, les supprimer et
+de suivre leur avancement, chacune rangée sous un type que le technicien nomme
+lui-même dans l'onglet Réglages.
+
+Chaque intervention s'ouvre sur **ce qui s'y est vraiment passé** : un
+chronomètre qui se met en pause et reprend, les relevés frigorifiques (BP, HP,
+surchauffe, sous-refroidissement), les mouvements de fluide consignés au
+registre, les pièces posées, des photos avant/après, et un compte-rendu que le
+client signe du doigt. Les relevés alimentent une **aide au dépannage** qui
+propose des pistes — jamais un verdict — et le contrôle qui tranche chacune.
+
+Un onglet Clients tient le carnet — adresse et téléphone compris — ainsi que le
+parc de machines de chaque client : plaque signalétique, fluide et charge,
+photos, échéance du contrôle d'étanchéité et historique. Un onglet Devis permet
+de chiffrer sur place. Depuis la tournée, appeler un client ou ouvrir
+l'itinéraire tient en un geste. Les données sont persistées localement, et
+exportables dans une archive de sauvegarde.
 
 ## Stack
 
@@ -18,6 +27,7 @@ une archive de sauvegarde.
 | Langage | Kotlin |
 | UI | Jetpack Compose + Material 3 |
 | Persistance | Room (SQLite local), KSP pour la génération |
+| Polices | Barlow et IBM Plex Mono, **embarquées** (`res/font`) |
 | minSdk / targetSdk / compileSdk | 26 / 36 / 36 |
 | Build | Gradle (wrapper committé), AGP, catalogue de versions `gradle/libs.versions.toml` |
 | JDK | 17 (source/target et `jvmTarget`) |
@@ -48,6 +58,17 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── TypeInterventionRepository.kt
 │       │   │   ├── Equipement.kt
 │       │   │   ├── Photo.kt
+│       │   │   ├── Chrono.kt              # le temps passé, et son arithmétique
+│       │   │   ├── Fluide.kt              # GWP, équivalent CO₂, périodicité 517/2014
+│       │   │   ├── Depannage.kt           # les pistes déduites des relevés
+│       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
+│       │   │   ├── Devis.kt               # devis, lignes et totaux
+│       │   │   ├── Parametres.kt          # les réglages, en une seule ligne
+│       │   │   ├── Numerotation.kt        # INT-2605-018, DEV-2605-007
+│       │   │   ├── SuiviDao.kt
+│       │   │   ├── SuiviRepository.kt
+│       │   │   ├── DevisDao.kt
+│       │   │   ├── DevisRepository.kt
 │       │   │   ├── EquipementDao.kt
 │       │   │   ├── EquipementRepository.kt
 │       │   │   ├── RangementPhotos.kt     # ce que le dépôt attend du stockage
@@ -78,6 +99,21 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
+│       │       ├── EcranIntervention.kt # les quatre volets d'une intervention
+│       │       ├── OngletReleves.kt     # chrono, relevés frigorifiques, fluide
+│       │       ├── OngletPieces.kt      # pièces posées, photos avant/après
+│       │       ├── OngletRapport.kt     # compte-rendu, et tracé de la signature
+│       │       ├── InterventionViewModel.kt
+│       │       ├── InterventionRoute.kt
+│       │       ├── EcranDepannage.kt    # les pistes, et le contrôle qui tranche
+│       │       ├── DialogueSignature.kt # signer au doigt, puis rasteriser
+│       │       ├── EcranSemaine.kt      # le planning des cinq jours ouvrés
+│       │       ├── DevisScreen.kt
+│       │       ├── DevisViewModel.kt
+│       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
+│       │       ├── SectionsReglages.kt  # technicien, thème, gants, tarifs
+│       │       ├── Nombres.kt           # virgule décimale à la saisie
+│       │       ├── composants/          # le vocabulaire visuel commun
 │       │       ├── EcranEquipement.kt  # photos et historique d'une machine
 │       │       ├── EquipementsViewModel.kt
 │       │       ├── PhotoChargee.kt     # décodage d'une image à la demande
@@ -92,7 +128,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │                                   # chemins du FileProvider (xml/)
 ├── gradle/libs.versions.toml       # versions centralisées
 ├── gradle/wrapper/                 # wrapper committé (jar inclus)
-└── .github/workflows/build.yml     # CI : tests, APK et Release
+├── .github/workflows/build.yml     # CI : tests, APK et Release (sur main)
+└── .github/workflows/checks.yml    # CI : tests et compilation (sur une branche)
 ```
 
 ## Architecture
@@ -153,11 +190,13 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `FrigoProApp` est la coquille : trois onglets, `Tournée`,
-  `Clients` et `Réglages`, et la barre qui en change. **Pas de graphe de
+- **`ui`** — `FrigoProApp` est la coquille : quatre onglets, `Tournée`,
+  `Clients`, `Devis` et `Réglages`, et la barre qui en change. **Pas de graphe de
   navigation** : des sections sans lien hiérarchique se passent d'une pile
   arrière, et une variable
-  `rememberSaveable` suffit. La bibliothèque de navigation s'imposera le jour
+  `rememberSaveable` suffit. Une intervention, une machine ou un devis ouverts
+  *remplacent* leur liste plutôt que de s'empiler dessus, ce qui garde une seule
+  profondeur et un simple `BackHandler`. La bibliothèque de navigation s'imposera le jour
   d'une vraie destination à empiler ou d'un lien profond. Corollaire à ne pas
   perdre de vue : la barre d'onglets pose elle-même la marge de la barre système
   du bas, donc les écrans qu'elle surmonte passent `contentWindowInsets =
@@ -200,8 +239,21 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   Enregistrer ». Les écrans suivent le motif *state hoisting* :
   `InterventionsRoute` (avec état) enveloppe `InterventionsScreen` et
   `FormulaireIntervention` (sans état, testables et prévisualisables).
-- **`ui.theme`** — thème Material 3 avec couleurs dynamiques (Material You) sur
-  Android 12+, repli sur la palette « froid » définie dans `Color.kt`.
+- **`ui.theme`** — thème Material 3 **sombre par défaut**, fidèle à la maquette.
+  Les couleurs dynamiques (Material You) ont été retirées : elles se justifiaient
+  tant que l'application n'avait pas d'identité propre, mais maintenant qu'une
+  couleur *signifie* quelque chose — l'ambre est l'intervention en cours et
+  l'alerte, le cyan est l'action et le fait accompli — laisser le fond d'écran du
+  téléphone les repeindre reviendrait à effacer une information. Les polices sont
+  **embarquées** plutôt que téléchargées : l'application revendique de fonctionner
+  hors ligne, et un fournisseur de polices la ferait démarrer en Roboto au fond
+  d'une chambre froide. `LocalCibles` porte la taille des cibles tactiles, que le
+  **mode gants** fait passer de 56 à 68 dp.
+- **`ui.composants`** — le vocabulaire visuel commun aux écrans : `Carte`,
+  `Section`, `TuileChiffre`, `Puce`, `BoutonPlein`, `BoutonCarre`, `Encart`,
+  `ChampChiffre`, `ChampRecherche`. La maquette répète partout les mêmes formes ;
+  les nommer une fois évite qu'elles divergent écran par écran, ce qui est
+  exactement ce qui arrive quand chacun recopie un `Box` et ses marges.
 
 Les dépendances sont assemblées à la main dans `ConteneurApp`, porté par
 `FrigoProApplication` et atteint par `InterventionsViewModel.Factory`. Une
@@ -251,6 +303,14 @@ Une table qui **arrive** est plus simple : `MIGRATION_5_6` crée `equipements` e
 `photos` et ajoute deux colonnes aux interventions, sans rien reconstruire. Ses
 index sont aussi obligatoires que les tables, Room validant le schéma entier à
 l'ouverture. Les fichiers image, eux, ne sont pas du ressort d'une migration.
+
+`MIGRATION_6_7` est la plus lourde du projet : elle apporte le suivi
+d'intervention, les devis et les réglages — six tables — et **reconstruit la
+table des photos**. Cette reconstruction est sa seule partie délicate : une
+photo pouvant désormais appartenir à une intervention, son `equipementId` doit
+devenir nullable, et SQLite ne sait pas relâcher un `NOT NULL` par
+`ALTER TABLE`. Elle insère aussi la ligne unique de `parametres` : sans elle,
+chaque écran devrait traiter le cas « pas encore de réglages ».
 
 `MigrationTest` recrée une base telle que la version précédente l'écrivait —
 empreinte d'identité comprise — puis l'ouvre par `FrigoProDatabase.creer` : la
@@ -302,11 +362,19 @@ l'APK : un test rouge bloque la publication.
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
 | `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique |
+| `ChronoTest` | Reprise après pause, heure d'arrivée jamais réécrite, horloge qui recule |
+| `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, silence quand la charge est inconnue |
+| `DepannageTest` | Le croisement surchauffe / sous-refroidissement, et le silence d'un relevé muet |
+| `NumerotationTest` | Le rang repart au mois, et une suppression ne réattribue pas un numéro |
+| `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
+| `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, lignes emportées avec le devis |
+| `ParametresRepositoryTest` | Valeurs par défaut sans ligne en base, ligne unique, initiales |
+| `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
-`FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao` — qui reproduisent
-le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
+`FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
+`FauxDevisDao`, `FauxParametresDao` — qui reproduisent le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
 fichiers qui tient lieu de stockage d'images. Seul `MigrationTest` a besoin d'un
 vrai SQLite, fourni par Robolectric. Rien ne décode d'image : ce qui se vérifie
 sans téléphone est isolé dans `ReductionPhoto`.
@@ -346,8 +414,17 @@ versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
 
-Le format 3 ajoute le parc de machines et leurs photos. Le format 2 avait ajouté
-la liste des types. Un fichier du format 1 ou 2 reste lisible — et, s'il est du
+Le format 4 ajoute ce qui s'est passé sur place — temps chronométré, relevés,
+mouvements de fluide, pièces posées, photos avant/après — ainsi que les devis et
+les réglages. Les réglages y entrent pour une raison précise : un technicien qui
+restaure sur un téléphone neuf et retrouve ses clients mais pas son taux horaire
+ni son attestation fluides considérera, à juste titre, que la restauration a
+échoué. Les **signatures** sont des images comme les autres et partent dans
+l'archive : les oublier rendrait des comptes-rendus non signés, ce qui vide le
+document de sa valeur.
+
+Le format 3 avait ajouté le parc de machines et leurs photos. Le format 2 avait
+ajouté la liste des types. Un fichier du format 1 ou 2 reste lisible — et, s'il est du
 JSON en clair, reconnu comme tel : la signature `PK` distingue une archive d'un
 ancien export, et rien n'oblige l'utilisateur à savoir lequel il a sous la main.
 Pour le format 1 :
@@ -419,6 +496,13 @@ elle qui signera les versions publiées sur le Play Store.
 
 ## Intégration continue
 
+Deux workflows, et la séparation est volontaire : celui de publication signe et
+publie une Release, ce qui ne doit pas arriver pour éprouver une branche en
+cours. `.github/workflows/checks.yml` ne fait donc que ce qui doit passer avant
+une fusion — compiler et lancer les tests — et ne produit rien. Il résume un
+échec aux lignes `e:` du compilateur, imprimées en dernière étape : la trace
+Gradle qui les suit fait plusieurs centaines de lignes et n'apprend rien.
+
 `.github/workflows/build.yml` s'exécute à chaque push sur `main` et sur
 déclenchement manuel (`workflow_dispatch`) : checkout, JDK Temurin 17,
 `gradle/actions/setup-gradle`, `./gradlew testDebugUnitTest`, restitution de la
@@ -437,15 +521,17 @@ dans le journal du build, où elle doit rester identique d'une build à l'autre.
 Dans l'ordre souhaité par l'utilisateur, « ce qui s'est vraiment passé sur
 place » venant en tête :
 
-- Le temps passé : heure d'arrivée, heure de départ, durée réelle.
-- Les pièces et le fluide utilisés. Le fluide frigorigène a ses obligations de
-  traçabilité.
-- Photos avant / après, prises depuis l'intervention — par opposition aux photos
-  de la machine, qui décrivent un état durable et vivent sur sa fiche.
-- Marque, modèle et numéro de série en champs sur la fiche machine, le jour où
-  commander une pièce depuis l'application aura un sens : aujourd'hui la photo de
-  la plaque les porte, au prix de ne pas être cherchables.
-- Compte-rendu client exportable, éventuellement signé.
+- **Export PDF du compte-rendu et du devis, et leur envoi au client.** Les deux
+  écrans les annoncent ; aujourd'hui le document se lit dans l'application et
+  s'emporte par la sauvegarde, mais rien ne part encore chez le client.
+- **Export du registre des fluides.** La table existe et se remplit à chaque
+  mouvement ; il manque la sortie exigible lors d'un contrôle.
+- **Optimisation des trajets** depuis la vue semaine.
+- Détecteur de fuite fixe sur la fiche machine : il double les intervalles de
+  contrôle, ce que `PeriodiciteControle` ne modélise pas encore — elle retient
+  donc toujours la périodicité la plus exigeante.
+- Plusieurs relevés horodatés par intervention : la table les accepte déjà
+  (`releveLe`), l'écran n'en montre qu'un.
 - Suppression d'un client, qui devra décider du sort du `clientId` des
   interventions passées — les types et les machines montrent une façon de le
   faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
