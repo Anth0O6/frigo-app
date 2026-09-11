@@ -67,8 +67,6 @@ data class EtatAujourdhui(
     val suite: List<LigneTournee> = emptyList(),
     val nombreDuJour: Int = 0,
     val devisEnAttente: Int = 0,
-    /** Le montant TTC des devis qui attendent une réponse. */
-    val pipelineTtc: Double = 0.0,
     /** Le chiffre d'affaires du mois : les devis acceptés, TTC. */
     val chiffreDuMois: Double = 0.0,
     val echeances: List<EcheanceFgas> = emptyList(),
@@ -165,7 +163,6 @@ class AujourdhuiViewModel(
                 suite = lignes.filter { it !== enAvant },
                 nombreDuJour = lignes.size,
                 devisEnAttente = enAttente.size,
-                pipelineTtc = enAttente.sumOf { it.totalTtc },
                 chiffreDuMois = devis
                     .filter { it.devis.statut == StatutDevis.ACCEPTE }
                     .filter { chiffre ->
