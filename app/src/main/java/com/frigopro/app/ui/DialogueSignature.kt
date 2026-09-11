@@ -15,13 +15,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -44,7 +44,6 @@ fun DialogueSignature(
 ) {
     var traces by remember { mutableStateOf<List<List<Offset>>>(emptyList()) }
     var generation by remember { mutableStateOf(0) }
-    val densite = LocalDensity.current
 
     Dialog(
         onDismissRequest = onFermer,
@@ -66,7 +65,7 @@ fun DialogueSignature(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(1.6f),
+                        .aspectRatio(RAPPORT_SIGNATURE),
                     shape = MaterialTheme.shapes.medium,
                     color = Color.White,
                 ) {
@@ -93,8 +92,13 @@ fun DialogueSignature(
                     BoutonPlein(
                         texte = "Valider",
                         onClick = {
-                            val largeur = with(densite) { 1024 }
-                            onValider(rasteriser(traces, largeur, (largeur / 1.6f).roundToInt()))
+                            onValider(
+                                rasteriser(
+                                    traces,
+                                    LARGEUR_SIGNATURE,
+                                    (LARGEUR_SIGNATURE / RAPPORT_SIGNATURE).roundToInt(),
+                                ),
+                            )
                         },
                         modifier = Modifier.weight(1.4f),
                         actif = traces.isNotEmpty(),
@@ -110,6 +114,16 @@ fun DialogueSignature(
         }
     }
 }
+
+/**
+ * Largeur de l'image produite, nettement supérieure à celle du panneau :
+ * une signature réimprimée sur un compte-rendu à la taille du téléphone
+ * serait floue.
+ */
+private const val LARGEUR_SIGNATURE = 1024
+
+/** Proportions du panneau et de l'image, qui doivent coïncider. */
+private const val RAPPORT_SIGNATURE = 1.6f
 
 /**
  * Transforme les tracés en image.

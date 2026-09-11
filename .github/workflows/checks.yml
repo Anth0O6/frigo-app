@@ -38,6 +38,17 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
+      # Temporaire : le schéma committé ne peut pas être produit hors CI, le
+      # SDK Android n'étant pas accessible depuis l'environnement de
+      # développement. Il est donc imprimé ici pour être repris au dépôt.
+      - name: Dump Room schema 7
+        if: always()
+        run: |
+          test -f app/schemas/com.frigopro.app.data.FrigoProDatabase/7.json || exit 0
+          echo "---DEBUT SCHEMA 7---"
+          gzip -c app/schemas/com.frigopro.app.data.FrigoProDatabase/7.json | base64 -w 120
+          echo "---FIN SCHEMA 7---"
+
       # Le schéma Room n'existe qu'après compilation. Le publier ici aussi rend
       # une migration vérifiable depuis une branche, sans attendre la fusion.
       - name: Publish Room schemas

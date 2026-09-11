@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.RequestQuote
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -19,12 +20,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
-/** Les deux sections de l'application. */
+/** Les quatre sections de l'application. */
 enum class Onglet(val libelle: String, val icone: ImageVector) {
     // La variante « AutoMirrored » se retourne dans une langue écrite de droite
     // à gauche, ce que `Icons.Filled` ne fait pas : c'est elle qu'il faut.
     TOURNEE("Tournée", Icons.AutoMirrored.Filled.EventNote),
     CLIENTS("Clients", Icons.Filled.Contacts),
+    DEVIS("Devis", Icons.Filled.RequestQuote),
     REGLAGES("Réglages", Icons.Filled.Tune),
 }
 
@@ -50,6 +52,7 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
             when (onglet) {
                 Onglet.TOURNEE -> InterventionsRoute()
                 Onglet.CLIENTS -> ClientsRoute()
+                Onglet.DEVIS -> DevisRoute()
                 Onglet.REGLAGES -> ReglagesRoute()
             }
         }
