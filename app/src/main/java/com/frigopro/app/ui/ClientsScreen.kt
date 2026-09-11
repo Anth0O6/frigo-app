@@ -87,6 +87,8 @@ fun ClientsRoute(
     val ouverte by machines.ouverte.collectAsStateWithLifecycle()
     val photos by machines.photosOuvertes.collectAsStateWithLifecycle()
     val historique by machines.historique.collectAsStateWithLifecycle()
+    val relevesMachine by machines.relevesMachine.collectAsStateWithLifecycle()
+    var ficheOuverte by remember { mutableStateOf(false) }
     val dialogue by machines.dialogue.collectAsStateWithLifecycle()
     val agrandie by machines.agrandie.collectAsStateWithLifecycle()
 
@@ -120,6 +122,7 @@ fun ClientsRoute(
             equipement = machineOuverte,
             photos = photos,
             historique = historique,
+            releves = relevesMachine,
             chargerPhoto = machines::charger,
             onPhotographier = { categorie ->
                 val prise = machines.preparerCapture()
@@ -134,10 +137,22 @@ fun ClientsRoute(
             },
             onAgrandir = machines::onAgrandir,
             onRenommer = { machines.onRenommerMachine(machineOuverte) },
+            onModifierFiche = { ficheOuverte = true },
             onSupprimer = { machines.onSupprimerMachine(machineOuverte) },
             onFermer = machines::onFermer,
             modifier = modifier,
         )
+
+        if (ficheOuverte) {
+            DialogueFicheMachine(
+                equipement = machineOuverte,
+                onValider = {
+                    machines.onEnregistrerFiche(it)
+                    ficheOuverte = false
+                },
+                onFermer = { ficheOuverte = false },
+            )
+        }
     } else {
         ClientsScreen(
             clients = clients,

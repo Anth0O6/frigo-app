@@ -32,22 +32,32 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      # La sortie est capturée pour qu'un échec se résume aux lignes `e:` du
+      # compilateur : la trace Gradle qui suit fait plusieurs centaines de
+      # lignes et n'apprend rien sur une erreur de compilation.
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest 2>&1 | tee "$RUNNER_TEMP/tests.log" || CODE=$?
+          grep -E '^e: |^[A-Za-z].*FAILED$' "$RUNNER_TEMP/tests.log" | head -60 > "$RUNNER_TEMP/erreurs.txt" || true
+          if [ -s "$RUNNER_TEMP/erreurs.txt" ]; then
+            echo "::group::Erreurs"
+            cat "$RUNNER_TEMP/erreurs.txt"
+            echo "::endgroup::"
+          fi
+          exit "${CODE:-0}"
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      # Temporaire : le schéma committé ne peut pas être produit hors CI, le
-      # SDK Android n'étant pas accessible depuis l'environnement de
-      # développement. Il est donc imprimé ici pour être repris au dépôt.
-      - name: Dump Room schema 7
-        if: always()
         run: |
-          test -f app/schemas/com.frigopro.app.data.FrigoProDatabase/7.json || exit 0
-          echo "---DEBUT SCHEMA 7---"
-          gzip -c app/schemas/com.frigopro.app.data.FrigoProDatabase/7.json | base64 -w 120
-          echo "---FIN SCHEMA 7---"
+          set -o pipefail
+          ./gradlew assembleDebug 2>&1 | tee "$RUNNER_TEMP/build.log" || CODE=$?
+          grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -60 > "$RUNNER_TEMP/erreurs.txt" || true
+          if [ -s "$RUNNER_TEMP/erreurs.txt" ]; then
+            echo "::group::Erreurs"
+            cat "$RUNNER_TEMP/erreurs.txt"
+            echo "::endgroup::"
+          fi
+          exit "${CODE:-0}"
 
       # Le schéma Room n'existe qu'après compilation. Le publier ici aussi rend
       # une migration vérifiable depuis une branche, sans attendre la fusion.

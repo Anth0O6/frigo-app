@@ -1,0 +1,845 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "c820db45f9ff53441090ae6e040433ab",
+    "entities": [
+      {
+        "tableName": "interventions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT NULL, `typeId` TEXT, `typeLibelle` TEXT NOT NULL, `clientId` TEXT, `equipementId` TEXT, `equipementNom` TEXT NOT NULL, `statut` TEXT NOT NULL, `notes` TEXT NOT NULL, `urgente` INTEGER NOT NULL, `numero` TEXT NOT NULL, `signatureFichier` TEXT, `signeeLe` INTEGER, `modifieLe` INTEGER NOT NULL, `arriveeLe` INTEGER, `demarreLe` INTEGER, `cumuleS` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heure",
+            "columnName": "heure",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "client",
+            "columnName": "client",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ville",
+            "columnName": "ville",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "typeId",
+            "columnName": "typeId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "typeLibelle",
+            "columnName": "typeLibelle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientId",
+            "columnName": "clientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "equipementId",
+            "columnName": "equipementId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "equipementNom",
+            "columnName": "equipementNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "statut",
+            "columnName": "statut",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "urgente",
+            "columnName": "urgente",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signatureFichier",
+            "columnName": "signatureFichier",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "signeeLe",
+            "columnName": "signeeLe",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chrono.arriveeLe",
+            "columnName": "arriveeLe",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "chrono.demarreLe",
+            "columnName": "demarreLe",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "chrono.cumuleS",
+            "columnName": "cumuleS",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_interventions_date",
+            "unique": false,
+            "columnNames": [
+              "date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `${TABLE_NAME}` (`date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "clients",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `ville` TEXT NOT NULL, `adresse` TEXT NOT NULL, `telephone` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nom",
+            "columnName": "nom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ville",
+            "columnName": "ville",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "adresse",
+            "columnName": "adresse",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "telephone",
+            "columnName": "telephone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "types_intervention",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `libelle` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "libelle",
+            "columnName": "libelle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "equipements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `clientId` TEXT NOT NULL, `nom` TEXT NOT NULL, `marque` TEXT NOT NULL, `modele` TEXT NOT NULL, `numeroSerie` TEXT NOT NULL, `fluide` TEXT NOT NULL, `chargeKg` REAL, `misEnServiceLe` TEXT, `dernierControleLe` TEXT, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientId",
+            "columnName": "clientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nom",
+            "columnName": "nom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "marque",
+            "columnName": "marque",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modele",
+            "columnName": "modele",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numeroSerie",
+            "columnName": "numeroSerie",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fluide",
+            "columnName": "fluide",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chargeKg",
+            "columnName": "chargeKg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "misEnServiceLe",
+            "columnName": "misEnServiceLe",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dernierControleLe",
+            "columnName": "dernierControleLe",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_equipements_clientId",
+            "unique": false,
+            "columnNames": [
+              "clientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_equipements_clientId` ON `${TABLE_NAME}` (`clientId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "photos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `equipementId` TEXT, `interventionId` TEXT, `categorie` TEXT NOT NULL, `fichier` TEXT NOT NULL, `legende` TEXT NOT NULL, `priseLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "equipementId",
+            "columnName": "equipementId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "interventionId",
+            "columnName": "interventionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "categorie",
+            "columnName": "categorie",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fichier",
+            "columnName": "fichier",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "legende",
+            "columnName": "legende",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priseLe",
+            "columnName": "priseLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_photos_equipementId",
+            "unique": false,
+            "columnNames": [
+              "equipementId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photos_equipementId` ON `${TABLE_NAME}` (`equipementId`)"
+          },
+          {
+            "name": "index_photos_interventionId",
+            "unique": false,
+            "columnNames": [
+              "interventionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photos_interventionId` ON `${TABLE_NAME}` (`interventionId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "releves",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `equipementId` TEXT, `bpBar` REAL, `hpBar` REAL, `surchauffeK` REAL, `sousRefroidissementK` REAL, `releveLe` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "interventionId",
+            "columnName": "interventionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "equipementId",
+            "columnName": "equipementId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bpBar",
+            "columnName": "bpBar",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "hpBar",
+            "columnName": "hpBar",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "surchauffeK",
+            "columnName": "surchauffeK",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "sousRefroidissementK",
+            "columnName": "sousRefroidissementK",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "releveLe",
+            "columnName": "releveLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_releves_interventionId",
+            "unique": false,
+            "columnNames": [
+              "interventionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_releves_interventionId` ON `${TABLE_NAME}` (`interventionId`)"
+          },
+          {
+            "name": "index_releves_equipementId",
+            "unique": false,
+            "columnNames": [
+              "equipementId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_releves_equipementId` ON `${TABLE_NAME}` (`equipementId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "mouvements_fluide",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `equipementId` TEXT, `fluide` TEXT NOT NULL, `sens` TEXT NOT NULL, `masseKg` REAL NOT NULL, `le` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "interventionId",
+            "columnName": "interventionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "equipementId",
+            "columnName": "equipementId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fluide",
+            "columnName": "fluide",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sens",
+            "columnName": "sens",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "masseKg",
+            "columnName": "masseKg",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "le",
+            "columnName": "le",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_mouvements_fluide_interventionId",
+            "unique": false,
+            "columnNames": [
+              "interventionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_interventionId` ON `${TABLE_NAME}` (`interventionId`)"
+          },
+          {
+            "name": "index_mouvements_fluide_equipementId",
+            "unique": false,
+            "columnNames": [
+              "equipementId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_equipementId` ON `${TABLE_NAME}` (`equipementId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pieces_posees",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `designation` TEXT NOT NULL, `reference` TEXT NOT NULL, `quantite` REAL NOT NULL, `prixUnitaire` REAL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "interventionId",
+            "columnName": "interventionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "designation",
+            "columnName": "designation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reference",
+            "columnName": "reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixUnitaire",
+            "columnName": "prixUnitaire",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pieces_posees_interventionId",
+            "unique": false,
+            "columnNames": [
+              "interventionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pieces_posees_interventionId` ON `${TABLE_NAME}` (`interventionId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "devis",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `numero` TEXT NOT NULL, `clientId` TEXT, `clientNom` TEXT NOT NULL, `equipementId` TEXT, `equipementNom` TEXT NOT NULL, `objet` TEXT NOT NULL, `statut` TEXT NOT NULL, `tauxTva` REAL NOT NULL, `creeLe` TEXT, `valableJusquau` TEXT, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientId",
+            "columnName": "clientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "clientNom",
+            "columnName": "clientNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "equipementId",
+            "columnName": "equipementId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "equipementNom",
+            "columnName": "equipementNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "objet",
+            "columnName": "objet",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "statut",
+            "columnName": "statut",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tauxTva",
+            "columnName": "tauxTva",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creeLe",
+            "columnName": "creeLe",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "valableJusquau",
+            "columnName": "valableJusquau",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_devis_clientId",
+            "unique": false,
+            "columnNames": [
+              "clientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_devis_clientId` ON `${TABLE_NAME}` (`clientId`)"
+          },
+          {
+            "name": "index_devis_equipementId",
+            "unique": false,
+            "columnNames": [
+              "equipementId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_devis_equipementId` ON `${TABLE_NAME}` (`equipementId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "lignes_devis",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `devisId` TEXT NOT NULL, `designation` TEXT NOT NULL, `quantite` REAL NOT NULL, `unite` TEXT NOT NULL, `prixUnitaire` REAL NOT NULL, `rang` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "devisId",
+            "columnName": "devisId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "designation",
+            "columnName": "designation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unite",
+            "columnName": "unite",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixUnitaire",
+            "columnName": "prixUnitaire",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rang",
+            "columnName": "rang",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_lignes_devis_devisId",
+            "unique": false,
+            "columnNames": [
+              "devisId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_devis_devisId` ON `${TABLE_NAME}` (`devisId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "parametres",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `technicien` TEXT NOT NULL, `attestation` TEXT NOT NULL, `themeSombre` INTEGER NOT NULL, `modeGants` INTEGER NOT NULL, `chronoAuto` INTEGER NOT NULL, `tauxHoraire` REAL NOT NULL, `tauxTva` REAL NOT NULL, `derniereSauvegardeLe` INTEGER, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "technicien",
+            "columnName": "technicien",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attestation",
+            "columnName": "attestation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "themeSombre",
+            "columnName": "themeSombre",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modeGants",
+            "columnName": "modeGants",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chronoAuto",
+            "columnName": "chronoAuto",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tauxHoraire",
+            "columnName": "tauxHoraire",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tauxTva",
+            "columnName": "tauxTva",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "derniereSauvegardeLe",
+            "columnName": "derniereSauvegardeLe",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "modifieLe",
+            "columnName": "modifieLe",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c820db45f9ff53441090ae6e040433ab')"
+    ]
+  }
+}
