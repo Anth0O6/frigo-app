@@ -1,5 +1,6 @@
 package com.frigopro.app.data
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -40,6 +41,17 @@ import java.util.UUID
  *   six mois doit continuer d'afficher même si le client a été renommé.
  * @param statut avancement dans la journée.
  * @param notes observations relevées sur place.
+ * @param urgente intervention à traiter en priorité. Distincte du statut :
+ *   une urgence reste une urgence une fois terminée, et c'est ce qui permet
+ *   de compter les urgences d'une journée après coup.
+ * @param chrono temps réellement passé sur place. Voir [Chrono] : le calcul
+ *   vit là, la ligne n'en porte que les trois horodatages.
+ * @param numero référence du compte-rendu, de la forme `INT-2405-018`. Vide
+ *   tant qu'aucun compte-rendu n'a été établi : une intervention planifiée
+ *   puis annulée n'a aucune raison de consommer un numéro.
+ * @param signatureFichier image de la signature du client, rangée comme les
+ *   photos et nommée de la même façon. `null` tant que rien n'est signé.
+ * @param signeeLe horodatage de la signature, qui vaut acceptation.
  * @param modifieLe date de dernière écriture, posée par le dépôt. Inutilisée
  *   en v1, mais c'est elle qui permettra de départager deux versions d'une
  *   même ligne lors d'une synchronisation.
@@ -61,6 +73,11 @@ data class Intervention(
     val equipementNom: String = "",
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
+    val urgente: Boolean = false,
+    @Embedded val chrono: Chrono = Chrono(),
+    val numero: String = "",
+    val signatureFichier: String? = null,
+    val signeeLe: Instant? = null,
     val modifieLe: Instant = Instant.EPOCH,
 )
 

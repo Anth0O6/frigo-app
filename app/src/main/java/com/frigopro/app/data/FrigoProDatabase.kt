@@ -20,8 +20,14 @@ import androidx.room.TypeConverters
         TypeIntervention::class,
         Equipement::class,
         Photo::class,
+        Releve::class,
+        MouvementFluide::class,
+        PiecePosee::class,
+        Devis::class,
+        LigneDevis::class,
+        Parametres::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -34,6 +40,12 @@ abstract class FrigoProDatabase : RoomDatabase() {
     abstract fun typeInterventionDao(): TypeInterventionDao
 
     abstract fun equipementDao(): EquipementDao
+
+    abstract fun suiviDao(): SuiviDao
+
+    abstract fun devisDao(): DevisDao
+
+    abstract fun parametresDao(): ParametresDao
 
     companion object {
 
@@ -51,6 +63,7 @@ abstract class FrigoProDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
+                    MIGRATION_6_7,
                 )
                 .build()
     }

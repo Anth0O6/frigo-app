@@ -20,6 +20,9 @@ data class Export(
     val clients: Int,
     val equipements: Int,
     val interventions: Int,
+    val releves: Int = 0,
+    val mouvementsFluide: Int = 0,
+    val devis: Int = 0,
 )
 
 /** Issue d'une restauration. */
@@ -31,6 +34,9 @@ sealed interface ResultatRestauration {
         val equipements: Int,
         val photos: Int,
         val interventions: Int,
+        val releves: Int = 0,
+        val mouvementsFluide: Int = 0,
+        val devis: Int = 0,
     ) : ResultatRestauration
 
     /** Fichier écrit par une version plus récente de l'application. */
@@ -58,6 +64,9 @@ class SauvegardeRepository(
     private val clientDao: ClientDao,
     private val typeDao: TypeInterventionDao,
     private val equipementDao: EquipementDao,
+    private val suiviDao: SuiviDao,
+    private val devisDao: DevisDao,
+    private val parametresDao: ParametresDao,
     private val maintenant: () -> Instant = { Instant.now() },
 ) {
 
@@ -67,6 +76,12 @@ class SauvegardeRepository(
         val equipements = equipementDao.tous()
         val photos = equipementDao.toutesLesPhotos()
         val interventions = interventionDao.toutes()
+        val releves = suiviDao.tousLesReleves()
+        val mouvements = suiviDao.tousLesMouvements()
+        val pieces = suiviDao.toutesLesPieces()
+        val devis = devisDao.tous()
+        val lignesDevis = devisDao.toutesLesLignes()
+        val parametres = parametresDao.lire()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -75,15 +90,29 @@ class SauvegardeRepository(
             equipements = equipements.map { it.versSauvegarde() },
             photos = photos.map { it.versSauvegarde() },
             interventions = interventions.map { it.versSauvegarde() },
+            releves = releves.map { it.versSauvegarde() },
+            mouvementsFluide = mouvements.map { it.versSauvegarde() },
+            pieces = pieces.map { it.versSauvegarde() },
+            devis = devis.map { it.versSauvegarde() },
+            lignesDevis = lignesDevis.map { it.versSauvegarde() },
+            parametres = parametres?.versSauvegarde(),
         )
+
+        // Les signatures sont des images comme les autres, rangées au même
+        // endroit : les oublier ici rendrait des comptes-rendus non signés à
+        // la restauration, ce qui vide le document de sa valeur.
+        val signatures = interventions.mapNotNull { it.signatureFichier }
 
         return Export(
             contenu = JSON_SAUVEGARDE.encodeToString(sauvegarde),
-            fichiersPhotos = photos.map { it.fichier },
+            fichiersPhotos = photos.map { it.fichier } + signatures,
             types = types.size,
             clients = clients.size,
             equipements = equipements.size,
             interventions = interventions.size,
+            releves = releves.size,
+            mouvementsFluide = mouvements.size,
+            devis = devis.size,
         )
     }
 
@@ -104,6 +133,10 @@ class SauvegardeRepository(
         if (interventions.any { it == null }) return ResultatRestauration.Illisible
         val photos = sauvegarde.photos.map { it.versPhoto() }
         if (photos.any { it == null }) return ResultatRestauration.Illisible
+        val mouvements = sauvegarde.mouvementsFluide.map { it.versMouvement() }
+        if (mouvements.any { it == null }) return ResultatRestauration.Illisible
+        val devis = sauvegarde.devis.map { it.versDevis() }
+        if (devis.any { it == null }) return ResultatRestauration.Illisible
 
         // Les types, le carnet puis le parc d'abord : une intervention ne doit
         // jamais désigner une ligne que la base ne contient pas encore.
@@ -116,12 +149,26 @@ class SauvegardeRepository(
         equipementDao.enregistrerPhotos(photos.filterNotNull())
         interventionDao.enregistrerToutes(interventions.filterNotNull())
 
+        // Puis ce qui s'accroche aux interventions, une fois celles-ci posées.
+        val releves = sauvegarde.releves.map { it.versReleve() }
+        val pieces = sauvegarde.pieces.map { it.versPiece() }
+        val lignes = sauvegarde.lignesDevis.map { it.versLigne() }
+        suiviDao.enregistrerReleves(releves)
+        suiviDao.enregistrerMouvements(mouvements.filterNotNull())
+        suiviDao.enregistrerPieces(pieces)
+        devisDao.enregistrerTous(devis.filterNotNull())
+        devisDao.enregistrerLignes(lignes)
+        sauvegarde.parametres?.let { parametresDao.enregistrer(it.versParametres()) }
+
         return ResultatRestauration.Reussie(
             types = types.size,
             clients = clients.size,
             equipements = equipements.size,
             photos = photos.size,
             interventions = interventions.size,
+            releves = releves.size,
+            mouvementsFluide = mouvements.size,
+            devis = devis.size,
         )
     }
 }

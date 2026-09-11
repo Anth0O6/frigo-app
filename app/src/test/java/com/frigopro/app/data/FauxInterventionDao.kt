@@ -28,6 +28,18 @@ class FauxInterventionDao : InterventionDao {
                 .sortedWith(compareByDescending<Intervention> { it.date }.thenByDescending { it.heure })
         }
 
+    override fun observer(id: String): Flow<Intervention?> =
+        lignes.map { liste -> liste.firstOrNull { it.id == id } }
+
+    override fun observerPeriode(debut: LocalDate, fin: LocalDate): Flow<List<Intervention>> =
+        lignes.map { liste ->
+            liste.filter { it.date >= debut && it.date <= fin }
+                .sortedWith(compareBy<Intervention> { it.date }.thenBy { it.heure })
+        }
+
+    override suspend fun numerosAttribues(): List<String> =
+        lignes.value.map { it.numero }.filter { it.isNotEmpty() }
+
     override suspend fun toutes(): List<Intervention> = lignes.value
 
     override suspend fun enregistrer(intervention: Intervention) {

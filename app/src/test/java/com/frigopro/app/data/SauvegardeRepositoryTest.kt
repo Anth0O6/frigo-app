@@ -19,8 +19,19 @@ class SauvegardeRepositoryTest {
     private val daoClients = FauxClientDao()
     private val daoTypes = FauxTypeInterventionDao(daoInterventions)
     private val daoEquipements = FauxEquipementDao(daoInterventions)
+    private val daoSuivi = FauxSuiviDao(daoInterventions)
+    private val daoDevis = FauxDevisDao()
+    private val daoParametres = FauxParametresDao()
     private val repository =
-        SauvegardeRepository(daoInterventions, daoClients, daoTypes, daoEquipements)
+        SauvegardeRepository(
+            daoInterventions,
+            daoClients,
+            daoTypes,
+            daoEquipements,
+            daoSuivi,
+            daoDevis,
+            daoParametres,
+        )
 
     @Test
     fun `ce qui est exporte revient identique`() = runTest {
@@ -63,6 +74,9 @@ class SauvegardeRepositoryTest {
             autreClients,
             autreTypes,
             FauxEquipementDao(autreInterventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
         ).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())
@@ -87,6 +101,9 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             FauxTypeInterventionDao(autreInterventions),
             autreEquipements,
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
         ).restaurer(contenu)
 
         assertEquals(EQUIPEMENT, autreEquipements.contenu.single())
@@ -125,6 +142,9 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             FauxTypeInterventionDao(interventions),
             equipements,
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -252,9 +272,15 @@ class SauvegardeRepositoryTest {
         val viergeClients = FauxClientDao()
         val viergeTypes = FauxTypeInterventionDao(viergeInterventions)
         val viergeEquipements = FauxEquipementDao(viergeInterventions)
-        val resultat =
-            SauvegardeRepository(viergeInterventions, viergeClients, viergeTypes, viergeEquipements)
-                .restaurer(contenu)
+        val resultat = SauvegardeRepository(
+            viergeInterventions,
+            viergeClients,
+            viergeTypes,
+            viergeEquipements,
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+        ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
         assertTrue("rien ne doit être écrit avant la vérification", viergeClients.contenu.isEmpty())
@@ -297,6 +323,9 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             autreTypes,
             FauxEquipementDao(autreInterventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
         ).restaurer(export.contenu)
 
         assertEquals(2, export.types)
@@ -386,6 +415,9 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             FauxTypeInterventionDao(interventions),
             FauxEquipementDao(interventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
         )
     }
 

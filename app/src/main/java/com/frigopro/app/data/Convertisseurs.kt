@@ -52,4 +52,16 @@ object Convertisseurs {
 
     @TypeConverter
     fun versStatut(valeur: String?): StatutIntervention? = valeur?.let(StatutIntervention::valueOf)
+
+    @TypeConverter
+    fun depuisSensFluide(sens: SensFluide?): String? = sens?.name
+
+    @TypeConverter
+    fun versSensFluide(valeur: String?): SensFluide? = valeur?.let(SensFluide::valueOf)
+
+    @TypeConverter
+    fun depuisStatutDevis(statut: StatutDevis?): String? = statut?.name
+
+    @TypeConverter
+    fun versStatutDevis(valeur: String?): StatutDevis? = valeur?.let(StatutDevis::valueOf)
 }

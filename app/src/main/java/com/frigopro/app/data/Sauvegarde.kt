@@ -28,6 +28,12 @@ data class Sauvegarde(
     val equipements: List<EquipementSauvegarde> = emptyList(),
     val photos: List<PhotoSauvegarde> = emptyList(),
     val interventions: List<InterventionSauvegarde> = emptyList(),
+    val releves: List<ReleveSauvegarde> = emptyList(),
+    val mouvementsFluide: List<MouvementFluideSauvegarde> = emptyList(),
+    val pieces: List<PiecePoseeSauvegarde> = emptyList(),
+    val devis: List<DevisSauvegarde> = emptyList(),
+    val lignesDevis: List<LigneDevisSauvegarde> = emptyList(),
+    val parametres: ParametresSauvegarde? = null,
 )
 
 @Serializable
@@ -52,6 +58,13 @@ data class EquipementSauvegarde(
     val id: String,
     val clientId: String,
     val nom: String,
+    val marque: String = "",
+    val modele: String = "",
+    val numeroSerie: String = "",
+    val fluide: String = "",
+    val chargeKg: Double? = null,
+    val misEnServiceLe: String? = null,
+    val dernierControleLe: String? = null,
     val modifieLe: Long = 0L,
 )
 
@@ -63,9 +76,12 @@ data class EquipementSauvegarde(
 @Serializable
 data class PhotoSauvegarde(
     val id: String,
-    val equipementId: String,
+    /** Nullable depuis le format 4 : une photo peut appartenir à une intervention. */
+    val equipementId: String? = null,
+    val interventionId: String? = null,
     val categorie: String,
     val fichier: String,
+    val legende: String = "",
     val priseLe: Long = 0L,
 )
 
@@ -89,18 +105,118 @@ data class InterventionSauvegarde(
     val equipementId: String? = null,
     val equipementNom: String = "",
     val notes: String = "",
+    val urgente: Boolean = false,
+    val arriveeLe: Long? = null,
+    val demarreLe: Long? = null,
+    val cumuleS: Long = 0L,
+    val numero: String = "",
+    val signatureFichier: String? = null,
+    val signeeLe: Long? = null,
+    val modifieLe: Long = 0L,
+)
+
+/** Un relevé frigorifique. Les quatre grandeurs peuvent manquer. */
+@Serializable
+data class ReleveSauvegarde(
+    val id: String,
+    val interventionId: String,
+    val equipementId: String? = null,
+    val bpBar: Double? = null,
+    val hpBar: Double? = null,
+    val surchauffeK: Double? = null,
+    val sousRefroidissementK: Double? = null,
+    val releveLe: Long = 0L,
+    val modifieLe: Long = 0L,
+)
+
+/**
+ * Un mouvement de fluide.
+ *
+ * C'est la ligne la plus précieuse du fichier : le registre des fluides est
+ * une obligation réglementaire, et il ne se reconstitue pas de mémoire.
+ */
+@Serializable
+data class MouvementFluideSauvegarde(
+    val id: String,
+    val interventionId: String,
+    val equipementId: String? = null,
+    val fluide: String,
+    val sens: String,
+    val masseKg: Double,
+    val le: Long = 0L,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class PiecePoseeSauvegarde(
+    val id: String,
+    val interventionId: String,
+    val designation: String,
+    val reference: String = "",
+    val quantite: Double = 1.0,
+    val prixUnitaire: Double? = null,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class DevisSauvegarde(
+    val id: String,
+    val numero: String = "",
+    val clientId: String? = null,
+    val clientNom: String = "",
+    val equipementId: String? = null,
+    val equipementNom: String = "",
+    val objet: String = "",
+    val statut: String,
+    val tauxTva: Double = 20.0,
+    val creeLe: String? = null,
+    val valableJusquau: String? = null,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class LigneDevisSauvegarde(
+    val id: String,
+    val devisId: String,
+    val designation: String,
+    val quantite: Double = 1.0,
+    val unite: String = "",
+    val prixUnitaire: Double = 0.0,
+    val rang: Int = 0,
+)
+
+/**
+ * Les réglages.
+ *
+ * Sauvegardés comme le reste : un technicien qui restaure sur un téléphone
+ * neuf et retrouve ses clients mais pas son taux horaire ni son attestation
+ * considérera, à juste titre, que la restauration a échoué.
+ */
+@Serializable
+data class ParametresSauvegarde(
+    val technicien: String = "",
+    val attestation: String = "",
+    val themeSombre: Boolean = true,
+    val modeGants: Boolean = false,
+    val chronoAuto: Boolean = false,
+    val tauxHoraire: Double = 0.0,
+    val tauxTva: Double = 20.0,
     val modifieLe: Long = 0L,
 )
 
 /**
  * Version courante du format de fichier.
  *
- * Le format 3 ajoute le parc de machines et leurs photos, et sort du seul
- * fichier texte : la sauvegarde est désormais une archive (voir
+ * Le format 4 ajoute ce qui s'est passé sur place — temps chronométré,
+ * relevés, mouvements de fluide, pièces posées, photos avant/après — ainsi que
+ * les devis et les réglages.
+ *
+ * Le format 3 avait ajouté le parc de machines et leurs photos, et fait sortir
+ * la sauvegarde du seul fichier texte : c'est désormais une archive (voir
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 3
+const val FORMAT_COURANT: Int = 4
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -155,14 +271,23 @@ internal fun Equipement.versSauvegarde(): EquipementSauvegarde = EquipementSauve
     id = id,
     clientId = clientId,
     nom = nom,
+    marque = marque,
+    modele = modele,
+    numeroSerie = numeroSerie,
+    fluide = fluide,
+    chargeKg = chargeKg,
+    misEnServiceLe = misEnServiceLe?.format(FORMAT_DATE),
+    dernierControleLe = dernierControleLe?.format(FORMAT_DATE),
     modifieLe = modifieLe.toEpochMilli(),
 )
 
 internal fun Photo.versSauvegarde(): PhotoSauvegarde = PhotoSauvegarde(
     id = id,
     equipementId = equipementId,
+    interventionId = interventionId,
     categorie = categorie.name,
     fichier = fichier,
+    legende = legende,
     priseLe = priseLe.toEpochMilli(),
 )
 
@@ -179,6 +304,13 @@ internal fun Intervention.versSauvegarde(): InterventionSauvegarde = Interventio
     equipementId = equipementId,
     equipementNom = equipementNom,
     notes = notes,
+    urgente = urgente,
+    arriveeLe = chrono.arriveeLe?.toEpochMilli(),
+    demarreLe = chrono.demarreLe?.toEpochMilli(),
+    cumuleS = chrono.cumuleS,
+    numero = numero,
+    signatureFichier = signatureFichier,
+    signeeLe = signeeLe?.toEpochMilli(),
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -201,6 +333,13 @@ internal fun EquipementSauvegarde.versEquipement(): Equipement = Equipement(
     id = id,
     clientId = clientId,
     nom = nom,
+    marque = marque,
+    modele = modele,
+    numeroSerie = numeroSerie,
+    fluide = fluide,
+    chargeKg = chargeKg,
+    misEnServiceLe = misEnServiceLe?.let { jourOuNull(it) },
+    dernierControleLe = dernierControleLe?.let { jourOuNull(it) },
     modifieLe = Instant.ofEpochMilli(modifieLe),
 )
 
@@ -217,8 +356,10 @@ internal fun PhotoSauvegarde.versPhoto(): Photo? {
     return Photo(
         id = id,
         equipementId = equipementId,
+        interventionId = interventionId,
         categorie = rangement,
         fichier = nom,
+        legende = legende,
         priseLe = Instant.ofEpochMilli(priseLe),
     )
 }
@@ -250,6 +391,15 @@ internal fun InterventionSauvegarde.versIntervention(): Intervention? {
         equipementNom = equipementNom,
         statut = avancement,
         notes = notes,
+        urgente = urgente,
+        chrono = Chrono(
+            arriveeLe = arriveeLe?.let(Instant::ofEpochMilli),
+            demarreLe = demarreLe?.let(Instant::ofEpochMilli),
+            cumuleS = cumuleS,
+        ),
+        numero = numero,
+        signatureFichier = signatureFichier?.let { StockagePhotos.nomSur(it) },
+        signeeLe = signeeLe?.let(Instant::ofEpochMilli),
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }
@@ -263,3 +413,166 @@ private fun InterventionSauvegarde.intituleHistorique(): String {
     val ancien = typePanne ?: return ""
     return LIBELLES_HISTORIQUES[ancien] ?: ancien
 }
+
+// — Les tables arrivées avec le format 4 ————————————————————————————————————
+
+internal fun Releve.versSauvegarde(): ReleveSauvegarde = ReleveSauvegarde(
+    id = id,
+    interventionId = interventionId,
+    equipementId = equipementId,
+    bpBar = bpBar,
+    hpBar = hpBar,
+    surchauffeK = surchauffeK,
+    sousRefroidissementK = sousRefroidissementK,
+    releveLe = releveLe.toEpochMilli(),
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun ReleveSauvegarde.versReleve(): Releve = Releve(
+    id = id,
+    interventionId = interventionId,
+    equipementId = equipementId,
+    bpBar = bpBar,
+    hpBar = hpBar,
+    surchauffeK = surchauffeK,
+    sousRefroidissementK = sousRefroidissementK,
+    releveLe = Instant.ofEpochMilli(releveLe),
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+internal fun MouvementFluide.versSauvegarde(): MouvementFluideSauvegarde = MouvementFluideSauvegarde(
+    id = id,
+    interventionId = interventionId,
+    equipementId = equipementId,
+    fluide = fluide,
+    sens = sens.name,
+    masseKg = masseKg,
+    le = le.toEpochMilli(),
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/**
+ * `null` pour un sens inconnu : comme un statut, c'est une valeur fixe de
+ * l'application et non du texte libre, et le fichier entier sera refusé. Sur
+ * une ligne de registre, deviner serait particulièrement malvenu — confondre
+ * un ajout et une récupération inverse le bilan d'une installation.
+ */
+internal fun MouvementFluideSauvegarde.versMouvement(): MouvementFluide? {
+    val direction = SensFluide.entries.firstOrNull { it.name == sens } ?: return null
+    return MouvementFluide(
+        id = id,
+        interventionId = interventionId,
+        equipementId = equipementId,
+        fluide = fluide,
+        sens = direction,
+        masseKg = masseKg,
+        le = Instant.ofEpochMilli(le),
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun PiecePosee.versSauvegarde(): PiecePoseeSauvegarde = PiecePoseeSauvegarde(
+    id = id,
+    interventionId = interventionId,
+    designation = designation,
+    reference = reference,
+    quantite = quantite,
+    prixUnitaire = prixUnitaire,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun PiecePoseeSauvegarde.versPiece(): PiecePosee = PiecePosee(
+    id = id,
+    interventionId = interventionId,
+    designation = designation,
+    reference = reference,
+    quantite = quantite,
+    prixUnitaire = prixUnitaire,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+internal fun Devis.versSauvegarde(): DevisSauvegarde = DevisSauvegarde(
+    id = id,
+    numero = numero,
+    clientId = clientId,
+    clientNom = clientNom,
+    equipementId = equipementId,
+    equipementNom = equipementNom,
+    objet = objet,
+    statut = statut.name,
+    tauxTva = tauxTva,
+    creeLe = creeLe?.format(FORMAT_DATE),
+    valableJusquau = valableJusquau?.format(FORMAT_DATE),
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/** `null` pour un statut inconnu, même raison que partout ailleurs. */
+internal fun DevisSauvegarde.versDevis(): Devis? {
+    val etat = StatutDevis.entries.firstOrNull { it.name == statut } ?: return null
+    return Devis(
+        id = id,
+        numero = numero,
+        clientId = clientId,
+        clientNom = clientNom,
+        equipementId = equipementId,
+        equipementNom = equipementNom,
+        objet = objet,
+        statut = etat,
+        tauxTva = tauxTva,
+        creeLe = creeLe?.let { jourOuNull(it) },
+        valableJusquau = valableJusquau?.let { jourOuNull(it) },
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun LigneDevis.versSauvegarde(): LigneDevisSauvegarde = LigneDevisSauvegarde(
+    id = id,
+    devisId = devisId,
+    designation = designation,
+    quantite = quantite,
+    unite = unite,
+    prixUnitaire = prixUnitaire,
+    rang = rang,
+)
+
+internal fun LigneDevisSauvegarde.versLigne(): LigneDevis = LigneDevis(
+    id = id,
+    devisId = devisId,
+    designation = designation,
+    quantite = quantite,
+    unite = unite,
+    prixUnitaire = prixUnitaire,
+    rang = rang,
+)
+
+internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauvegarde(
+    technicien = technicien,
+    attestation = attestation,
+    themeSombre = themeSombre,
+    modeGants = modeGants,
+    chronoAuto = chronoAuto,
+    tauxHoraire = tauxHoraire,
+    tauxTva = tauxTva,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun ParametresSauvegarde.versParametres(): Parametres = Parametres(
+    technicien = technicien,
+    attestation = attestation,
+    themeSombre = themeSombre,
+    modeGants = modeGants,
+    chronoAuto = chronoAuto,
+    tauxHoraire = tauxHoraire,
+    tauxTva = tauxTva,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+/**
+ * Une date du fichier, ou `null` si elle est mal formée.
+ *
+ * Contrairement à la date d'une intervention, ces dates-là sont accessoires —
+ * une mise en service inconnue n'empêche pas de restaurer une machine — et
+ * une valeur illisible se perd plutôt que de faire refuser toute l'archive.
+ */
+private fun jourOuNull(valeur: String): LocalDate? =
+    runCatching { LocalDate.parse(valeur, FORMAT_DATE) }.getOrNull()

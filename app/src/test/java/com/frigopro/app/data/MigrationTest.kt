@@ -333,9 +333,95 @@ class MigrationTest {
         }
     }
 
+    /**
+     * Le cas le plus délicat du projet : la table des photos est **détruite et
+     * reconstruite** pour que `equipementId` puisse devenir nullable, SQLite ne
+     * sachant pas relâcher un `NOT NULL` par `ALTER TABLE`.
+     *
+     * Deux choses doivent survivre à l'opération — les photos déjà prises, et
+     * les index, qui suivent la table détruite. Room refuse d'ouvrir une base
+     * dont un index manque, si bien que l'ouverture par [FrigoProDatabase.creer]
+     * vérifie le second point à elle seule.
+     */
+    @Test
+    fun `une base version 6 recoit le suivi d'intervention sans perdre ses photos`() {
+        creerBase(
+            version = 6,
+            empreinte = EMPREINTE_V6,
+            ddl = listOf(
+                DDL_INTERVENTIONS_V6,
+                DDL_INDEX_DATE,
+                DDL_CLIENTS_V6,
+                DDL_TYPES_V6,
+                DDL_EQUIPEMENTS_V6,
+                DDL_INDEX_EQUIPEMENTS_CLIENT,
+                DDL_PHOTOS_V6,
+                DDL_INDEX_PHOTOS_EQUIPEMENT,
+            ),
+            insertions = listOf(
+                "INSERT INTO `interventions` " +
+                    "(`id`, `date`, `heure`, `client`, `ville`, `typeId`, `typeLibelle`, " +
+                    "`clientId`, `equipementId`, `equipementNom`, `statut`, `notes`, `modifieLe`) " +
+                    "VALUES ('id-1', '2026-03-09', '08:30', 'Boucherie Lemoine', 'Rouen', " +
+                    "NULL, 'Fuite de fluide', 'cl-1', 'eq-1', 'Vitrine salle 2', 'A_FAIRE', '', 0)",
+                "INSERT INTO `equipements` (`id`, `clientId`, `nom`, `modifieLe`) " +
+                    "VALUES ('eq-1', 'cl-1', 'Vitrine salle 2', 0)",
+                "INSERT INTO `photos` (`id`, `equipementId`, `categorie`, `fichier`, `priseLe`) " +
+                    "VALUES ('ph-1', 'eq-1', 'PLAQUE', 'plaque.jpg', 1700000000000)",
+            ),
+        )
+
+        val db = ouvrirEtMigrer()
+
+        db.query(
+            "SELECT `equipementId`, `interventionId`, `categorie`, `fichier`, `legende`, `priseLe` " +
+                "FROM `photos`",
+        ).use { curseur ->
+            assertEquals("la photo doit survivre à la reconstruction", 1, curseur.count)
+            assertTrue(curseur.moveToFirst())
+            assertEquals("eq-1", curseur.getString(0))
+            assertTrue("elle n'appartient à aucune intervention", curseur.isNull(1))
+            assertEquals("PLAQUE", curseur.getString(2))
+            assertEquals("plaque.jpg", curseur.getString(3))
+            assertEquals("", curseur.getString(4))
+            assertEquals(1700000000000L, curseur.getLong(5))
+        }
+
+        // Le chronomètre part à zéro, ce qui décrit exactement l'état d'avant :
+        // aucune intervention n'avait été chronométrée.
+        db.query(
+            "SELECT `urgente`, `arriveeLe`, `demarreLe`, `cumuleS`, `numero` FROM `interventions`",
+        ).use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals(0, curseur.getInt(0))
+            assertTrue(curseur.isNull(1))
+            assertTrue(curseur.isNull(2))
+            assertEquals(0L, curseur.getLong(3))
+            assertEquals("", curseur.getString(4))
+        }
+
+        // La machine reçoit ses champs de plaque, vides faute de les connaître.
+        db.query("SELECT `marque`, `fluide`, `chargeKg` FROM `equipements`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("", curseur.getString(0))
+            assertEquals("", curseur.getString(1))
+            assertTrue(curseur.isNull(2))
+        }
+
+        // La ligne unique des réglages doit exister dès la migration passée.
+        db.query("SELECT `themeSombre`, `tauxTva` FROM `parametres`").use { curseur ->
+            assertEquals(1, curseur.count)
+            assertTrue(curseur.moveToFirst())
+            assertEquals("sombre par défaut", 1, curseur.getInt(0))
+            assertEquals(20.0, curseur.getDouble(1), 0.001)
+        }
+
+        assertEquals(VERSION_COURANTE, db.version)
+    }
+
     private companion object {
 
-        const val VERSION_COURANTE = 6
+        const val VERSION_COURANTE = 7
 
         /** Empreintes et DDL repris mot pour mot des schémas exportés dans `app/schemas`. */
         const val EMPREINTE_V1 = "576bb93c8e6bdad21224e8d0898547f0"
@@ -343,6 +429,7 @@ class MigrationTest {
         const val EMPREINTE_V3 = "5b3449dffc8764d2688a1d5b0190a516"
         const val EMPREINTE_V4 = "670f8966c393d071075ec34e7240726e"
         const val EMPREINTE_V5 = "2fea87f26cb4e3f690878aad5160618d"
+        const val EMPREINTE_V6 = "3693966e2dd927510a3eecb627dbd8e6"
 
         const val DDL_INTERVENTIONS_V1 =
             "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
@@ -384,6 +471,34 @@ class MigrationTest {
         const val DDL_TYPES_V5 =
             "CREATE TABLE IF NOT EXISTS `types_intervention` (`id` TEXT NOT NULL, " +
                 "`libelle` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+
+        const val DDL_INTERVENTIONS_V6 =
+            "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
+                "`heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT NULL, " +
+                "`typeId` TEXT, `typeLibelle` TEXT NOT NULL, `clientId` TEXT, " +
+                "`equipementId` TEXT, `equipementNom` TEXT NOT NULL, `statut` TEXT NOT NULL, " +
+                "`notes` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+
+        const val DDL_CLIENTS_V6 = DDL_CLIENTS_V4
+
+        const val DDL_TYPES_V6 = DDL_TYPES_V5
+
+        const val DDL_EQUIPEMENTS_V6 =
+            "CREATE TABLE IF NOT EXISTS `equipements` (`id` TEXT NOT NULL, " +
+                "`clientId` TEXT NOT NULL, `nom` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))"
+
+        const val DDL_INDEX_EQUIPEMENTS_CLIENT =
+            "CREATE INDEX IF NOT EXISTS `index_equipements_clientId` ON `equipements` (`clientId`)"
+
+        /** `equipementId` y est encore `NOT NULL` : c'est ce que la migration relâche. */
+        const val DDL_PHOTOS_V6 =
+            "CREATE TABLE IF NOT EXISTS `photos` (`id` TEXT NOT NULL, " +
+                "`equipementId` TEXT NOT NULL, `categorie` TEXT NOT NULL, " +
+                "`fichier` TEXT NOT NULL, `priseLe` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+
+        const val DDL_INDEX_PHOTOS_EQUIPEMENT =
+            "CREATE INDEX IF NOT EXISTS `index_photos_equipementId` ON `photos` (`equipementId`)"
 
         const val DDL_INDEX_DATE =
             "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)"
