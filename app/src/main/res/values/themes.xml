@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FrigoPro" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+        Thème XML de lancement, visible le temps que Compose prenne la main.
+        Sombre, comme l'application : un parent clair produisait un éclair
+        blanc à chaque démarrage, désagréable de nuit en chambre froide.
+    -->
+    <style name="Theme.FrigoPro" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/nuit</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

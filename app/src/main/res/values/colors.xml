@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0B3D5C</color>
+    <!-- Le bleu nuit de la maquette, repris par l'icône et l'écran de lancement. -->
+    <color name="ic_launcher_background">#0B2A3D</color>
+    <color name="nuit">#081520</color>
 </resources>

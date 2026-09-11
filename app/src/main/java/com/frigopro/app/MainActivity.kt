@@ -18,7 +18,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            FrigoProTheme {
+            // Sombre par défaut, et non « selon le système » : l'application
+            // se lit en chambre froide et sur un toit, où un fond blanc
+            // éblouit. Les Réglages laissent en revenir.
+            FrigoProTheme(sombre = true) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

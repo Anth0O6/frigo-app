@@ -1,0 +1,57 @@
+name: Vérifications
+
+# Le workflow de publication ne tourne que sur `main`, et il signe puis publie
+# une Release : hors de question de le déclencher pour éprouver une branche en
+# cours. Celui-ci ne fait que ce qui doit passer avant une fusion — compiler et
+# lancer les tests — et ne produit rien.
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verifier:
+    name: Tests et compilation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # Le schéma Room n'existe qu'après compilation. Le publier ici aussi rend
+      # une migration vérifiable depuis une branche, sans attendre la fusion.
+      - name: Publish Room schemas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: app/schemas/
+          if-no-files-found: warn
+
+      - name: Publish test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapports-tests
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
