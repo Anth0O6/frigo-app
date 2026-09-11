@@ -2,7 +2,9 @@ package com.frigopro.app.ui.composants
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +70,13 @@ fun Carte(
     contour: Boolean = false,
     forme: Shape = MaterialTheme.shapes.large,
     onClick: (() -> Unit)? = null,
+    /**
+     * L'appui long. Il porte ici l'action secondaire — modifier la fiche d'une
+     * intervention quand l'appui simple l'ouvre — parce qu'une carte de liste
+     * n'a pas la place d'un second bouton sans cesser d'être balayable du
+     * pouce.
+     */
+    onLongClick: (() -> Unit)? = null,
     contenu: @Composable ColumnScope.() -> Unit,
 ) {
     val fond = if (relief) {
@@ -75,10 +84,16 @@ fun Carte(
     } else {
         MaterialTheme.colorScheme.surfaceContainer
     }
-    val cliquable = if (onClick != null) {
-        Modifier.clickable(role = Role.Button, onClick = onClick)
-    } else {
-        Modifier
+    @OptIn(ExperimentalFoundationApi::class)
+    val cliquable = when {
+        onClick != null && onLongClick != null -> Modifier.combinedClickable(
+            role = Role.Button,
+            onClick = onClick,
+            onLongClick = onLongClick,
+        )
+
+        onClick != null -> Modifier.clickable(role = Role.Button, onClick = onClick)
+        else -> Modifier
     }
     Surface(
         modifier = modifier.fillMaxWidth(),

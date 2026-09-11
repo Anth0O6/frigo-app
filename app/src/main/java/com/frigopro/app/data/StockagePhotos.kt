@@ -95,6 +95,22 @@ class StockagePhotos(private val contexte: Context) : RangementPhotos {
      * [nomSur] est ce qui empêche une entrée malicieusement nommée
      * `../databases/frigopro.db` d'écrire ailleurs que dans le dossier.
      */
+    override suspend fun enregistrerImage(image: Bitmap): String? = withContext(Dispatchers.IO) {
+        val nom = nomNeuf()
+        try {
+            FileOutputStream(fichier(nom)).use { sortie ->
+                // PNG plutôt que JPEG : un trait noir sur blanc que le JPEG
+                // entourerait d'un halo, pour un fichier qui n'est pas plus
+                // petit à cette taille-là.
+                image.compress(Bitmap.CompressFormat.PNG, 100, sortie)
+            }
+            nom
+        } catch (_: IOException) {
+            effacer(nom)
+            null
+        }
+    }
+
     suspend fun restaurer(nom: String, flux: InputStream): Boolean = withContext(Dispatchers.IO) {
         val sur = nomSur(nom) ?: return@withContext false
         ecrireFlux(sur, flux)

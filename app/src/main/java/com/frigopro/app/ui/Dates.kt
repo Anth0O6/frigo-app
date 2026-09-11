@@ -48,3 +48,23 @@ internal fun LocalDate.versMillisUtc(): Long =
 
 internal fun Long.versLocalDate(): LocalDate =
     Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
+
+/**
+ * L'heure locale d'un horodatage : « 08:00 », ou un tiret s'il n'y en a pas.
+ *
+ * Le fuseau du système, et non UTC : c'est l'heure à laquelle le technicien
+ * est arrivé chez son client qui compte, pas celle de Greenwich.
+ */
+internal fun heureLocale(instant: Instant?): String = instant
+    ?.atZone(java.time.ZoneId.systemDefault())
+    ?.toLocalTime()
+    ?.format(FORMAT_HEURE)
+    ?: "—"
+
+/** « 14/05 », la date courte des historiques et du registre. */
+internal fun jourCourt(date: LocalDate): String =
+    date.format(DateTimeFormatter.ofPattern("dd/MM"))
+
+/** Le lundi de la semaine où tombe [date] : l'ancrage du planning. */
+internal fun lundiDe(date: LocalDate): LocalDate =
+    date.minusDays((date.dayOfWeek.value - 1).toLong())

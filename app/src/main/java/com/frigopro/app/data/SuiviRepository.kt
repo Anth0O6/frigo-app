@@ -129,6 +129,15 @@ class SuiviRepository(
 
     suspend fun charger(fichier: String, coteMax: Int): Bitmap? = stockage.charger(fichier, coteMax)
 
+    /**
+     * Range une image fabriquée par l'application — la signature du client.
+     *
+     * Aucune ligne en base ici : la signature n'est pas une photo, elle est un
+     * champ de l'intervention, et c'est le dépôt des interventions qui
+     * l'attachera une fois le fichier écrit.
+     */
+    suspend fun rangerImage(image: Bitmap): String? = stockage.enregistrerImage(image)
+
     suspend fun supprimerPhoto(photo: Photo) {
         dao.effacerPhoto(photo.id)
         stockage.supprimer(photo.fichier)
