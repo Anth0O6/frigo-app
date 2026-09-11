@@ -110,6 +110,8 @@ class SauvegardeRepositoryTest {
             FauxSuiviDao(),
             FauxDevisDao(),
             FauxParametresDao(),
+            FauxTechnicienDao(autreInterventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(EQUIPEMENT, autreEquipements.contenu.single())
@@ -151,6 +153,8 @@ class SauvegardeRepositoryTest {
             FauxSuiviDao(),
             FauxDevisDao(),
             FauxParametresDao(),
+            FauxTechnicienDao(interventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -286,6 +290,8 @@ class SauvegardeRepositoryTest {
             FauxSuiviDao(),
             FauxDevisDao(),
             FauxParametresDao(),
+            FauxTechnicienDao(viergeInterventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -332,6 +338,8 @@ class SauvegardeRepositoryTest {
             FauxSuiviDao(),
             FauxDevisDao(),
             FauxParametresDao(),
+            FauxTechnicienDao(autreInterventions),
+            FauxPrestationDao(),
         ).restaurer(export.contenu)
 
         assertEquals(2, export.types)
@@ -424,6 +432,8 @@ class SauvegardeRepositoryTest {
             FauxSuiviDao(),
             FauxDevisDao(),
             FauxParametresDao(),
+            FauxTechnicienDao(interventions),
+            FauxPrestationDao(),
         )
     }
 
