@@ -74,9 +74,15 @@ private val LargeurHeures = 46.dp
 internal fun amplitudeDe(interventions: List<Intervention>): Amplitude {
     if (interventions.isEmpty()) return Amplitude(HEURE_DEBUT_PAR_DEFAUT, HEURE_FIN_PAR_DEFAUT)
     val debut = interventions.minOf { it.heure.hour }
+    // Le calcul passe par des minutes depuis minuit et non par [finDe] : celui-ci
+    // rend un `LocalTime`, qui **repasse par zéro**. Une intervention de 22 h à
+    // 2 h y finirait donc « à 2 h », et la frise s'arrêterait avant de l'avoir
+    // dessinée — c'est exactement le créneau qu'on ne peut pas se permettre de
+    // perdre, puisque c'est une astreinte.
     val fin = interventions.maxOf { intervention ->
-        val heureFin = finDe(intervention)
-        if (heureFin.minute > 0) heureFin.hour + 1 else heureFin.hour
+        val finEnMinutes = intervention.heure.hour * 60 + intervention.heure.minute +
+            intervention.dureeMin
+        (finEnMinutes + 59) / 60
     }
     return Amplitude(
         premiereHeure = minOf(debut, HEURE_DEBUT_PAR_DEFAUT),

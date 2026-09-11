@@ -117,6 +117,17 @@ class FriseHoraireTest {
         assertEquals("08:00 – 09:30", creneauDe(intervention(LocalTime.of(8, 0), dureeMin = 90)))
     }
 
+    /**
+     * L'heure affichée repasse par zéro, et c'est juste : une astreinte qui
+     * finit à 2 h du matin finit bien à 2 h. Ce qui ne devait pas repasser par
+     * zéro, c'est le **calcul de l'amplitude** — il le faisait, et la frise
+     * s'arrêtait avant d'avoir dessiné le créneau.
+     */
+    @Test
+    fun `un creneau de nuit s'annonce a l'heure du lendemain`() {
+        assertEquals("22:00 – 02:00", creneauDe(intervention(LocalTime.of(22, 0), dureeMin = 240)))
+    }
+
     private fun intervention(heure: LocalTime, dureeMin: Int) = Intervention(
         date = LocalDate.of(2026, 9, 11),
         heure = heure,
