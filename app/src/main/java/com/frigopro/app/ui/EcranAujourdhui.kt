@@ -111,7 +111,7 @@ fun EcranAujourdhui(
                     couleur = LocalStatuts.current.aValider,
                 )
                 TuileChiffre(
-                    valeur = Nombres.enEuros(etat.chiffreDuMois),
+                    valeur = Nombres.enEurosCourt(etat.chiffreDuMois),
                     libelle = "acceptés ce mois",
                     modifier = Modifier.weight(1f),
                 )

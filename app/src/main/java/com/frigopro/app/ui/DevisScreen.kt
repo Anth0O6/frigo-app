@@ -192,7 +192,7 @@ private fun CompteursEnTete(compteurs: CompteursDevis) {
             couleur = statuts.termine,
         )
         TuileChiffre(
-            valeur = Nombres.enEuros(compteurs.pipelineTtc),
+            valeur = Nombres.enEurosCourt(compteurs.pipelineTtc),
             libelle = "en cours",
             modifier = Modifier.weight(1f),
         )

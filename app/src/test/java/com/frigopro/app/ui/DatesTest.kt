@@ -60,3 +60,43 @@ class DatesTest {
         assertTrue("la première lettre doit être une majuscule : $titre", titre.first().isUpperCase())
     }
 }
+
+/**
+ * Le montant abrégé des tuiles.
+ *
+ * Sur trois tuiles côte à côte, « 12 400,00 € » est tronqué, et un montant
+ * tronqué ne dit rien — ou dit autre chose. La forme longue reste celle des
+ * lignes et des totaux, où elle a la place et doit être exacte.
+ */
+class NombresTest {
+
+    @Test
+    fun `un petit montant garde ses unites`() {
+        assertEquals("450 €", Nombres.enEurosCourt(450.0))
+        assertEquals("les centimes ne tiennent pas sur une tuile", "450 €", Nombres.enEurosCourt(450.40))
+        assertEquals("9 800 €", Nombres.enEurosCourt(9_800.0))
+    }
+
+    @Test
+    fun `au-dela de dix mille on abrege en milliers`() {
+        assertEquals("12,4 k€", Nombres.enEurosCourt(12_400.0))
+        assertEquals("une decimale suffit", "12,5 k€", Nombres.enEurosCourt(12_460.0))
+        assertEquals("un compte rond ne porte pas de decimale", "50 k€", Nombres.enEurosCourt(50_000.0))
+    }
+
+    @Test
+    fun `le million a son abreviation`() {
+        assertEquals("1,2 M€", Nombres.enEurosCourt(1_200_000.0))
+    }
+
+    @Test
+    fun `rien vaut zero et non une case vide`() {
+        assertEquals("0 €", Nombres.enEurosCourt(0.0))
+    }
+
+    @Test
+    fun `la forme longue reste exacte au centime`() {
+        assertEquals("12 400,00 €", Nombres.enEuros(12_400.0).replace(' ', ' '))
+        assertEquals("450,40 €", Nombres.enEuros(450.40).replace(' ', ' '))
+    }
+}
