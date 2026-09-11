@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 
 /** Format d'heure partagé par la liste et le formulaire. */
@@ -64,6 +65,17 @@ internal fun heureLocale(instant: Instant?): String = instant
 /** « 14/05 », la date courte des historiques et du registre. */
 internal fun jourCourt(date: LocalDate): String =
     date.format(DateTimeFormatter.ofPattern("dd/MM"))
+
+/**
+ * « LUN », le jour de la semaine des pastilles du planning.
+ *
+ * Tronqué à trois lettres : le français abrège en « lun. », et le point mangerait
+ * une pastille déjà étroite. La locale est imposée, comme partout ailleurs ici.
+ */
+internal fun jourSemaineCourt(date: LocalDate): String = date.dayOfWeek
+    .getDisplayName(TextStyle.SHORT, Locale.FRENCH)
+    .uppercase(Locale.FRENCH)
+    .take(3)
 
 /**
  * « sept. », le mois abrégé d'une pastille de date.

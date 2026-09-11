@@ -44,6 +44,23 @@ class InterventionsViewModel(
     /** Journée affichée. Changer sa valeur suffit à recharger la liste. */
     val jour: StateFlow<LocalDate> = _jour.asStateFlow()
 
+    private val _frise = MutableStateFlow(true)
+
+    /**
+     * La journée en frise horaire plutôt qu'en liste.
+     *
+     * Les deux vues répondent à deux questions différentes : la liste dit ce qui
+     * vient ensuite, la frise dit **où sont les trous** — et c'est dans les trous
+     * qu'on case le client qui vient d'appeler. La frise est retenue par défaut
+     * parce que la question de la journée en cours est aussi celle de la journée
+     * qu'on est en train de remplir.
+     */
+    val frise: StateFlow<Boolean> = _frise.asStateFlow()
+
+    fun onBasculerVue() {
+        _frise.value = !_frise.value
+    }
+
     private val _semaineOuverte = MutableStateFlow(false)
 
     /**

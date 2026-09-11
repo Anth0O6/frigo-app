@@ -37,8 +37,6 @@ import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.Bleu
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.LocalDate
-import java.time.format.TextStyle as TextStyleJava
-import java.util.Locale
 
 /**
  * La semaine : où l'on passe, et quand.
@@ -179,10 +177,7 @@ private fun BandeauJours(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = jour.dayOfWeek
-                            .getDisplayName(TextStyleJava.SHORT, Locale.FRENCH)
-                            .uppercase()
-                            .take(3),
+                        text = jourSemaineCourt(jour),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (retenu) {
                             MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)

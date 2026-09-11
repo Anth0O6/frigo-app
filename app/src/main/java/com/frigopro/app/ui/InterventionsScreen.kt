@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -86,6 +88,7 @@ fun InterventionsRoute(
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val semaineOuverte by viewModel.semaineOuverte.collectAsStateWithLifecycle()
+    val frise by viewModel.frise.collectAsStateWithLifecycle()
     val semaine by viewModel.semaine.collectAsStateWithLifecycle()
 
     if (ouverte != null) {
@@ -123,6 +126,8 @@ fun InterventionsRoute(
         onOuvrirIntervention = detail::onOuvrir,
         onModifierIntervention = viewModel::onModifierIntervention,
         onChangerStatut = viewModel::onChangerStatut,
+        frise = frise,
+        onBasculerVue = viewModel::onBasculerVue,
         actions = { MenuSauvegarde() },
         modifier = modifier,
     )
@@ -169,6 +174,9 @@ fun InterventionsScreen(
     onOuvrirIntervention: (Intervention) -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
+    /** La journée en frise horaire plutôt qu'en liste. */
+    frise: Boolean,
+    onBasculerVue: () -> Unit,
     modifier: Modifier = Modifier,
     /** Posé dans la barre du haut : la sauvegarde s'y branche sans que l'écran la connaisse. */
     actions: @Composable RowScope.() -> Unit = {},
@@ -199,35 +207,61 @@ fun InterventionsScreen(
                 onOuvrirSemaine = onOuvrirSemaine,
                 actions = actions,
             )
+            PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
+            BasculeVue(frise = frise, onBasculerVue = onBasculerVue)
             BandeauJournee(lignes = lignes)
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = MargeEcran,
-                    end = MargeEcran,
-                    top = 4.dp,
-                    // De quoi faire passer la dernière carte au-dessus du bouton.
-                    bottom = 96.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (lignes.isEmpty()) {
-                    item { JourneeVide() }
-                }
-                items(items = lignes, key = { it.intervention.id }) { ligne ->
-                    if (ligne.intervention.statut == StatutIntervention.EN_COURS) {
-                        CarteEnCours(
-                            ligne = ligne,
-                            onOuvrir = { onOuvrirIntervention(ligne.intervention) },
-                            onChangerStatut = { onChangerStatut(ligne.intervention) },
-                        )
+            if (frise) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = MargeEcran),
+                ) {
+                    if (lignes.isEmpty()) {
+                        JourneeVide()
                     } else {
-                        LigneCompacte(
-                            ligne = ligne,
-                            onOuvrir = { onOuvrirIntervention(ligne.intervention) },
-                            onModifier = { onModifierIntervention(ligne.intervention) },
-                            onChangerStatut = { onChangerStatut(ligne.intervention) },
+                        FriseHoraire(
+                            lignes = lignes,
+                            // Le trait de l'heure courante n'a de sens que sur
+                            // aujourd'hui : ailleurs il désignerait un instant
+                            // qui n'appartient pas à la journée affichée.
+                            maintenant = if (jour == LocalDate.now()) LocalTime.now() else null,
+                            onOuvrir = onOuvrirIntervention,
                         )
+                    }
+                    // De quoi faire passer le dernier créneau au-dessus du bouton.
+                    EspaceVertical(96)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = MargeEcran,
+                        end = MargeEcran,
+                        top = 4.dp,
+                        // De quoi faire passer la dernière carte au-dessus du bouton.
+                        bottom = 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (lignes.isEmpty()) {
+                        item { JourneeVide() }
+                    }
+                    items(items = lignes, key = { it.intervention.id }) { ligne ->
+                        if (ligne.intervention.statut == StatutIntervention.EN_COURS) {
+                            CarteEnCours(
+                                ligne = ligne,
+                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                onChangerStatut = { onChangerStatut(ligne.intervention) },
+                            )
+                        } else {
+                            LigneCompacte(
+                                ligne = ligne,
+                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                onModifier = { onModifierIntervention(ligne.intervention) },
+                                onChangerStatut = { onChangerStatut(ligne.intervention) },
+                            )
+                        }
                     }
                 }
             }
@@ -295,6 +329,106 @@ private fun EnTeteTournee(
             onClick = onOuvrirSemaine,
         )
         actions()
+    }
+}
+
+/**
+ * Les sept jours de la semaine, en pastilles.
+ *
+ * Elles remplacent deux appuis sur les flèches par un seul, et surtout elles
+ * **montrent la semaine** : on voit où l'on est avant de choisir, ce qu'un
+ * bouton « jour suivant » ne dit pas. Les flèches restent, pour franchir une
+ * semaine sans passer par le sélecteur.
+ */
+@Composable
+private fun PastillesSemaine(jour: LocalDate, onJourChoisi: (LocalDate) -> Unit) {
+    val lundi = lundiDe(jour)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MargeEcran)
+            .padding(bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        repeat(JOURS_SEMAINE) { rang ->
+            val date = lundi.plusDays(rang.toLong())
+            val retenu = date == jour
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = MaterialTheme.shapes.medium,
+                color = if (retenu) {
+                    MaterialTheme.colorScheme.onBackground
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                },
+                onClick = { onJourChoisi(date) },
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = jourSemaineCourt(date),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (retenu) {
+                            MaterialTheme.colorScheme.background
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = "${date.dayOfMonth}",
+                        style = StyleChiffrePetit,
+                        color = if (retenu) {
+                            MaterialTheme.colorScheme.background
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private const val JOURS_SEMAINE = 7
+
+/** La bascule frise / liste : deux mots, celui qui est actif en plein. */
+@Composable
+private fun BasculeVue(frise: Boolean, onBasculerVue: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = MargeEcran)
+            .padding(bottom = 14.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            OngletVue(texte = "Frise", actif = frise, onClick = { if (!frise) onBasculerVue() })
+            OngletVue(texte = "Liste", actif = !frise, onClick = { if (frise) onBasculerVue() })
+        }
+    }
+}
+
+@Composable
+private fun OngletVue(texte: String, actif: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = if (actif) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+        onClick = onClick,
+    ) {
+        Text(
+            text = texte,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (actif) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+        )
     }
 }
 
@@ -609,6 +743,8 @@ private fun ApercuTournee() {
             onOuvrirIntervention = {},
             onModifierIntervention = {},
             onChangerStatut = {},
+            frise = true,
+            onBasculerVue = {},
         )
     }
 }

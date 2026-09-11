@@ -84,9 +84,3 @@ jobs:
         run: |
           echo "=== Erreurs ==="
           cat "$RUNNER_TEMP/erreurs.txt" 2>/dev/null || echo "(aucune ligne e: capturée)"
-
-      # TEMPORAIRE : le schéma n'est pas téléchargeable depuis cet environnement,
-      # et il doit être committé. À retirer dès qu'il l'est.
-      - name: Imprimer le schema 8
-        if: always()
-        run: gzip -c app/schemas/com.frigopro.app.data.FrigoProDatabase/8.json | base64 -w0
