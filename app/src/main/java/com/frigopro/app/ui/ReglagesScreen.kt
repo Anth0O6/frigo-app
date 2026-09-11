@@ -64,17 +64,19 @@ fun ReglagesRoute(
     }
 
     when (val ouvert = dialogue) {
-        DialogueReglages.Creation -> DialogueType(
+        DialogueReglages.Creation -> DialogueIntitule(
             titre = "Nouveau type d'intervention",
             libelleAction = "Ajouter",
+            messageConflit = MESSAGE_TYPE_EXISTANT,
             estDejaPris = { dejaPris(it, null) },
             onValider = viewModel::onValiderIntitule,
             onFermer = viewModel::onFermerDialogue,
         )
 
-        is DialogueReglages.Renommage -> DialogueType(
+        is DialogueReglages.Renommage -> DialogueIntitule(
             titre = "Renommer le type",
             libelleAction = "Enregistrer",
+            messageConflit = MESSAGE_TYPE_EXISTANT,
             intituleInitial = ouvert.type.libelle,
             estDejaPris = { dejaPris(it, ouvert.type.id) },
             onValider = viewModel::onValiderIntitule,
@@ -90,6 +92,8 @@ fun ReglagesRoute(
         null -> Unit
     }
 }
+
+private const val MESSAGE_TYPE_EXISTANT = "Ce type existe déjà."
 
 /** Écran sans état : pour l'instant, la seule liste des types d'intervention. */
 @OptIn(ExperimentalMaterial3Api::class)

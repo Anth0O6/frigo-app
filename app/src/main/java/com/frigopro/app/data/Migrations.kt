@@ -122,3 +122,43 @@ val MIGRATION_4_5: Migration = object : Migration(4, 5) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)")
     }
 }
+
+/**
+ * Arrivée du parc de machines et de leurs photos.
+ *
+ * Deux tables neuves et deux colonnes ajoutées aux interventions : `ALTER TABLE`
+ * suffit, rien ne disparaît, donc aucune reconstruction — contrairement à
+ * [MIGRATION_4_5].
+ *
+ * `equipementId` et `equipementNom` répètent le couple lien / copie déjà employé
+ * pour le type (voir [Intervention.typeLibelle]) : le lien permet de répercuter
+ * un renommage sur les tournées passées, la copie survit à la suppression de la
+ * machine. Les interventions déjà saisies n'en désignent aucune et n'affichent
+ * rien, ce qui est exact — le parc n'existait pas quand elles ont été créées.
+ *
+ * Toujours **sans clé étrangère**, pour les raisons dites en [MIGRATION_2_3], et
+ * une de plus : une restauration de sauvegarde écrit table après table, et une
+ * contrainte immédiate rejetterait une photo arrivant avant sa machine.
+ *
+ * Les fichiers image ne sont pas concernés : ils vivent dans `files/photos/`
+ * (voir [StockagePhotos]), que cette migration ne touche pas.
+ */
+val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `equipements` (" +
+                "`id` TEXT NOT NULL, `clientId` TEXT NOT NULL, `nom` TEXT NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_equipements_clientId` ON `equipements` (`clientId`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `photos` (" +
+                "`id` TEXT NOT NULL, `equipementId` TEXT NOT NULL, `categorie` TEXT NOT NULL, " +
+                "`fichier` TEXT NOT NULL, `priseLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_photos_equipementId` ON `photos` (`equipementId`)")
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `equipementId` TEXT")
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `equipementNom` TEXT NOT NULL DEFAULT ''")
+    }
+}

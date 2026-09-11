@@ -16,6 +16,16 @@ private val FORMAT_JOUR: DateTimeFormatter =
 internal fun libelleDate(date: LocalDate): String =
     date.format(FORMAT_JOUR).replaceFirstChar { it.uppercase(Locale.FRENCH) }
 
+private val FORMAT_JOUR_ANNEE: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM yyyy", Locale.FRENCH)
+
+/**
+ * « 8 sept. 2026 » : l'année est indispensable dès qu'on regarde en arrière,
+ * ce que fait l'historique d'une machine — à la différence de la tournée du
+ * jour, où elle n'apprendrait rien.
+ */
+internal fun libelleDateAvecAnnee(date: LocalDate): String = date.format(FORMAT_JOUR_ANNEE)
+
 /**
  * Libellé d'une journée dans la barre de navigation : les trois jours autour
  * d'aujourd'hui sont nommés plutôt que datés, c'est ce qu'un technicien lit le

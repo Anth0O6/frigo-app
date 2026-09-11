@@ -223,14 +223,94 @@ class MigrationTest {
         }
     }
 
+    /**
+     * Le parc arrive vide, et c'est exact : les interventions déjà saisies ne
+     * pouvaient désigner aucune machine. Ce qu'elles portaient doit en revanche
+     * traverser l'ajout des deux colonnes sans une égratignure.
+     */
+    @Test
+    fun `une base version 5 recoit le parc de machines sans rien perdre`() {
+        creerBase(
+            version = 5,
+            empreinte = EMPREINTE_V5,
+            ddl = listOf(DDL_INTERVENTIONS_V5, DDL_CLIENTS_V5, DDL_TYPES_V5, DDL_INDEX_DATE),
+            insertions = listOf(
+                "INSERT INTO `types_intervention` (`id`, `libelle`, `modifieLe`) " +
+                    "VALUES ('typ-1', 'Entretien préventif', 7)",
+                "INSERT INTO `clients` (`id`, `nom`, `ville`, `adresse`, `telephone`, `modifieLe`) " +
+                    "VALUES ('cli-1', 'Primeur Vasseur', 'Elbeuf', '3 place du Marché', '0235000000', 7)",
+                "INSERT INTO `interventions` " +
+                    "(`id`, `date`, `heure`, `client`, `ville`, `typeId`, `typeLibelle`, " +
+                    "`clientId`, `statut`, `notes`, `modifieLe`) " +
+                    "VALUES ('id-1', '2026-03-09', '09:15', 'Primeur Vasseur', 'Elbeuf', " +
+                    "'typ-1', 'Entretien préventif', 'cli-1', 'EN_COURS', 'Groupe revu.', 7)",
+            ),
+        )
+
+        val db = ouvrirEtMigrer()
+
+        db.query(
+            "SELECT `typeId`, `typeLibelle`, `clientId`, `equipementId`, `equipementNom`, " +
+                "`notes`, `modifieLe` FROM `interventions`",
+        ).use { curseur ->
+            assertEquals(1, curseur.count)
+            assertTrue(curseur.moveToFirst())
+            assertEquals("le lien vers le type doit survivre", "typ-1", curseur.getString(0))
+            assertEquals("Entretien préventif", curseur.getString(1))
+            assertEquals("cli-1", curseur.getString(2))
+            assertTrue("le parc n'existait pas : aucune machine désignée", curseur.isNull(3))
+            assertEquals("et donc aucun nom à afficher", "", curseur.getString(4))
+            assertEquals("Groupe revu.", curseur.getString(5))
+            assertEquals("l'horodatage ne bouge pas", 7L, curseur.getLong(6))
+        }
+        db.query("SELECT * FROM `equipements`").use { curseur ->
+            assertEquals("le parc arrive vide", 0, curseur.count)
+        }
+        db.query("SELECT * FROM `photos`").use { curseur ->
+            assertEquals(0, curseur.count)
+        }
+        db.query("SELECT `libelle` FROM `types_intervention`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("la liste des types n'est pas touchée", "Entretien préventif", curseur.getString(0))
+        }
+        assertEquals(VERSION_COURANTE, db.version)
+    }
+
+    /**
+     * Room refuse d'ouvrir une base dont le schéma ne correspond pas : l'index
+     * des deux tables neuves est donc aussi obligatoire que les tables.
+     */
+    @Test
+    fun `les tables du parc arrivent avec leurs index`() {
+        creerBase(
+            version = 5,
+            empreinte = EMPREINTE_V5,
+            ddl = listOf(DDL_INTERVENTIONS_V5, DDL_CLIENTS_V5, DDL_TYPES_V5, DDL_INDEX_DATE),
+            insertions = emptyList(),
+        )
+
+        val db = ouvrirEtMigrer()
+
+        val index = buildList {
+            db.query("SELECT `name` FROM `sqlite_master` WHERE `type` = 'index'").use { curseur ->
+                while (curseur.moveToNext()) add(curseur.getString(0))
+            }
+        }
+        assertTrue("index_equipements_clientId attendu, trouvé $index", index.contains("index_equipements_clientId"))
+        assertTrue("index_photos_equipementId attendu, trouvé $index", index.contains("index_photos_equipementId"))
+    }
+
     @Test
     fun `une base neuve s'ouvre directement en version courante`() {
         val db = ouvrirEtMigrer()
 
         assertEquals(VERSION_COURANTE, db.version)
         db.query("SELECT `typeId`, `typeLibelle` FROM `interventions`").use { assertEquals(0, it.count) }
+        db.query("SELECT `equipementId`, `equipementNom` FROM `interventions`").use { assertEquals(0, it.count) }
         db.query("SELECT `nom`, `ville`, `adresse`, `telephone` FROM `clients`").use { assertEquals(0, it.count) }
         db.query("SELECT `libelle` FROM `types_intervention`").use { assertEquals(0, it.count) }
+        db.query("SELECT `clientId`, `nom` FROM `equipements`").use { assertEquals(0, it.count) }
+        db.query("SELECT `equipementId`, `categorie`, `fichier` FROM `photos`").use { assertEquals(0, it.count) }
     }
 
     /**
@@ -255,13 +335,14 @@ class MigrationTest {
 
     private companion object {
 
-        const val VERSION_COURANTE = 5
+        const val VERSION_COURANTE = 6
 
         /** Empreintes et DDL repris mot pour mot des schémas exportés dans `app/schemas`. */
         const val EMPREINTE_V1 = "576bb93c8e6bdad21224e8d0898547f0"
         const val EMPREINTE_V2 = "fdbe212c83828e74d0d0625614cce133"
         const val EMPREINTE_V3 = "5b3449dffc8764d2688a1d5b0190a516"
         const val EMPREINTE_V4 = "670f8966c393d071075ec34e7240726e"
+        const val EMPREINTE_V5 = "2fea87f26cb4e3f690878aad5160618d"
 
         const val DDL_INTERVENTIONS_V1 =
             "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
@@ -290,6 +371,19 @@ class MigrationTest {
             "CREATE TABLE IF NOT EXISTS `clients` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, " +
                 "`ville` TEXT NOT NULL, `adresse` TEXT NOT NULL, `telephone` TEXT NOT NULL, " +
                 "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+
+        const val DDL_INTERVENTIONS_V5 =
+            "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
+                "`heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT NULL, " +
+                "`typeId` TEXT, `typeLibelle` TEXT NOT NULL, `clientId` TEXT, " +
+                "`statut` TEXT NOT NULL, `notes` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))"
+
+        const val DDL_CLIENTS_V5 = DDL_CLIENTS_V4
+
+        const val DDL_TYPES_V5 =
+            "CREATE TABLE IF NOT EXISTS `types_intervention` (`id` TEXT NOT NULL, " +
+                "`libelle` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))"
 
         const val DDL_INDEX_DATE =
             "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)"

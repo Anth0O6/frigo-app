@@ -2,10 +2,12 @@ package com.frigopro.app
 
 import android.content.Context
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.SauvegardeRepository
+import com.frigopro.app.data.StockagePhotos
 import com.frigopro.app.data.TypeInterventionRepository
 
 /**
@@ -27,9 +29,26 @@ class ConteneurApp(private val contexte: Context) {
         TypeInterventionRepository(base.typeInterventionDao())
     }
 
-    val sauvegardes: SauvegardeRepository by lazy {
-        SauvegardeRepository(base.interventionDao(), base.clientDao(), base.typeInterventionDao())
+    private val stockagePhotos: StockagePhotos by lazy { StockagePhotos(contexte.applicationContext) }
+
+    val equipements: EquipementRepository by lazy {
+        EquipementRepository(base.equipementDao(), stockagePhotos)
     }
+
+    val sauvegardes: SauvegardeRepository by lazy {
+        SauvegardeRepository(
+            base.interventionDao(),
+            base.clientDao(),
+            base.typeInterventionDao(),
+            base.equipementDao(),
+        )
+    }
+
+    /**
+     * Le stockage des images, dont la sauvegarde a besoin directement : elle
+     * embarque des fichiers, que le dépôt ne connaît que par leur nom.
+     */
+    val photos: StockagePhotos get() = stockagePhotos
 
     val fichiers: FichiersExternes by lazy {
         FichiersExternes(contexte.applicationContext.contentResolver)

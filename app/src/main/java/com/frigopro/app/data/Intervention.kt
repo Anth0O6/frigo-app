@@ -27,6 +27,13 @@ import java.util.UUID
  *   afficher quelque chose même sans lien, et à survivre à la suppression du
  *   type. Vide tant qu'aucun type n'est choisi, ce qui est permis : exiger un
  *   type alors que la liste démarre vide interdirait la première saisie.
+ * @param equipementId machine du parc du client sur laquelle on intervient, ou
+ *   `null` quand l'intervention n'en désigne aucune — celle d'avant le parc,
+ *   celle dont la machine a été retirée, ou simplement une visite qui ne porte
+ *   sur aucune machine en particulier.
+ * @param equipementNom nom de la machine, recopié sur la ligne, pour les mêmes
+ *   raisons que [typeLibelle] : renommer la machine corrige ses tournées
+ *   passées, et la copie reste quand la fiche disparaît.
  * @param clientId client du carnet, quand l'intervention y est rattachée.
  *   `client` et `ville` restent stockés sur la ligne : ce sont les
  *   coordonnées **au moment de l'intervention**, qu'un compte-rendu d'il y a
@@ -50,6 +57,8 @@ data class Intervention(
     val typeId: String? = null,
     val typeLibelle: String = "",
     val clientId: String? = null,
+    val equipementId: String? = null,
+    val equipementNom: String = "",
     val statut: StatutIntervention = StatutIntervention.A_FAIRE,
     val notes: String = "",
     val modifieLe: Instant = Instant.EPOCH,

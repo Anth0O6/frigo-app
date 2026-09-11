@@ -8,6 +8,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.TypeIntervention
@@ -34,6 +36,7 @@ class InterventionsViewModel(
     private val interventionRepository: InterventionRepository,
     private val clientRepository: ClientRepository,
     private val typeRepository: TypeInterventionRepository,
+    private val equipementRepository: EquipementRepository,
 ) : ViewModel() {
 
     private val _jour = MutableStateFlow(LocalDate.now())
@@ -87,6 +90,17 @@ class InterventionsViewModel(
             initialValue = emptyList(),
         )
 
+    /**
+     * Tout le parc de machines. Le formulaire n'en montrera que celles du client
+     * choisi : le filtrage se fait à l'affichage, le flux étant déjà observé.
+     */
+    val machines: StateFlow<List<Equipement>> = equipementRepository.equipements
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
     private val _formulaire = MutableStateFlow<EtatFormulaire?>(null)
 
     /** Formulaire ouvert, ou `null` quand l'écran affiche seulement la liste. */
@@ -129,10 +143,26 @@ class InterventionsViewModel(
         _formulaire.value = etat
     }
 
-    /** Rattache l'intervention à un client du carnet et en reprend les coordonnées. */
+    /**
+     * Rattache l'intervention à un client du carnet et en reprend les
+     * coordonnées. Changer de client oublie la machine : elle appartenait au
+     * précédent, et n'a aucun sens chez celui-ci.
+     */
     fun onClientChoisi(client: Client) {
         _formulaire.update { etat ->
-            etat?.copy(client = client.nom, ville = client.ville, clientId = client.id)
+            when {
+                etat == null -> null
+                etat.clientId == client.id ->
+                    etat.copy(client = client.nom, ville = client.ville, clientId = client.id)
+
+                else -> etat.copy(
+                    client = client.nom,
+                    ville = client.ville,
+                    clientId = client.id,
+                    equipementId = null,
+                    equipementNom = "",
+                )
+            }
         }
     }
 
@@ -156,6 +186,30 @@ class InterventionsViewModel(
         viewModelScope.launch {
             val type = typeRepository.trouverOuCreer(libelle)
             _formulaire.update { etat -> etat?.copy(typeId = type.id, typeLibelle = type.libelle) }
+        }
+    }
+
+    /** Choisit une machine, ou l'enlève quand [equipement] vaut `null`. */
+    fun onMachineChoisie(equipement: Equipement?) {
+        _formulaire.update { etat ->
+            etat?.copy(equipementId = equipement?.id, equipementNom = equipement?.nom ?: "")
+        }
+    }
+
+    /**
+     * Inscrit une machine chez le client du formulaire et la choisit aussitôt :
+     * tomber sur une machine non fichée ne doit pas obliger à quitter sa saisie.
+     * Sans client du carnet, il n'y a pas de parc où l'inscrire.
+     */
+    fun onNouvelleMachine(nom: String) {
+        val clientId = _formulaire.value?.clientId ?: return
+        if (nom.isBlank()) return
+
+        viewModelScope.launch {
+            val machine = equipementRepository.trouverOuCreer(clientId, nom)
+            _formulaire.update { etat ->
+                etat?.copy(equipementId = machine.id, equipementNom = machine.nom)
+            }
         }
     }
 
@@ -209,6 +263,7 @@ class InterventionsViewModel(
                     conteneur.interventions,
                     conteneur.clients,
                     conteneur.typesIntervention,
+                    conteneur.equipements,
                 )
             }
         }

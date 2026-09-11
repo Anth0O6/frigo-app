@@ -2,8 +2,12 @@ package com.frigopro.app.ui
 
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FauxClientDao
+import com.frigopro.app.data.FauxEquipementDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
@@ -34,6 +38,7 @@ class InterventionsViewModelTest {
     private val dao = FauxInterventionDao()
     private val daoClients = FauxClientDao()
     private val daoTypes = FauxTypeInterventionDao(dao)
+    private val daoEquipements = FauxEquipementDao(dao)
 
     @After
     fun nettoyer() {
@@ -363,6 +368,134 @@ class InterventionsViewModelTest {
         assertEquals("Dépannage", enregistree.typeLibelle)
     }
 
+    /**
+     * La machine appartient au client : la saisie doit lui proposer le parc de
+     * celui qu'elle désigne, et celui-là seulement. Le filtrage se fait à
+     * l'affichage, mais encore faut-il que le parc arrive jusque-là.
+     */
+    @Test
+    fun `le parc observe contient les machines de tous les clients`() = runTest {
+        val viewModel = creerViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.machines.collect { }
+        }
+        daoEquipements.enregistrer(Equipement(id = "eq-1", clientId = "cl-1", nom = "Vitrine"))
+        daoEquipements.enregistrer(Equipement(id = "eq-2", clientId = "cl-2", nom = "Armoire"))
+        advanceUntilIdle()
+
+        assertEquals(setOf("eq-1", "eq-2"), viewModel.machines.value.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `la machine choisie est enregistree avec l'intervention`() = runTest {
+        val viewModel = creerViewModel()
+        val machine = Equipement(id = "eq-1", clientId = "cl-1", nom = "Vitrine salle 2")
+        daoEquipements.enregistrer(machine)
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(client = "Boucherie", ville = "Rouen"),
+        )
+
+        viewModel.onMachineChoisie(machine)
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val enregistree = dao.contenu.single()
+        assertEquals("eq-1", enregistree.equipementId)
+        assertEquals("Vitrine salle 2", enregistree.equipementNom)
+    }
+
+    /** Le type est facultatif, la machine aussi : se tromper doit pouvoir s'annuler. */
+    @Test
+    fun `retirer la machine vide le lien et le nom`() = runTest {
+        val viewModel = creerViewModel()
+        val machine = Equipement(id = "eq-1", clientId = "cl-1", nom = "Vitrine salle 2")
+        viewModel.onNouvelleIntervention()
+        viewModel.onMachineChoisie(machine)
+
+        viewModel.onMachineChoisie(null)
+
+        assertNull(viewModel.formulaire.value!!.equipementId)
+        assertEquals("", viewModel.formulaire.value!!.equipementNom)
+    }
+
+    /**
+     * Une machine appartient à un client : la garder en changeant de client la
+     * rattacherait au mauvais parc.
+     */
+    @Test
+    fun `changer de client oublie la machine`() = runTest {
+        val viewModel = creerViewModel()
+        val premier = Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen")
+        val second = Client(id = "cl-2", nom = "Primeur Vasseur", ville = "Elbeuf")
+        viewModel.onNouvelleIntervention()
+        viewModel.onClientChoisi(premier)
+        viewModel.onMachineChoisie(Equipement(id = "eq-1", clientId = "cl-1", nom = "Vitrine"))
+
+        viewModel.onClientChoisi(second)
+
+        assertNull(viewModel.formulaire.value!!.equipementId)
+        assertEquals("", viewModel.formulaire.value!!.equipementNom)
+    }
+
+    /** Rechoisir le même client ne doit pas faire perdre la machine déjà désignée. */
+    @Test
+    fun `rechoisir le meme client garde la machine`() = runTest {
+        val viewModel = creerViewModel()
+        val client = Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen")
+        viewModel.onNouvelleIntervention()
+        viewModel.onClientChoisi(client)
+        viewModel.onMachineChoisie(Equipement(id = "eq-1", clientId = "cl-1", nom = "Vitrine"))
+
+        viewModel.onClientChoisi(client)
+
+        assertEquals("eq-1", viewModel.formulaire.value!!.equipementId)
+    }
+
+    @Test
+    fun `une nouvelle machine rejoint le parc du client et est choisie aussitot`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onClientChoisi(Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen"))
+
+        viewModel.onNouvelleMachine("  Vitrine salle 2 ")
+        advanceUntilIdle()
+
+        val inscrite = daoEquipements.contenu.single()
+        assertEquals("le nom est nettoyé par le dépôt", "Vitrine salle 2", inscrite.nom)
+        assertEquals("cl-1", inscrite.clientId)
+        assertEquals(inscrite.id, viewModel.formulaire.value!!.equipementId)
+        assertEquals("Vitrine salle 2", viewModel.formulaire.value!!.equipementNom)
+    }
+
+    /** Sans client du carnet, il n'y a pas de parc où inscrire quoi que ce soit. */
+    @Test
+    fun `aucune machine n'est inscrite sans client du carnet`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(client = "Client de passage", ville = "Rouen"),
+        )
+
+        viewModel.onNouvelleMachine("Vitrine")
+        advanceUntilIdle()
+
+        assertTrue(daoEquipements.contenu.isEmpty())
+        assertNull(viewModel.formulaire.value!!.equipementId)
+    }
+
+    @Test
+    fun `un nom vide ne cree pas de machine`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onClientChoisi(Client(id = "cl-1", nom = "Boucherie", ville = "Rouen"))
+
+        viewModel.onNouvelleMachine("   ")
+        advanceUntilIdle()
+
+        assertTrue(daoEquipements.contenu.isEmpty())
+    }
+
     private fun enregistrer(
         viewModel: InterventionsViewModel,
         client: String,
@@ -386,6 +519,7 @@ class InterventionsViewModelTest {
             InterventionRepository(dao),
             ClientRepository(daoClients),
             TypeInterventionRepository(daoTypes),
+            EquipementRepository(daoEquipements, FauxRangementPhotos()),
         )
     }
 }

@@ -14,8 +14,14 @@ import androidx.room.TypeConverters
  * explicite, sous peine de perdre les tournées déjà saisies.
  */
 @Database(
-    entities = [Intervention::class, Client::class, TypeIntervention::class],
-    version = 5,
+    entities = [
+        Intervention::class,
+        Client::class,
+        TypeIntervention::class,
+        Equipement::class,
+        Photo::class,
+    ],
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -27,6 +33,8 @@ abstract class FrigoProDatabase : RoomDatabase() {
 
     abstract fun typeInterventionDao(): TypeInterventionDao
 
+    abstract fun equipementDao(): EquipementDao
+
     companion object {
 
         const val NOM = "frigopro.db"
@@ -37,7 +45,13 @@ abstract class FrigoProDatabase : RoomDatabase() {
                 FrigoProDatabase::class.java,
                 NOM,
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                 .build()
     }
 }

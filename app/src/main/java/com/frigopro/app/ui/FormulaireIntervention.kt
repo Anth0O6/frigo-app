@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.theme.FrigoProTheme
@@ -84,10 +85,13 @@ fun FormulaireIntervention(
     etat: EtatFormulaire,
     clients: List<Client>,
     types: List<TypeIntervention>,
+    machines: List<Equipement>,
     onEtatChange: (EtatFormulaire) -> Unit,
     onClientChoisi: (Client) -> Unit,
     onTypeChoisi: (TypeIntervention?) -> Unit,
     onNouveauType: (String) -> Unit,
+    onMachineChoisie: (Equipement?) -> Unit,
+    onNouvelleMachine: (String) -> Unit,
     onValider: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
@@ -96,6 +100,7 @@ fun FormulaireIntervention(
     var choixDateOuvert by rememberSaveable { mutableStateOf(false) }
     var choixHeureOuvert by rememberSaveable { mutableStateOf(false) }
     var nouveauTypeOuvert by rememberSaveable { mutableStateOf(false) }
+    var nouvelleMachineOuverte by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onFermer,
@@ -144,8 +149,19 @@ fun FormulaireIntervention(
 
             OutlinedTextField(
                 value = etat.client,
-                // Modifier le nom détache du carnet : ce n'est plus le même client.
-                onValueChange = { onEtatChange(etat.copy(client = it, clientId = null)) },
+                // Modifier le nom détache du carnet : ce n'est plus le même
+                // client, donc plus son parc non plus — une machine appartient à
+                // quelqu'un, la garder ici la rattacherait au mauvais.
+                onValueChange = {
+                    onEtatChange(
+                        etat.copy(
+                            client = it,
+                            clientId = null,
+                            equipementId = null,
+                            equipementNom = "",
+                        ),
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(text = "Client") },
                 singleLine = true,
@@ -178,6 +194,56 @@ fun FormulaireIntervention(
                 singleLine = true,
                 keyboardOptions = OPTIONS_CLAVIER,
             )
+
+            Text(
+                text = "Machine concernée",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (etat.clientId == null) {
+                // Une machine appartient à un client du carnet : sans client
+                // désigné, il n'y a pas de parc où la choisir ni où l'inscrire.
+                Text(
+                    text = "Choisissez un client du carnet pour accéder à ses machines.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    machines.forEach { machine ->
+                        FilterChip(
+                            selected = etat.equipementId == machine.id,
+                            onClick = {
+                                onMachineChoisie(if (etat.equipementId == machine.id) null else machine)
+                            },
+                            label = { Text(text = machine.nom) },
+                        )
+                    }
+                    // Machine retirée du parc depuis : son nom reste affiché,
+                    // sinon rouvrir l'intervention l'effacerait sans un mot.
+                    if (etat.equipementId == null && etat.equipementNom.isNotBlank()) {
+                        FilterChip(
+                            selected = true,
+                            onClick = { onMachineChoisie(null) },
+                            label = { Text(text = etat.equipementNom) },
+                        )
+                    }
+                    AssistChip(
+                        onClick = { nouvelleMachineOuverte = true },
+                        label = { Text(text = "Nouvelle machine") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(AssistChipDefaults.IconSize),
+                            )
+                        },
+                    )
+                }
+            }
 
             Text(
                 text = "Type d'intervention",
@@ -287,14 +353,30 @@ fun FormulaireIntervention(
     }
 
     if (nouveauTypeOuvert) {
-        DialogueType(
+        DialogueIntitule(
             titre = "Nouveau type d'intervention",
             libelleAction = "Ajouter",
+            messageConflit = "Ce type existe déjà.",
             onValider = {
                 onNouveauType(it)
                 nouveauTypeOuvert = false
             },
             onFermer = { nouveauTypeOuvert = false },
+        )
+    }
+
+    if (nouvelleMachineOuverte) {
+        DialogueIntitule(
+            titre = "Nouvelle machine",
+            libelleAction = "Ajouter",
+            libelleChamp = "Nom de la machine",
+            messageConflit = "Ce client a déjà une machine de ce nom.",
+            estDejaPris = { nom -> machines.any { it.nom.equals(nom, ignoreCase = true) } },
+            onValider = {
+                onNouvelleMachine(it)
+                nouvelleMachineOuverte = false
+            },
+            onFermer = { nouvelleMachineOuverte = false },
         )
     }
 
@@ -436,17 +518,26 @@ private fun FormulaireInterventionPreview() {
                 TypeIntervention(id = "t1", libelle = "Entretien annuel"),
                 TypeIntervention(id = "t2", libelle = "Fuite de fluide"),
             ),
+            machines = listOf(
+                Equipement(id = "e1", clientId = "c1", nom = "Vitrine salle 2"),
+                Equipement(id = "e2", clientId = "c1", nom = "Chambre froide positive"),
+            ),
             onClientChoisi = {},
             onTypeChoisi = {},
             onNouveauType = {},
+            onMachineChoisie = {},
+            onNouvelleMachine = {},
             etat = EtatFormulaire(
                 id = "1",
                 date = LocalDate.now(),
                 heure = LocalTime.of(10, 30),
                 client = "Boucherie Lemoine",
                 ville = "Rouen",
+                clientId = "c1",
                 typeId = "t2",
                 typeLibelle = "Fuite de fluide",
+                equipementId = "e1",
+                equipementNom = "Vitrine salle 2",
                 statut = StatutIntervention.EN_COURS,
                 notes = "Manque de fluide, à recontrôler la semaine prochaine.",
             ),

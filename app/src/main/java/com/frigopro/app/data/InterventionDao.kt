@@ -13,6 +13,13 @@ interface InterventionDao {
     @Query("SELECT * FROM interventions WHERE date = :date ORDER BY heure ASC")
     fun observerJournee(date: LocalDate): Flow<List<Intervention>>
 
+    /**
+     * Historique d'une machine, du plus récent au plus ancien : « qu'a-t-on déjà
+     * fait sur celle-ci ? » se lit de haut en bas.
+     */
+    @Query("SELECT * FROM interventions WHERE equipementId = :equipementId ORDER BY date DESC, heure DESC")
+    fun observerParEquipement(equipementId: String): Flow<List<Intervention>>
+
     /** Toutes les interventions, pour la sauvegarde. Aucun tri : le fichier n'en demande pas. */
     @Query("SELECT * FROM interventions")
     suspend fun toutes(): List<Intervention>

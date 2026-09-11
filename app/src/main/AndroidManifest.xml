@@ -21,6 +21,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+            Par où l'application d'appareil photo écrit dans notre dossier privé :
+            elle reçoit un URI `content://` valable le temps de la prise de vue,
+            et non un chemin de fichier, qu'Android refuse de transmettre.
+            `grantUriPermissions` sans `exported` : personne ne peut venir lire
+            nos photos, seul le destinataire d'une intention y a accès.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.photos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/chemins_photos" />
+        </provider>
+
     </application>
 
 </manifest>

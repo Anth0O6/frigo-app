@@ -75,6 +75,7 @@ fun InterventionsRoute(
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val types by viewModel.types.collectAsStateWithLifecycle()
+    val machines by viewModel.machines.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
 
     InterventionsScreen(
@@ -95,10 +96,15 @@ fun InterventionsRoute(
             etat = etat,
             clients = clients,
             types = types,
+            // Seules les machines du client choisi : celles des autres clients
+            // n'ont rien à faire dans cette saisie.
+            machines = machines.filter { it.clientId == etat.clientId },
             onEtatChange = viewModel::onFormulaireChange,
             onClientChoisi = viewModel::onClientChoisi,
             onTypeChoisi = viewModel::onTypeChoisi,
             onNouveauType = viewModel::onNouveauType,
+            onMachineChoisie = viewModel::onMachineChoisie,
+            onNouvelleMachine = viewModel::onNouvelleMachine,
             onValider = viewModel::onValiderFormulaire,
             onSupprimer = viewModel::onSupprimerIntervention,
             onFermer = viewModel::onFermerFormulaire,
@@ -335,9 +341,16 @@ fun InterventionCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (intervention.typeLibelle.isNotBlank()) {
+                    // Le type et la machine sur une seule ligne : deux
+                    // précisions courtes, et une carte de tournée doit rester
+                    // lisible d'un coup d'œil, téléphone à bout de bras.
+                    val precisions = listOfNotNull(
+                        intervention.typeLibelle.takeIf { it.isNotBlank() },
+                        intervention.equipementNom.takeIf { it.isNotBlank() },
+                    )
+                    if (precisions.isNotEmpty()) {
                         Text(
-                            text = intervention.typeLibelle,
+                            text = precisions.joinToString(" · "),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
                         )
