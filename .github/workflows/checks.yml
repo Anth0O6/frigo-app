@@ -76,3 +76,11 @@ jobs:
           name: rapports-tests
           path: app/build/reports/tests/
           if-no-files-found: ignore
+
+      # Dernière étape du job, et c'est le but : le résumé doit être la
+      # dernière chose imprimée pour rester lisible sans dérouler le journal.
+      - name: Rappel des erreurs
+        if: failure()
+        run: |
+          echo "=== Erreurs ==="
+          cat "$RUNNER_TEMP/erreurs.txt" 2>/dev/null || echo "(aucune ligne e: capturée)"
