@@ -39,7 +39,10 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew testDebugUnitTest 2>&1 | tee "$RUNNER_TEMP/tests.log" || CODE=$?
-          grep -E '^e: |^[A-Za-z].*FAILED$' "$RUNNER_TEMP/tests.log" | head -60 > "$RUNNER_TEMP/erreurs.txt" || true
+          # Le nom du test, et la comparaison qui a échoué juste après : sans
+          # elle, le résumé dit qu'un test est rouge sans dire pourquoi.
+          grep -E '^e: |^[A-Za-z].*FAILED$|AssertionError|^\s+(expected|actual):' \
+            "$RUNNER_TEMP/tests.log" | head -60 > "$RUNNER_TEMP/erreurs.txt" || true
           if [ -s "$RUNNER_TEMP/erreurs.txt" ]; then
             echo "::group::Erreurs"
             cat "$RUNNER_TEMP/erreurs.txt"

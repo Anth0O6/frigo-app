@@ -92,26 +92,26 @@ class NombresTest {
 
     @Test
     fun `un petit montant garde ses unites`() {
-        assertEquals("450 €", Nombres.enEurosCourt(450.0))
-        assertEquals("les centimes ne tiennent pas sur une tuile", "450 €", Nombres.enEurosCourt(450.40))
-        assertEquals("9 800 €", Nombres.enEurosCourt(9_800.0))
+        assertEquals("450 €", espacesNormales(Nombres.enEurosCourt(450.0)))
+        assertEquals("les centimes ne tiennent pas sur une tuile", "450 €", espacesNormales(Nombres.enEurosCourt(450.40)))
+        assertEquals("9 800 €", espacesNormales(Nombres.enEurosCourt(9_800.0)))
     }
 
     @Test
     fun `au-dela de dix mille on abrege en milliers`() {
-        assertEquals("12,4 k€", Nombres.enEurosCourt(12_400.0))
-        assertEquals("une decimale suffit", "12,5 k€", Nombres.enEurosCourt(12_460.0))
-        assertEquals("un compte rond ne porte pas de decimale", "50 k€", Nombres.enEurosCourt(50_000.0))
+        assertEquals("12,4 k€", espacesNormales(Nombres.enEurosCourt(12_400.0)))
+        assertEquals("une decimale suffit", "12,5 k€", espacesNormales(Nombres.enEurosCourt(12_460.0)))
+        assertEquals("un compte rond ne porte pas de decimale", "50 k€", espacesNormales(Nombres.enEurosCourt(50_000.0)))
     }
 
     @Test
     fun `le million a son abreviation`() {
-        assertEquals("1,2 M€", Nombres.enEurosCourt(1_200_000.0))
+        assertEquals("1,2 M€", espacesNormales(Nombres.enEurosCourt(1_200_000.0)))
     }
 
     @Test
     fun `rien vaut zero et non une case vide`() {
-        assertEquals("0 €", Nombres.enEurosCourt(0.0))
+        assertEquals("0 €", espacesNormales(Nombres.enEurosCourt(0.0)))
     }
 
     /**

@@ -57,8 +57,11 @@ object Nombres {
      * et où elle doit être exacte.
      */
     fun enEurosCourt(valeur: Double): String = when {
-        valeur >= 1_000_000 -> "${enTexte(valeur / 1_000_000, decimales = 1)} M\u20ac"
-        valeur >= 10_000 -> "${enTexte(valeur / 1_000, decimales = 1)} k\u20ac"
-        else -> "${enTexte(valeur, decimales = 0)} \u20ac"
+        valeur >= 1_000_000 -> "${enTexte(valeur / 1_000_000, decimales = 1)}\u00a0M\u20ac"
+        valeur >= 10_000 -> "${enTexte(valeur / 1_000, decimales = 1)}\u00a0k\u20ac"
+        // Sous dix mille, les unités restent, mais les milliers se groupent :
+        // « 9 800 € » se lit, « 9800 € » se compte. Même espace insécable que
+        // [enEuros], pour que les deux formes s'écrivent pareil.
+        else -> String.format(Locale.FRANCE, "%,.0f\u00a0\u20ac", valeur).replace('\u202f', '\u00a0')
     }
 }
