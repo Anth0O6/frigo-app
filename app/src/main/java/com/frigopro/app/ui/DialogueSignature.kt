@@ -6,6 +6,9 @@ import android.graphics.Paint
 import android.graphics.Path as PathAndroid
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +56,8 @@ fun DialogueSignature(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // Fenêtre à part, elle aussi : voir `VisionneusePhoto`.
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {

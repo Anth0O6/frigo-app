@@ -129,6 +129,8 @@ fun ReglagesScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                // Voir `FrigoProApp` : la coquille pose la marge du haut.
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = { Text(text = "Réglages") },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,

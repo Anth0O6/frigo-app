@@ -198,10 +198,16 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   *remplacent* leur liste plutôt que de s'empiler dessus, ce qui garde une seule
   profondeur et un simple `BackHandler`. La bibliothèque de navigation s'imposera le jour
   d'une vraie destination à empiler ou d'un lien profond. Corollaire à ne pas
-  perdre de vue : la barre d'onglets pose elle-même la marge de la barre système
-  du bas, donc les écrans qu'elle surmonte passent `contentWindowInsets =
-  WindowInsets(0, 0, 0, 0)` à leur `Scaffold`, sans quoi la marge serait comptée
-  deux fois.
+  perdre de vue : **c'est la coquille qui pose les marges des barres système**,
+  et elle seule — la barre d'onglets porte celle du bas, et `FrigoProApp` pose
+  celle du haut et des côtés. Les écrans qu'elle héberge passent donc
+  `contentWindowInsets = WindowInsets(0, 0, 0, 0)` à leur `Scaffold`, et les deux
+  `TopAppBar` restantes reçoivent le même `windowInsets`, sans quoi la marge
+  serait comptée deux fois. La marge du haut vient de `safeDrawing` et non des
+  seules barres système : sur un téléphone à appareil photo perforé, la découpe
+  déborde de la barre d'état et masquerait le titre de l'écran. Les boîtes plein
+  écran (`VisionneusePhoto`, `DialogueSignature`) sont des **fenêtres à part**,
+  que la marge de la coquille n'atteint pas : elles la posent elles-mêmes.
   `InterventionsViewModel` détient la journée consultée
   (`StateFlow<LocalDate>`) et en dérive la liste par `flatMapLatest` : changer
   la date suffit à recharger l'écran. Il la rapproche du carnet par `combine`

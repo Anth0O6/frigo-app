@@ -94,6 +94,9 @@ fun EcranEquipement(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                // La coquille pose déjà la marge du haut : la laisser ici la
+                // compterait deux fois.
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Column {
                         Text(text = equipement.nom, maxLines = 1, overflow = TextOverflow.Ellipsis)

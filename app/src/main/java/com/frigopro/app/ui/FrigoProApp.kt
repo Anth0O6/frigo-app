@@ -2,7 +2,12 @@ package com.frigopro.app.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Contacts
@@ -39,16 +44,31 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
  * intérêt le jour où il faudra une pile arrière — une fiche client ouverte en
  * pleine page plutôt qu'en feuille, par exemple — ou des liens profonds.
  *
- * La barre d'onglets pose elle-même la marge de la barre système du bas ; les
- * écrans qu'elle surmonte doivent donc s'en abstenir, faute de quoi la marge
- * serait comptée deux fois.
+ * **C'est la coquille qui pose les marges des barres système**, et elle seule :
+ * la barre d'onglets porte celle du bas, et le contenu reçoit ici celle du haut
+ * et des côtés. Les écrans qu'elle héberge passent donc
+ * `contentWindowInsets = WindowInsets(0, 0, 0, 0)` à leur `Scaffold` — sans quoi
+ * la marge serait comptée deux fois.
+ *
+ * La marge du haut vient de `safeDrawing` et non des seules barres système,
+ * parce qu'elle doit aussi écarter la **découpe d'écran** : sur un téléphone à
+ * appareil photo perforé, celui-ci déborde de la barre d'état et masquerait le
+ * titre de l'écran.
  */
 @Composable
 fun FrigoProApp(modifier: Modifier = Modifier) {
     var onglet by rememberSaveable { mutableStateOf(Onglet.TOURNEE) }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Box(modifier = Modifier.weight(1f)) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                    ),
+                ),
+        ) {
             when (onglet) {
                 Onglet.TOURNEE -> InterventionsRoute()
                 Onglet.CLIENTS -> ClientsRoute()
