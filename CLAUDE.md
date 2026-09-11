@@ -64,6 +64,10 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
 │       │   │   ├── Devis.kt               # devis, lignes et totaux
 │       │   │   ├── Parametres.kt          # les réglages, en une seule ligne
+│       │   │   ├── Prestation.kt          # technicien, checklist, catalogue
+│       │   │   ├── CatalogueDao.kt
+│       │   │   ├── CatalogueRepository.kt
+│       │   │   ├── Initiales.kt           # « KB », une seule fois pour quatre écrans
 │       │   │   ├── Numerotation.kt        # INT-2605-018, DEV-2605-007
 │       │   │   ├── SuiviDao.kt
 │       │   │   ├── SuiviRepository.kt
@@ -86,7 +90,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── InterventionRepository.kt
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
-│       │       ├── FrigoProApp.kt      # coquille : les trois onglets
+│       │       ├── FrigoProApp.kt      # coquille : les cinq onglets
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
 │       │       ├── LigneTournee.kt     # intervention + fiche de son client
@@ -108,6 +112,12 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── EcranDepannage.kt    # les pistes, et le contrôle qui tranche
 │       │       ├── DialogueSignature.kt # signer au doigt, puis rasteriser
 │       │       ├── EcranSemaine.kt      # le planning des cinq jours ouvrés
+│       │       ├── FriseHoraire.kt      # le temps en hauteur, les créneaux dessus
+│       │       ├── EcranAujourdhui.kt   # l'accueil : « et maintenant ? »
+│       │       ├── AujourdhuiViewModel.kt
+│       │       ├── AujourdhuiRoute.kt
+│       │       ├── OngletFiche.kt       # créneau, adresse, machine, checklist
+│       │       ├── CouleurStatut.kt     # deux dimensions réduites à une couleur
 │       │       ├── DevisScreen.kt
 │       │       ├── DevisViewModel.kt
 │       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
@@ -186,12 +196,59 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   est l'interface qui permet d'éprouver cette coordination sans Android ;
   `StockagePhotos` en est la seule implémentation, et la seule à connaître
   `BitmapFactory`, l'EXIF et le `FileProvider`.
+  `Technicien` porte le même couple lien / copie que le type et la machine, et
+  pour la même raison : un renommage suit les tournées passées, une suppression
+  coupe le lien et laisse le nom — une tournée de mars doit continuer de dire qui
+  l'a faite. `PointChecklist` est **recopié** sur chaque intervention plutôt que
+  référencé : le modèle peut changer sans réécrire ce qu'on avait demandé de
+  vérifier aux interventions passées. Trois de ses quatre points par défaut sont
+  des obligations réglementaires, et c'est pour cela qu'ils sont là plutôt que
+  laissés à la mémoire ; la liste est posée à l'**ouverture** d'une intervention
+  et non à sa création, pour qu'une intervention saisie la semaine dernière la
+  reçoive aussi.
+  `Prestation` est le catalogue d'où se chiffrent les devis. Il est **livré avec
+  ses intitulés et sans ses prix** : « recharge R-449A » est le vocabulaire d'un
+  métier, un tarif horaire celui d'une entreprise, et un prix inventé partirait
+  chez un vrai client sans que personne ne l'ait relu — une ligne à zéro euro se
+  voit et appelle une correction. Deux chemins le posent et **partagent le même
+  SQL** (`SQL_CATALOGUE_INITIAL`) : `MIGRATION_7_8` pour un téléphone déjà garni
+  de tournées, le `onCreate` de Room pour une installation neuve. Les laisser
+  diverger reviendrait à livrer deux applications différentes selon l'ancienneté
+  du téléphone.
+  Le montant d'un devis n'est pas recopié sur sa ligne : il est la somme de ses
+  lignes, et le recopier serait s'exposer à ce qu'il cesse d'être juste après une
+  modification. `DevisDao.observerTotaux` les calcule tous en un `GROUP BY`,
+  d'où sortent `DevisChiffre` et les compteurs de l'accueil comme de l'onglet.
+  `initialesDe` est partagée : quatre écrans la dérivaient chacun à sa façon, et
+  elles divergeaient déjà — « L'Épicerie du coin » donnait « L » sur l'un et
+  « LÉ » sur l'autre.
   `ClientRepository` tient le carnet. Son tri passe par un `Collator` français
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `FrigoProApp` est la coquille : quatre onglets, `Tournée`,
-  `Clients`, `Devis` et `Réglages`, et la barre qui en change. **Pas de graphe de
+- **`ui`** — `FrigoProApp` est la coquille : cinq onglets, `Aujourd'hui`,
+  `Planning`, `Devis`, `Clients` et `Réglages`, et la barre qui en change.
+  L'accueil vient en tête parce qu'il répond à la question qu'on se pose en
+  sortant le téléphone — « et maintenant ? » — et le planning juste après, pour
+  la suivante : « et le reste de la semaine ? ». `EcranAujourdhui` met en avant
+  l'intervention en cours, ou à défaut la prochaine, et ne navigue **jamais**
+  dans le temps : donner deux façons de changer de date conduirait à se demander
+  laquelle des deux on regarde. Les échéances F-Gas qu'il annonce ne sont
+  stockées nulle part — elles se recalculent (`EtatEtancheite`), une échéance en
+  base étant fausse le lendemain d'un contrôle.
+  Le planning offre deux vues de la même journée, et c'est délibéré : la liste
+  dit ce qui vient ensuite, `FriseHoraire` dit **où sont les trous** — la seule
+  question qui compte quand un client demande à être dépanné aujourd'hui. Les
+  créneaux y sont posés en décalage absolu et non empilés, si bien que deux
+  interventions qui se chevauchent se chevauchent à l'écran : un chevauchement
+  est une erreur de planification, et il faut qu'elle se voie. Son amplitude
+  horaire s'adapte à la journée au lieu d'être figée — une astreinte à 5 h
+  sortirait d'une frise fixe, et une intervention invisible sur le planning est
+  pire qu'un planning plus long.
+  `CouleurStatut` réduit à une seule couleur les deux dimensions que le modèle
+  garde séparées : l'avancement et l'urgence. Le modèle les sépare parce qu'une
+  urgence reste une urgence une fois terminée ; l'écran n'a qu'une pastille à
+  peindre. **Pas de graphe de
   navigation** : des sections sans lien hiérarchique se passent d'une pile
   arrière, et une variable
   `rememberSaveable` suffit. Une intervention, une machine ou un devis ouverts
@@ -318,6 +375,21 @@ devenir nullable, et SQLite ne sait pas relâcher un `NOT NULL` par
 `ALTER TABLE`. Elle insère aussi la ligne unique de `parametres` : sans elle,
 chaque écran devrait traiter le cas « pas encore de réglages ».
 
+`MIGRATION_7_8` apporte les techniciens, la durée d'une intervention, la
+checklist et le catalogue. Tout y est ajout sauf un renommage de valeur :
+`A_FAIRE` devient `PLANIFIEE`, parce que « planifié » se dit d'un créneau posé
+sur une frise horaire et « à faire » d'une case de liste — c'est le même état. La
+durée arrive à une heure par défaut : c'est une supposition assumée, sans durée
+le planning ne saurait pas quelle hauteur donner à un créneau.
+
+**Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
+tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
+entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
+obligatoire que la migration : sans lui, la mise à jour rendrait illisibles
+toutes les sauvegardes existantes, et rien ne le signalerait avant le jour où
+quelqu'un essaie de restaurer. Même règle que pour `typePanne` — un fichier
+d'alors et une base d'alors doivent donner le même résultat.
+
 `MigrationTest` recrée une base telle que la version précédente l'écrivait —
 empreinte d'identité comprise — puis l'ouvre par `FrigoProDatabase.creer` : la
 migration est ainsi vérifiée dans les conditions réelles, y compris son
@@ -363,7 +435,7 @@ l'APK : un test rouge bloque la publication.
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé |
-| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1 |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible |
 | `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
@@ -373,14 +445,16 @@ l'APK : un test rouge bloque la publication.
 | `DepannageTest` | Le croisement surchauffe / sous-refroidissement, et le silence d'un relevé muet |
 | `NumerotationTest` | Le rang repart au mois, et une suppression ne réattribue pas un numéro |
 | `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
-| `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, lignes emportées avec le devis |
+| `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, montant de chaque devis, ce qui compte comme « en attente », lignes emportées avec le devis |
 | `ParametresRepositoryTest` | Valeurs par défaut sans ligne en base, ligne unique, initiales |
-| `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur |
+| `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite |
+| `InitialesTest` | « KB », « LÉ » : deux lettres au plus, apostrophe comprise |
+| `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
-`FauxDevisDao`, `FauxParametresDao` — qui reproduisent le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
+`FauxDevisDao`, `FauxParametresDao`, `FauxTechnicienDao`, `FauxPrestationDao` — qui reproduisent le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
 fichiers qui tient lieu de stockage d'images. Seul `MigrationTest` a besoin d'un
 vrai SQLite, fourni par Robolectric. Rien ne décode d'image : ce qui se vérifie
 sans téléphone est isolé dans `ReductionPhoto`.
@@ -419,6 +493,11 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 5 ajoute les techniciens, la durée d'une intervention, la checklist et
+le catalogue. Il traduit aussi `A_FAIRE` en `PLANIFIEE` à la lecture, par
+`STATUTS_HISTORIQUES` : c'est ce qui garde lisibles les sauvegardes d'avant le
+renommage (voir « Migrations »).
 
 Le format 4 ajoute ce qui s'est passé sur place — temps chronométré, relevés,
 mouvements de fluide, pièces posées, photos avant/après — ainsi que les devis et
@@ -538,6 +617,12 @@ place » venant en tête :
   donc toujours la périodicité la plus exigeante.
 - Plusieurs relevés horodatés par intervention : la table les accepte déjà
   (`releveLe`), l'écran n'en montre qu'un.
+- Les prix du catalogue, à renseigner depuis les Réglages : il est livré avec ses
+  intitulés et sans ses tarifs, et la feuille affiche « prix à renseigner » là où
+  il en manque un. Rien ne permet encore de les saisir.
+- Affecter une intervention à un technicien depuis le formulaire : le modèle le
+  porte (`technicienId`) et le planning affiche les initiales, mais la liste des
+  techniciens ne se remplit pas encore.
 - Suppression d'un client, qui devra décider du sort du `clientId` des
   interventions passées — les types et les machines montrent une façon de le
   faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
