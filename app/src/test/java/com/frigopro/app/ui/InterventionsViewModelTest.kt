@@ -33,6 +33,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -556,6 +557,7 @@ class InterventionsViewModelTest {
     @Test
     fun `modifier une intervention faite n'efface pas son chrono ni son numero`() = runTest {
         val faite = Intervention(
+            date = LocalDate.now(),
             heure = LocalTime.of(8, 30),
             client = "Boucherie Lemoine",
             ville = "Rouen",
