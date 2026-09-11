@@ -285,7 +285,9 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   fichiers sont locaux, peu nombreux et déjà réduits, et ce qu'une bibliothèque
   apporterait — cache réseau, préchargement — ne servirait à rien ici.
   `ReglagesViewModel` tient l'onglet
-  Réglages — la liste des types pour l'instant — et n'expose qu'un seul
+  Réglages — la liste des types, et les prix du catalogue, qui ne se saisissent
+  que là : le catalogue est livré sans tarifs, et un catalogue qu'on ne peut pas
+  tarifer ne sert à rien — et n'expose qu'un seul
   `StateFlow<DialogueReglages?>` plutôt que trois booléens : deux boîtes de
   dialogue ne peuvent pas être ouvertes en même temps, et le dire au type
   supprime la question. `DialogueIntitule` est partagée par les types et
@@ -299,7 +301,13 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   (`StateFlow<EtatFormulaire?>`, `null` quand l'écran n'affiche que la liste).
   `EtatFormulaire` porte la saisie en cours ; son `id` vaut `null` en création
   et identifie la ligne éditée sinon, ce qui distingue « Ajouter » d'«
-  Enregistrer ». Les écrans suivent le motif *state hoisting* :
+  Enregistrer ». Il porte aussi `origine`, l'intervention **telle qu'elle
+  était**, et `versIntervention` écrit par-dessus elle. Ce n'est pas un détail :
+  le formulaire n'affiche qu'une partie d'une intervention — le reste s'est passé
+  sur place — et reconstruire la ligne à neuf remettait le chronomètre à zéro,
+  effaçait le numéro attribué et la signature du client dès qu'on corrigeait une
+  heure mal saisie. Tout nouveau champ qui ne passe pas par le formulaire doit
+  donc traverser par `copy`, et non être réécrit. Les écrans suivent le motif *state hoisting* :
   `InterventionsRoute` (avec état) enveloppe `InterventionsScreen` et
   `FormulaireIntervention` (sans état, testables et prévisualisables).
 - **`ui.theme`** — thème Material 3 **sombre par défaut**, fidèle à la maquette.
@@ -426,15 +434,16 @@ l'APK : un test rouge bloque la publication.
 | Cible | Ce qui est couvert |
 | --- | --- |
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
-| `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id` |
+| `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
+| `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
-| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet |
+| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées |
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
-| `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé |
+| `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible |
 | `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
@@ -617,12 +626,6 @@ place » venant en tête :
   donc toujours la périodicité la plus exigeante.
 - Plusieurs relevés horodatés par intervention : la table les accepte déjà
   (`releveLe`), l'écran n'en montre qu'un.
-- Les prix du catalogue, à renseigner depuis les Réglages : il est livré avec ses
-  intitulés et sans ses tarifs, et la feuille affiche « prix à renseigner » là où
-  il en manque un. Rien ne permet encore de les saisir.
-- Affecter une intervention à un technicien depuis le formulaire : le modèle le
-  porte (`technicienId`) et le planning affiche les initiales, mais la liste des
-  techniciens ne se remplit pas encore.
 - Suppression d'un client, qui devra décider du sort du `clientId` des
   interventions passées — les types et les machines montrent une façon de le
   faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
