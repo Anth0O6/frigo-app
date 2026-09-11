@@ -143,6 +143,39 @@ class SuiviRepository(
         stockage.supprimer(photo.fichier)
     }
 
+    // — Checklist ——————————————————————————————————————————————————————————
+
+    fun observerChecklist(interventionId: String): Flow<List<PointChecklist>> =
+        dao.observerChecklist(interventionId)
+
+    /**
+     * Pose la checklist par défaut si l'intervention n'en a pas encore.
+     *
+     * Les points sont **recopiés** et non référencés : le modèle peut changer
+     * sans réécrire l'histoire des interventions passées, qui doivent continuer
+     * de montrer ce qu'on leur avait demandé de vérifier.
+     */
+    suspend fun preparerChecklist(interventionId: String, modele: List<String> = CHECKLIST_INITIALE) {
+        if (dao.compterChecklist(interventionId) > 0) return
+        dao.enregistrerPoints(
+            modele.mapIndexed { rang, libelle ->
+                PointChecklist(
+                    interventionId = interventionId,
+                    libelle = libelle,
+                    rang = rang,
+                    modifieLe = Instant.now(),
+                )
+            },
+        )
+    }
+
+    suspend fun basculerPoint(point: PointChecklist) {
+        dao.enregistrerPoint(point.copy(fait = !point.fait, modifieLe = Instant.now()))
+    }
+
+    /** Ce que fait la clôture : tout cocher d'un coup. */
+    suspend fun toutCocher(interventionId: String) = dao.toutCocher(interventionId)
+
     // — Suppression d'une intervention —————————————————————————————————————
 
     /**

@@ -60,6 +60,13 @@ object Convertisseurs {
     fun versSensFluide(valeur: String?): SensFluide? = valeur?.let(SensFluide::valueOf)
 
     @TypeConverter
+    fun depuisCategoriePrestation(categorie: CategoriePrestation?): String? = categorie?.name
+
+    @TypeConverter
+    fun versCategoriePrestation(valeur: String?): CategoriePrestation? =
+        valeur?.let(CategoriePrestation::valueOf)
+
+    @TypeConverter
     fun depuisStatutDevis(statut: StatutDevis?): String? = statut?.name
 
     @TypeConverter

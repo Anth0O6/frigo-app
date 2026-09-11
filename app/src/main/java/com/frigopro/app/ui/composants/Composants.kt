@@ -36,7 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.frigopro.app.ui.theme.Ambre
+import com.frigopro.app.ui.theme.AValider
 import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
@@ -322,7 +322,7 @@ fun Encart(
     onClick: (() -> Unit)? = null,
     complement: String? = null,
 ) {
-    val teinte = if (alerte) Ambre else accent
+    val teinte = if (alerte) AValider else accent
     val cliquable = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Surface(
         modifier = modifier,

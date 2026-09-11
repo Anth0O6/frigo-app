@@ -2,6 +2,7 @@ package com.frigopro.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -18,45 +19,45 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 private val SchemaSombre = darkColorScheme(
-    primary = Cyan,
-    onPrimary = SurCyan,
-    primaryContainer = NuitPuce,
-    onPrimaryContainer = Cyan,
-    secondary = BleuFroid,
-    onSecondary = Nuit,
-    secondaryContainer = NuitPuce,
-    onSecondaryContainer = BleuFroid,
-    tertiary = Ambre,
+    primary = Bleu,
+    onPrimary = SurBleu,
+    primaryContainer = Bleu.copy(alpha = 0.20f),
+    onPrimaryContainer = BleuClair,
+    secondary = TexteSecondaire,
+    onSecondary = Noir,
+    secondaryContainer = Relief,
+    onSecondaryContainer = Texte,
+    tertiary = AValider,
     onTertiary = Color(0xFF2A1800),
-    tertiaryContainer = Color(0xFF3A2A10),
-    onTertiaryContainer = Ambre,
-    background = Nuit,
-    onBackground = NuitTexte,
-    surface = Nuit,
-    onSurface = NuitTexte,
-    surfaceVariant = NuitPuce,
-    onSurfaceVariant = NuitTexteFaible,
-    surfaceContainerLowest = Nuit,
-    surfaceContainerLow = NuitCarte,
-    surfaceContainer = NuitCarte,
-    surfaceContainerHigh = NuitSurface,
-    surfaceContainerHighest = NuitPuce,
-    outline = NuitFilet,
-    outlineVariant = NuitFiletFort,
-    error = Color(0xFFFF6B6B),
-    onError = Color(0xFF3A0A0A),
+    tertiaryContainer = AValider.copy(alpha = 0.16f),
+    onTertiaryContainer = AValider,
+    background = Noir,
+    onBackground = Texte,
+    surface = Noir,
+    onSurface = Texte,
+    surfaceVariant = Relief,
+    onSurfaceVariant = TexteSecondaire,
+    surfaceContainerLowest = Noir,
+    surfaceContainerLow = CarteEteinte,
+    surfaceContainer = Carte,
+    surfaceContainerHigh = Relief,
+    surfaceContainerHighest = Color(0xFF3A3A3C),
+    outline = Filet,
+    outlineVariant = Color(0xFF2C2C2E),
+    error = Urgence,
+    onError = Color(0xFF3A0A05),
 )
 
 private val SchemaClair = lightColorScheme(
-    primary = CyanSombre,
+    primary = BleuSombre,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFCFEFEB),
-    onPrimaryContainer = Color(0xFF06322E),
-    secondary = BleuFroidSombre,
+    primaryContainer = Color(0xFFD3E4FA),
+    onPrimaryContainer = Color(0xFF06305F),
+    secondary = JourTexteSecondaire,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFDCEAF3),
-    onSecondaryContainer = Color(0xFF0B2A3D),
-    tertiary = AmbreSombre,
+    secondaryContainer = Color(0xFFE5E5EA),
+    onSecondaryContainer = JourTexte,
+    tertiary = AValiderSombre,
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFFFE6C2),
     onTertiaryContainer = Color(0xFF3A2400),
@@ -64,26 +65,65 @@ private val SchemaClair = lightColorScheme(
     onBackground = JourTexte,
     surface = Jour,
     onSurface = JourTexte,
-    surfaceVariant = JourCarte,
-    onSurfaceVariant = JourTexteFaible,
+    surfaceVariant = Color(0xFFE5E5EA),
+    onSurfaceVariant = JourTexteSecondaire,
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = JourSurface,
+    surfaceContainerLow = Color(0xFFFAFAFC),
     surfaceContainer = JourCarte,
-    surfaceContainerHigh = JourSurface,
-    surfaceContainerHighest = Color(0xFFE7EDF1),
+    surfaceContainerHigh = Color(0xFFEFEFF4),
+    surfaceContainerHighest = Color(0xFFE5E5EA),
     outline = JourFilet,
-    outlineVariant = Color(0xFFE2E8ED),
-    error = Color(0xFFB3261E),
+    outlineVariant = Color(0xFFE5E5EA),
+    error = UrgenceSombre,
     onError = Color.White,
 )
 
-/** Coins arrondis de la maquette : rien d'anguleux, rien de circulaire. */
+/**
+ * Les cinq teintes de statut, et rien d'autre en couleur sur un écran.
+ *
+ * Elles vivent dans le thème et non dans les écrans parce qu'elles changent
+ * avec le mode clair : les teintes vives de la maquette ne passent aucun seuil
+ * de contraste sur blanc, et une pastille illisible ne signale plus rien.
+ */
+class Statuts(
+    val urgence: Color,
+    val planifie: Color,
+    val aValider: Color,
+    val devis: Color,
+    val termine: Color,
+)
+
+private val StatutsSombres = Statuts(
+    urgence = Urgence,
+    planifie = Planifie,
+    aValider = AValider,
+    devis = CouleurDevis,
+    termine = Termine,
+)
+
+private val StatutsClairs = Statuts(
+    urgence = UrgenceSombre,
+    planifie = BleuSombre,
+    aValider = AValiderSombre,
+    devis = DevisSombre,
+    termine = TermineSombre,
+)
+
+/** Les couleurs de statut en vigueur. Voir [Statuts]. */
+val LocalStatuts = staticCompositionLocalOf { StatutsSombres }
+
+/**
+ * Coins arrondis de la maquette : généreux, jamais circulaires.
+ *
+ * `large` est le rayon d'une carte de liste (18 dp) et `extraLarge` celui de la
+ * carte héros (24 dp), qui est plus grande et doit le rester à l'œil.
+ */
 private val Formes = Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
 /**
@@ -105,21 +145,15 @@ private val CiblesNormales = Cibles(action = 56.dp, carre = 52.dp)
 
 private val CiblesGantees = Cibles(action = 68.dp, carre = 64.dp)
 
-/**
- * Les cibles tactiles en vigueur. Fournies par le thème plutôt que lues dans
- * les réglages à chaque écran : c'est une propriété de l'apparence, au même
- * titre qu'une couleur.
- */
+/** Les cibles tactiles en vigueur. */
 val LocalCibles = staticCompositionLocalOf { CiblesNormales }
 
 /**
  * Thème de l'application : **sombre par défaut**, et fidèle à la maquette.
  *
- * Les couleurs dynamiques (Material You) ont été retirées à dessein. Elles
- * étaient justifiées tant que l'application n'avait pas d'identité propre ;
- * maintenant qu'un ambre signale l'intervention en cours et un cyan l'action,
- * laisser le fond d'écran du téléphone les repeindre reviendrait à effacer une
- * information.
+ * Les couleurs dynamiques (Material You) ont été retirées à dessein. Sur un
+ * écran où le rouge veut dire « urgence » et le vert « fait », laisser le fond
+ * d'écran du téléphone les redistribuer reviendrait à effacer une information.
  *
  * @param sombre `null` pour suivre le réglage du système, sinon le choix
  *   explicite du technicien — l'interrupteur « Thème sombre » des Réglages.
@@ -150,6 +184,7 @@ fun FrigoProTheme(
 
     CompositionLocalProvider(
         LocalCibles provides if (modeGants) CiblesGantees else CiblesNormales,
+        LocalStatuts provides if (enSombre) StatutsSombres else StatutsClairs,
     ) {
         MaterialTheme(
             colorScheme = schema,

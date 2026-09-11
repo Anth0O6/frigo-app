@@ -32,8 +32,8 @@ import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Section
-import com.frigopro.app.ui.theme.Ambre
-import com.frigopro.app.ui.theme.Cyan
+import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.Termine
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
 /**
@@ -172,7 +172,7 @@ fun OngletPhotos(
     ) {
         GrillePhotos(
             intitule = "Avant",
-            accent = Ambre,
+            accent = AValider,
             photos = etat.photosAvant,
             categorie = CategoriePhoto.AVANT,
             actions = actions,
@@ -180,7 +180,7 @@ fun OngletPhotos(
         )
         GrillePhotos(
             intitule = "Après",
-            accent = Cyan,
+            accent = Termine,
             photos = etat.photosApres,
             categorie = CategoriePhoto.APRES,
             actions = actions,

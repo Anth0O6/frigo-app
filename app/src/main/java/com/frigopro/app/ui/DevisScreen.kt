@@ -50,9 +50,7 @@ import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
-import com.frigopro.app.ui.theme.Ambre
-import com.frigopro.app.ui.theme.BleuFroid
-import com.frigopro.app.ui.theme.Cyan
+import com.frigopro.app.ui.theme.LocalStatuts
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
@@ -177,11 +175,13 @@ private fun LigneDevisListe(devis: Devis, onClick: () -> Unit) {
 
 @Composable
 private fun PuceStatut(statut: StatutDevis) {
+    val statuts = LocalStatuts.current
     val couleur = when (statut) {
-        StatutDevis.BROUILLON -> BleuFroid
-        StatutDevis.ENVOYE -> Ambre
-        StatutDevis.ACCEPTE -> Cyan
-        StatutDevis.REFUSE -> MaterialTheme.colorScheme.onSurfaceVariant
+        // Un brouillon n'est pas un état, c'est l'absence d'état : il reste gris.
+        StatutDevis.BROUILLON -> MaterialTheme.colorScheme.onSurfaceVariant
+        StatutDevis.ENVOYE -> statuts.planifie
+        StatutDevis.ACCEPTE -> statuts.termine
+        StatutDevis.REFUSE -> statuts.urgence
     }
     Puce(texte = statut.libelle.uppercase(), couleur = couleur, fond = couleur.copy(alpha = 0.16f))
 }

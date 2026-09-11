@@ -41,7 +41,7 @@ import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Section
-import com.frigopro.app.ui.theme.NuitPointille
+import com.frigopro.app.ui.theme.Pointille
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
 
@@ -246,7 +246,7 @@ private fun SectionSignature(
                     .height(112.dp),
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, NuitPointille),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, Pointille),
                 onClick = actions.onSigner,
             ) {
                 Box(contentAlignment = Alignment.Center) {

@@ -35,7 +35,7 @@ import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
-import com.frigopro.app.ui.theme.Ambre
+import com.frigopro.app.ui.theme.AValider
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -82,7 +82,7 @@ fun IdentiteMachine(
             TuileChiffre(
                 valeur = etancheite.echeance?.let { it.format(FORMAT_MOIS) } ?: "—",
                 libelle = libelleEtancheite(etancheite),
-                couleur = if (etancheite.enRetard) Ambre else MaterialTheme.colorScheme.onSurface,
+                couleur = if (etancheite.enRetard) AValider else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             TuileChiffre(
@@ -125,7 +125,7 @@ fun TendanceReleves(releves: List<Releve>, modifier: Modifier = Modifier) {
                             .fillMaxHeight(fraction = (valeur / maximum).toFloat().coerceIn(0.08f, 1f))
                             .clip(MaterialTheme.shapes.extraSmall)
                             .background(
-                                if (derniere) Ambre else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                if (derniere) AValider else MaterialTheme.colorScheme.surfaceContainerHighest,
                             ),
                     )
                 }

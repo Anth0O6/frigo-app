@@ -29,8 +29,7 @@ import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
-import com.frigopro.app.ui.theme.BleuFroid
-import com.frigopro.app.ui.theme.Cyan
+import com.frigopro.app.ui.theme.Bleu
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
 /**
@@ -121,7 +120,9 @@ fun EcranDepannage(
 
 @Composable
 private fun LigneCause(rang: Int, cause: Cause, premiere: Boolean) {
-    val accent = if (premiere) Cyan else BleuFroid
+    // La première piste se détache ; les suivantes restent grises. C'est par là
+    // qu'il faut commencer, pas la seule chose à regarder.
+    val accent = if (premiere) Bleu else MaterialTheme.colorScheme.onSurfaceVariant
     Carte(contour = true) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Surface(

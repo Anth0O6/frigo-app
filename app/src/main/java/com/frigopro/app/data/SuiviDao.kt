@@ -112,6 +112,29 @@ abstract class SuiviDao {
     @Query("DELETE FROM photos WHERE interventionId = :interventionId")
     abstract suspend fun effacerPhotosDe(interventionId: String)
 
+    // — Checklist ——————————————————————————————————————————————————————————
+
+    @Query("SELECT * FROM points_checklist WHERE interventionId = :interventionId ORDER BY rang ASC")
+    abstract fun observerChecklist(interventionId: String): Flow<List<PointChecklist>>
+
+    @Query("SELECT COUNT(*) FROM points_checklist WHERE interventionId = :interventionId")
+    abstract suspend fun compterChecklist(interventionId: String): Int
+
+    @Query("SELECT * FROM points_checklist")
+    abstract suspend fun tousLesPoints(): List<PointChecklist>
+
+    @Upsert
+    abstract suspend fun enregistrerPoint(point: PointChecklist)
+
+    @Upsert
+    abstract suspend fun enregistrerPoints(points: List<PointChecklist>)
+
+    @Query("UPDATE points_checklist SET fait = 1 WHERE interventionId = :interventionId")
+    abstract suspend fun toutCocher(interventionId: String)
+
+    @Query("DELETE FROM points_checklist WHERE interventionId = :interventionId")
+    abstract suspend fun effacerChecklistDe(interventionId: String)
+
     // — Suppression d'une intervention —————————————————————————————————————
 
     @Query("DELETE FROM interventions WHERE id = :id")
@@ -131,6 +154,7 @@ abstract class SuiviDao {
         effacerMouvementsDe(id)
         effacerPiecesDe(id)
         effacerPhotosDe(id)
+        effacerChecklistDe(id)
         effacerIntervention(id)
     }
 }

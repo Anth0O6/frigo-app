@@ -91,9 +91,9 @@ class StatutInterventionTest {
 
     @Test
     fun `les statuts s'enchainent dans l'ordre d'avancement, puis reviennent au debut`() {
-        assertEquals(StatutIntervention.EN_COURS, StatutIntervention.A_FAIRE.suivant())
+        assertEquals(StatutIntervention.EN_COURS, StatutIntervention.PLANIFIEE.suivant())
         assertEquals(StatutIntervention.TERMINEE, StatutIntervention.EN_COURS.suivant())
-        assertEquals(StatutIntervention.A_FAIRE, StatutIntervention.TERMINEE.suivant())
+        assertEquals(StatutIntervention.PLANIFIEE, StatutIntervention.TERMINEE.suivant())
     }
 
     @Test

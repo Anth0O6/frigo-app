@@ -302,3 +302,113 @@ val MIGRATION_6_7: Migration = object : Migration(6, 7) {
         )
     }
 }
+
+/**
+ * Le catalogue livré, en SQL, **figé**.
+ *
+ * Deux chemins doivent poser les mêmes lignes : la migration, pour un téléphone
+ * déjà garni de tournées, et l'ouverture d'une base neuve, pour une
+ * installation neuve. Les faire divergerait reviendrait à livrer deux
+ * applications différentes selon l'ancienneté du téléphone, et c'est le genre
+ * d'écart qu'on ne découvre que chez l'utilisateur.
+ *
+ * Le SQL est écrit en clair plutôt que dérivé de [CATALOGUE_INITIAL] : une
+ * migration doit faire aujourd'hui ce qu'elle faisait le jour où elle est
+ * passée, et une liste Kotlin qu'on rallonge réécrirait l'histoire. Une
+ * prestation ajoutée plus tard le sera donc par sa propre migration.
+ *
+ * Les identifiants sont stables et non tirés au hasard : restaurer une
+ * sauvegarde faite ailleurs doit retrouver les mêmes lignes, et non en créer
+ * vingt et une de plus. `INSERT OR IGNORE` rend l'insertion rejouable.
+ */
+internal const val SQL_CATALOGUE_INITIAL: String =
+    "INSERT OR IGNORE INTO `prestations` " +
+    "(`id`, `designation`, `categorie`, `prixUnitaire`, `unite`, `rang`, `modifieLe`) " +
+    "VALUES " +
+    "('presta-01', 'Dépannage froid commercial', 'DEPANNAGE', 0.0, 'forfait', 1, 0)," +
+    "('presta-02', 'Main d''œuvre', 'DEPANNAGE', 0.0, 'h', 2, 0)," +
+    "('presta-03', 'Déplacement', 'DEPANNAGE', 0.0, 'forfait', 3, 0)," +
+    "('presta-04', 'Majoration urgence / astreinte', 'DEPANNAGE', 0.0, 'forfait', 4, 0)," +
+    "('presta-05', 'Maintenance chambre froide', 'MAINTENANCE', 0.0, 'visite', 5, 0)," +
+    "('presta-06', 'Maintenance vitrine réfrigérée', 'MAINTENANCE', 0.0, 'visite', 6, 0)," +
+    "('presta-07', 'Maintenance climatisation', 'MAINTENANCE', 0.0, 'visite', 7, 0)," +
+    "('presta-08', 'Contrôle étanchéité F-Gas', 'FLUIDE', 0.0, 'contrôle', 8, 0)," +
+    "('presta-09', 'Recharge R-449A', 'FLUIDE', 0.0, 'kg', 9, 0)," +
+    "('presta-10', 'Recharge R-134a', 'FLUIDE', 0.0, 'kg', 10, 0)," +
+    "('presta-11', 'Recharge R-32', 'FLUIDE', 0.0, 'kg', 11, 0)," +
+    "('presta-12', 'Récupération fluide', 'FLUIDE', 0.0, 'forfait', 12, 0)," +
+    "('presta-13', 'Compresseur hermétique', 'PIECES', 0.0, 'pièce', 13, 0)," +
+    "('presta-14', 'Détendeur thermostatique', 'PIECES', 0.0, 'pièce', 14, 0)," +
+    "('presta-15', 'Ventilateur évaporateur', 'PIECES', 0.0, 'pièce', 15, 0)," +
+    "('presta-16', 'Résistance de dégivrage', 'PIECES', 0.0, 'pièce', 16, 0)," +
+    "('presta-17', 'Filtre déshydrateur', 'PIECES', 0.0, 'pièce', 17, 0)," +
+    "('presta-18', 'Installation split mural', 'INSTALLATION', 0.0, 'unité', 18, 0)," +
+    "('presta-19', 'Installation chambre froide', 'INSTALLATION', 0.0, 'forfait', 19, 0)," +
+    "('presta-20', 'Pompe à chaleur air/eau', 'INSTALLATION', 0.0, 'unité', 20, 0)," +
+    "('presta-21', 'Mise en service', 'INSTALLATION', 0.0, 'forfait', 21, 0)"
+
+/**
+ * La refonte visuelle, et ce qu'elle apporte : techniciens, durées, checklist
+ * et catalogue de prestations.
+ *
+ * Tout y est ajout, sauf un renommage de valeur : le statut `A_FAIRE` devient
+ * `PLANIFIEE`. Le mot change parce que l'écran change — « planifié » se dit
+ * d'un créneau posé sur une frise horaire, « à faire » d'une case de liste —
+ * mais c'est bien le même état, et la ligne migrée garde sa place dans la
+ * tournée.
+ *
+ * La **durée** arrive avec une valeur par défaut d'une heure. C'est une
+ * supposition, et c'est assumé : sans durée, le planning ne saurait pas quelle
+ * hauteur donner à un créneau, et une heure est ce qui demande le moins de
+ * correction sur une tournée ordinaire.
+ *
+ * Le **catalogue** est inséré avec ses intitulés et **sans ses prix**. Ceux de
+ * la maquette sont ceux d'une entreprise imaginaire ; les recopier les ferait
+ * partir chez un vrai client sans que personne ne les ait relus. Une ligne à
+ * zéro euro se voit, et appelle une correction — un prix faux, non.
+ */
+val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // — Le statut renommé, la durée, le technicien —
+        db.execSQL("UPDATE `interventions` SET `statut` = 'PLANIFIEE' WHERE `statut` = 'A_FAIRE'")
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `dureeMin` INTEGER NOT NULL DEFAULT 60")
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `technicienId` TEXT")
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `technicienNom` TEXT NOT NULL DEFAULT ''")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_interventions_technicienId` " +
+                "ON `interventions` (`technicienId`)",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `techniciens` (" +
+                "`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+
+        // — La checklist, recopiée sur chaque intervention —
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `points_checklist` (" +
+                "`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `libelle` TEXT NOT NULL, " +
+                "`fait` INTEGER NOT NULL, `rang` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_points_checklist_interventionId` " +
+                "ON `points_checklist` (`interventionId`)",
+        )
+
+        // — Le catalogue —
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `prestations` (" +
+                "`id` TEXT NOT NULL, `designation` TEXT NOT NULL, `categorie` TEXT NOT NULL, " +
+                "`prixUnitaire` REAL NOT NULL, `unite` TEXT NOT NULL, `rang` INTEGER NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_prestations_categorie` " +
+                "ON `prestations` (`categorie`)",
+        )
+        db.execSQL(SQL_CATALOGUE_INITIAL)
+    }
+}

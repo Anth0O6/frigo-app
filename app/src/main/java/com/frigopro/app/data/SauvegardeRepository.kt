@@ -67,6 +67,8 @@ class SauvegardeRepository(
     private val suiviDao: SuiviDao,
     private val devisDao: DevisDao,
     private val parametresDao: ParametresDao,
+    private val technicienDao: TechnicienDao,
+    private val prestationDao: PrestationDao,
     private val maintenant: () -> Instant = { Instant.now() },
 ) {
 
@@ -82,6 +84,9 @@ class SauvegardeRepository(
         val devis = devisDao.tous()
         val lignesDevis = devisDao.toutesLesLignes()
         val parametres = parametresDao.lire()
+        val techniciens = technicienDao.tous()
+        val checklists = suiviDao.tousLesPoints()
+        val prestations = prestationDao.toutes()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -96,6 +101,9 @@ class SauvegardeRepository(
             devis = devis.map { it.versSauvegarde() },
             lignesDevis = lignesDevis.map { it.versSauvegarde() },
             parametres = parametres?.versSauvegarde(),
+            techniciens = techniciens.map { it.versSauvegarde() },
+            checklists = checklists.map { it.versSauvegarde() },
+            prestations = prestations.map { it.versSauvegarde() },
         )
 
         // Les signatures sont des images comme les autres, rangées au même
@@ -137,9 +145,14 @@ class SauvegardeRepository(
         if (mouvements.any { it == null }) return ResultatRestauration.Illisible
         val devis = sauvegarde.devis.map { it.versDevis() }
         if (devis.any { it == null }) return ResultatRestauration.Illisible
+        val prestations = sauvegarde.prestations.map { it.versPrestation() }
+        if (prestations.any { it == null }) return ResultatRestauration.Illisible
 
         // Les types, le carnet puis le parc d'abord : une intervention ne doit
         // jamais désigner une ligne que la base ne contient pas encore.
+        // Les techniciens avant les interventions, qui les désignent.
+        technicienDao.enregistrerTous(sauvegarde.techniciens.map { it.versTechnicien() })
+        prestationDao.enregistrerToutes(prestations.filterNotNull())
         val types = sauvegarde.types.map { it.versType() }
         val clients = sauvegarde.clients.map { it.versClient() }
         val equipements = sauvegarde.equipements.map { it.versEquipement() }
@@ -156,6 +169,7 @@ class SauvegardeRepository(
         suiviDao.enregistrerReleves(releves)
         suiviDao.enregistrerMouvements(mouvements.filterNotNull())
         suiviDao.enregistrerPieces(pieces)
+        suiviDao.enregistrerPoints(sauvegarde.checklists.map { it.versPoint() })
         devisDao.enregistrerTous(devis.filterNotNull())
         devisDao.enregistrerLignes(lignes)
         sauvegarde.parametres?.let { parametresDao.enregistrer(it.versParametres()) }

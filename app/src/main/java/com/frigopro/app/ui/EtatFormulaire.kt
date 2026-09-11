@@ -28,7 +28,7 @@ data class EtatFormulaire(
     val equipementId: String? = null,
     /** Nom affiché, recopié de la machine. Vide quand aucune n'est choisie. */
     val equipementNom: String = "",
-    val statut: StatutIntervention = StatutIntervention.A_FAIRE,
+    val statut: StatutIntervention = StatutIntervention.PLANIFIEE,
     val notes: String = "",
 ) {
 

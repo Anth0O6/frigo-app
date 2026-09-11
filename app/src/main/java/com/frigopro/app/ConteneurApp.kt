@@ -8,6 +8,8 @@ import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.PrestationRepository
+import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.SauvegardeRepository
 import com.frigopro.app.data.StockagePhotos
 import com.frigopro.app.data.SuiviRepository
@@ -45,6 +47,11 @@ class ConteneurApp(private val contexte: Context) {
 
     val parametres: ParametresRepository by lazy { ParametresRepository(base.parametresDao()) }
 
+    val techniciens: TechnicienRepository by lazy { TechnicienRepository(base.technicienDao()) }
+
+    /** Le catalogue de prestations, d'où se construisent les devis. */
+    val prestations: PrestationRepository by lazy { PrestationRepository(base.prestationDao()) }
+
     val sauvegardes: SauvegardeRepository by lazy {
         SauvegardeRepository(
             base.interventionDao(),
@@ -54,6 +61,8 @@ class ConteneurApp(private val contexte: Context) {
             base.suiviDao(),
             base.devisDao(),
             base.parametresDao(),
+            base.technicienDao(),
+            base.prestationDao(),
         )
     }
 

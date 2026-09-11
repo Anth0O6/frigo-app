@@ -80,6 +80,20 @@ class FauxInterventionDao : InterventionDao {
         }
     }
 
+    /** Voir [TechnicienDao.propagerNom]. */
+    fun propagerTechnicien(technicienId: String, nom: String) {
+        lignes.update { liste ->
+            liste.map { if (it.technicienId == technicienId) it.copy(technicienNom = nom) else it }
+        }
+    }
+
+    /** Voir [TechnicienDao.detacher] : le lien tombe, le nom reste. */
+    fun detacherTechnicien(technicienId: String) {
+        lignes.update { liste ->
+            liste.map { if (it.technicienId == technicienId) it.copy(technicienId = null) else it }
+        }
+    }
+
     /** Voir [EquipementDao.detacher] : le lien tombe, le nom reste. */
     fun detacherEquipement(equipementId: String) {
         lignes.update { liste ->

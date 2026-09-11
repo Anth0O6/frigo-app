@@ -54,8 +54,8 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
-import com.frigopro.app.ui.theme.Ambre
-import com.frigopro.app.ui.theme.BleuFroid
+import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.FrigoProTheme
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
@@ -337,7 +337,7 @@ private fun BandeauJournee(lignes: List<LigneTournee>) {
             ChiffreJournee(valeur = cumul.enDuree(), libelle = "temps saisi")
             if (urgences > 0) {
                 SeparateurVertical()
-                ChiffreJournee(valeur = "$urgences", libelle = "urgence", couleur = Ambre)
+                ChiffreJournee(valeur = "$urgences", libelle = "urgence", couleur = AValider)
             }
         }
     }
@@ -385,7 +385,7 @@ private fun CarteEnCours(
     val intervention = ligne.intervention
     val ecoule = intervention.chrono.ecoulee(java.time.Instant.now())
 
-    Carte(relief = true, liseré = Ambre, onClick = onOuvrir) {
+    Carte(relief = true, liseré = AValider, onClick = onOuvrir) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -393,7 +393,7 @@ private fun CarteEnCours(
             Text(
                 text = intervention.heure.format(FORMAT_HEURE),
                 style = StyleChiffrePetit,
-                color = Ambre,
+                color = AValider,
             )
             Puce(
                 texte = if (intervention.chrono.vierge) {
@@ -401,8 +401,8 @@ private fun CarteEnCours(
                 } else {
                     "EN COURS · ${ecoule.enDuree()}"
                 },
-                couleur = Ambre,
-                fond = Ambre.copy(alpha = 0.16f),
+                couleur = AValider,
+                fond = AValider.copy(alpha = 0.16f),
             )
         }
         Column {
@@ -422,10 +422,10 @@ private fun CarteEnCours(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (intervention.typeLibelle.isNotBlank()) {
-                Puce(texte = intervention.typeLibelle, couleur = BleuFroid)
+                Puce(texte = intervention.typeLibelle, couleur = Planifie)
             }
             if (intervention.equipementNom.isNotBlank()) {
-                Puce(texte = intervention.equipementNom, couleur = BleuFroid)
+                Puce(texte = intervention.equipementNom, couleur = Planifie)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -502,7 +502,7 @@ private fun LigneCompacte(
                 )
             }
             if (intervention.urgente && !terminee) {
-                Puce(texte = "URGENCE", couleur = Ambre, fond = Ambre.copy(alpha = 0.16f))
+                Puce(texte = "URGENCE", couleur = AValider, fond = AValider.copy(alpha = 0.16f))
             }
             PastilleStatut(terminee = terminee, onClick = onChangerStatut)
         }

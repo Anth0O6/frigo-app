@@ -131,6 +131,37 @@ class FauxSuiviDao(
         images.update { liste -> liste.filterNot { it.interventionId == interventionId } }
     }
 
+    private val points = MutableStateFlow<List<PointChecklist>>(emptyList())
+
+    val contenuChecklist: List<PointChecklist> get() = points.value
+
+    override fun observerChecklist(interventionId: String): Flow<List<PointChecklist>> =
+        points.map { liste -> liste.filter { it.interventionId == interventionId }.sortedBy { it.rang } }
+
+    override suspend fun compterChecklist(interventionId: String): Int =
+        points.value.count { it.interventionId == interventionId }
+
+    override suspend fun tousLesPoints(): List<PointChecklist> = points.value
+
+    override suspend fun enregistrerPoint(point: PointChecklist) {
+        points.update { liste -> liste.filterNot { it.id == point.id } + point }
+    }
+
+    override suspend fun enregistrerPoints(nouveaux: List<PointChecklist>) {
+        val identifiants = nouveaux.map { it.id }.toSet()
+        points.update { liste -> liste.filterNot { it.id in identifiants } + nouveaux }
+    }
+
+    override suspend fun toutCocher(interventionId: String) {
+        points.update { liste ->
+            liste.map { if (it.interventionId == interventionId) it.copy(fait = true) else it }
+        }
+    }
+
+    override suspend fun effacerChecklistDe(interventionId: String) {
+        points.update { liste -> liste.filterNot { it.interventionId == interventionId } }
+    }
+
     override suspend fun effacerIntervention(id: String) {
         interventions.supprimer(id)
     }
@@ -210,5 +241,71 @@ class FauxParametresDao : ParametresDao {
 
     override suspend fun enregistrer(parametres: Parametres) {
         ligne.value = parametres
+    }
+}
+
+/** Techniciens en mémoire, avec la propagation que fait le vrai DAO. */
+class FauxTechnicienDao(
+    private val interventions: FauxInterventionDao = FauxInterventionDao(),
+) : TechnicienDao() {
+
+    private val lignes = MutableStateFlow<List<Technicien>>(emptyList())
+
+    val contenu: List<Technicien> get() = lignes.value
+
+    override fun observerTous(): Flow<List<Technicien>> = lignes
+
+    override suspend fun tous(): List<Technicien> = lignes.value
+
+    override suspend fun trouverParNom(nom: String): Technicien? =
+        lignes.value.firstOrNull { it.nom.equals(nom, ignoreCase = true) }
+
+    override suspend fun enregistrer(technicien: Technicien) {
+        lignes.update { liste -> liste.filterNot { it.id == technicien.id } + technicien }
+    }
+
+    override suspend fun enregistrerTous(techniciens: List<Technicien>) {
+        val identifiants = techniciens.map { it.id }.toSet()
+        lignes.update { liste -> liste.filterNot { it.id in identifiants } + techniciens }
+    }
+
+    override suspend fun propagerNom(id: String, nom: String) {
+        interventions.propagerTechnicien(id, nom)
+    }
+
+    override suspend fun detacher(id: String) {
+        interventions.detacherTechnicien(id)
+    }
+
+    override suspend fun effacer(id: String) {
+        lignes.update { liste -> liste.filterNot { it.id == id } }
+    }
+}
+
+/** Le catalogue en mémoire. */
+class FauxPrestationDao : PrestationDao {
+
+    private val lignes = MutableStateFlow<List<Prestation>>(emptyList())
+
+    val contenu: List<Prestation> get() = lignes.value
+
+    override fun observerToutes(): Flow<List<Prestation>> =
+        lignes.map { liste -> liste.sortedBy { it.rang } }
+
+    override suspend fun toutes(): List<Prestation> = lignes.value
+
+    override suspend fun prochainRang(): Int = (lignes.value.maxOfOrNull { it.rang } ?: 0) + 1
+
+    override suspend fun enregistrer(prestation: Prestation) {
+        lignes.update { liste -> liste.filterNot { it.id == prestation.id } + prestation }
+    }
+
+    override suspend fun enregistrerToutes(prestations: List<Prestation>) {
+        val identifiants = prestations.map { it.id }.toSet()
+        lignes.update { liste -> liste.filterNot { it.id in identifiants } + prestations }
+    }
+
+    override suspend fun effacer(id: String) {
+        lignes.update { liste -> liste.filterNot { it.id == id } }
     }
 }

@@ -125,7 +125,7 @@ class InterventionsViewModelTest {
         enregistrer(viewModel, client = "Fromagerie Hardy", ville = "Caudebec")
         advanceUntilIdle()
 
-        assertEquals(StatutIntervention.A_FAIRE, dao.contenu.single().statut)
+        assertEquals(StatutIntervention.PLANIFIEE, dao.contenu.single().statut)
 
         viewModel.onChangerStatut(dao.contenu.single())
         advanceUntilIdle()
@@ -139,7 +139,7 @@ class InterventionsViewModelTest {
         advanceUntilIdle()
         assertEquals(
             "revenir au début permet de corriger une fausse manœuvre",
-            StatutIntervention.A_FAIRE,
+            StatutIntervention.PLANIFIEE,
             dao.contenu.single().statut,
         )
     }

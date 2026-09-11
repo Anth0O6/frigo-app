@@ -69,7 +69,7 @@ class MigrationTest {
             assertTrue(curseur.moveToFirst())
             assertEquals("Boucherie Lemoine", curseur.getString(0))
             assertEquals("08:30", curseur.getString(1))
-            assertEquals("une intervention d'avant le suivi reste à faire", "A_FAIRE", curseur.getString(2))
+            assertEquals("une intervention d'avant le suivi reste à faire", "PLANIFIEE", curseur.getString(2))
             assertEquals("", curseur.getString(3))
             assertTrue("elle n'était rattachée à aucun client", curseur.isNull(4))
         }
@@ -311,6 +311,16 @@ class MigrationTest {
         db.query("SELECT `libelle` FROM `types_intervention`").use { assertEquals(0, it.count) }
         db.query("SELECT `clientId`, `nom` FROM `equipements`").use { assertEquals(0, it.count) }
         db.query("SELECT `equipementId`, `categorie`, `fichier` FROM `photos`").use { assertEquals(0, it.count) }
+        db.query("SELECT `dureeMin`, `technicienId`, `technicienNom` FROM `interventions`").use {
+            assertEquals(0, it.count)
+        }
+        db.query("SELECT `nom` FROM `techniciens`").use { assertEquals(0, it.count) }
+        db.query("SELECT `libelle`, `fait`, `rang` FROM `points_checklist`").use { assertEquals(0, it.count) }
+        // Une base neuve ne passe par aucune migration : c'est le `onCreate` de
+        // [FrigoProDatabase] qui doit lui garnir le même catalogue, faute de quoi
+        // un téléphone neuf et un téléphone mis à jour n'auraient pas la même
+        // application.
+        db.query("SELECT `designation`, `categorie` FROM `prestations`").use { assertEquals(21, it.count) }
     }
 
     /**
@@ -419,9 +429,110 @@ class MigrationTest {
         assertEquals(VERSION_COURANTE, db.version)
     }
 
+    /**
+     * La version 8 renomme un statut et ajoute quatre choses : la durée, le
+     * technicien, la checklist et le catalogue.
+     *
+     * Le renommage est le seul point qui puisse abîmer une tournée déjà saisie :
+     * un `A_FAIRE` resté en base ferait échouer la lecture de l'énumération, et
+     * l'intervention disparaîtrait de l'écran sans que rien ne le signale.
+     */
+    @Test
+    fun `une base version 7 renomme ses statuts et recoit durees et technicien`() {
+        creerBase(
+            version = 7,
+            empreinte = EMPREINTE_V7,
+            ddl = DDL_V7,
+            insertions = listOf(
+                "INSERT INTO `interventions` " +
+                    "(`id`, `date`, `heure`, `client`, `ville`, `typeId`, `typeLibelle`, " +
+                    "`clientId`, `equipementId`, `equipementNom`, `statut`, `notes`, `urgente`, " +
+                    "`numero`, `signatureFichier`, `signeeLe`, `modifieLe`, `arriveeLe`, " +
+                    "`demarreLe`, `cumuleS`) " +
+                    "VALUES ('id-1', '2026-03-09', '08:30', 'Boucherie Lemoine', 'Rouen', " +
+                    "NULL, 'Fuite de fluide', 'cl-1', NULL, '', 'A_FAIRE', 'À reprendre.', 1, " +
+                    "'', NULL, NULL, 7, NULL, NULL, 0)",
+                "INSERT INTO `interventions` " +
+                    "(`id`, `date`, `heure`, `client`, `ville`, `typeId`, `typeLibelle`, " +
+                    "`clientId`, `equipementId`, `equipementNom`, `statut`, `notes`, `urgente`, " +
+                    "`numero`, `signatureFichier`, `signeeLe`, `modifieLe`, `arriveeLe`, " +
+                    "`demarreLe`, `cumuleS`) " +
+                    "VALUES ('id-2', '2026-03-09', '11:00', 'Traiteur Delaunay', 'Barentin', " +
+                    "NULL, 'Entretien préventif', NULL, NULL, '', 'TERMINEE', '', 0, " +
+                    "'INT-2603-001', 'sig.png', 9, 7, NULL, NULL, 1800)",
+            ),
+        )
+
+        val db = ouvrirEtMigrer()
+
+        db.query(
+            "SELECT `id`, `statut`, `notes`, `urgente`, `dureeMin`, `technicienId`, " +
+                "`technicienNom`, `cumuleS`, `numero`, `modifieLe` " +
+                "FROM `interventions` ORDER BY `id`",
+        ).use { curseur ->
+            assertEquals(2, curseur.count)
+
+            assertTrue(curseur.moveToFirst())
+            assertEquals("id-1", curseur.getString(0))
+            assertEquals("« à faire » devient « planifié », et reste le même état", "PLANIFIEE", curseur.getString(1))
+            assertEquals("À reprendre.", curseur.getString(2))
+            assertEquals("l'urgence n'est pas un statut : elle survit telle quelle", 1, curseur.getInt(3))
+            assertEquals("une heure, faute de mieux", 60, curseur.getInt(4))
+            assertTrue("aucun technicien n'existait", curseur.isNull(5))
+            assertEquals("", curseur.getString(6))
+
+            assertTrue(curseur.moveToNext())
+            assertEquals("un statut déjà bon n'est pas touché", "TERMINEE", curseur.getString(1))
+            assertEquals("le temps chronométré doit survivre", 1800L, curseur.getLong(7))
+            assertEquals("et le numéro attribué aussi", "INT-2603-001", curseur.getString(8))
+            assertEquals(7L, curseur.getLong(9))
+        }
+
+        db.query("SELECT * FROM `techniciens`").use { curseur ->
+            assertEquals("la liste des techniciens arrive vide", 0, curseur.count)
+        }
+        db.query("SELECT * FROM `points_checklist`").use { curseur ->
+            assertEquals("la checklist se recopie à l'ouverture d'une intervention", 0, curseur.count)
+        }
+        assertEquals(VERSION_COURANTE, db.version)
+    }
+
+    /**
+     * Le catalogue arrive garni d'intitulés de métier mais **sans prix** : ceux
+     * de la maquette sont ceux d'une entreprise imaginaire, et un prix faux
+     * partirait chez un vrai client sans que personne ne l'ait relu. Un zéro se
+     * voit, et appelle la correction.
+     */
+    @Test
+    fun `le catalogue arrive garni et sans prix`() {
+        creerBase(version = 7, empreinte = EMPREINTE_V7, ddl = DDL_V7, insertions = emptyList())
+
+        val db = ouvrirEtMigrer()
+
+        db.query("SELECT COUNT(*), SUM(`prixUnitaire`) FROM `prestations`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals(21, curseur.getInt(0))
+            assertEquals("aucun prix inventé", 0.0, curseur.getDouble(1), 0.001)
+        }
+        db.query(
+            "SELECT `designation`, `categorie`, `unite` FROM `prestations` ORDER BY `rang` LIMIT 1",
+        ).use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("Dépannage froid commercial", curseur.getString(0))
+            assertEquals("DEPANNAGE", curseur.getString(1))
+            assertEquals("forfait", curseur.getString(2))
+        }
+        db.query(
+            "SELECT COUNT(DISTINCT `categorie`) FROM `prestations`",
+        ).use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("les cinq rayons du catalogue", 5, curseur.getInt(0))
+        }
+    }
+
     private companion object {
 
-        const val VERSION_COURANTE = 7
+        const val VERSION_COURANTE = 8
 
         /** Empreintes et DDL repris mot pour mot des schémas exportés dans `app/schemas`. */
         const val EMPREINTE_V1 = "576bb93c8e6bdad21224e8d0898547f0"
@@ -430,6 +541,7 @@ class MigrationTest {
         const val EMPREINTE_V4 = "670f8966c393d071075ec34e7240726e"
         const val EMPREINTE_V5 = "2fea87f26cb4e3f690878aad5160618d"
         const val EMPREINTE_V6 = "3693966e2dd927510a3eecb627dbd8e6"
+        const val EMPREINTE_V7 = "c820db45f9ff53441090ae6e040433ab"
 
         const val DDL_INTERVENTIONS_V1 =
             "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
@@ -502,5 +614,72 @@ class MigrationTest {
 
         const val DDL_INDEX_DATE =
             "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)"
+
+        /**
+         * Le schéma de la version 7 au complet : la migration 7 → 8 ne touche
+         * qu'une partie de ces tables, mais Room valide le schéma **entier** à
+         * l'ouverture et refuserait une base amputée du reste.
+         */
+        val DDL_V7 = listOf(
+            "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
+                "`heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT NULL, " +
+                "`typeId` TEXT, `typeLibelle` TEXT NOT NULL, `clientId` TEXT, " +
+                "`equipementId` TEXT, `equipementNom` TEXT NOT NULL, `statut` TEXT NOT NULL, " +
+                "`notes` TEXT NOT NULL, `urgente` INTEGER NOT NULL, `numero` TEXT NOT NULL, " +
+                "`signatureFichier` TEXT, `signeeLe` INTEGER, `modifieLe` INTEGER NOT NULL, " +
+                "`arriveeLe` INTEGER, `demarreLe` INTEGER, `cumuleS` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+            DDL_INDEX_DATE,
+            DDL_CLIENTS_V4,
+            DDL_TYPES_V5,
+            "CREATE TABLE IF NOT EXISTS `equipements` (`id` TEXT NOT NULL, `clientId` TEXT NOT NULL, " +
+                "`nom` TEXT NOT NULL, `marque` TEXT NOT NULL, `modele` TEXT NOT NULL, " +
+                "`numeroSerie` TEXT NOT NULL, `fluide` TEXT NOT NULL, `chargeKg` REAL, " +
+                "`misEnServiceLe` TEXT, `dernierControleLe` TEXT, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+            DDL_INDEX_EQUIPEMENTS_CLIENT,
+            "CREATE TABLE IF NOT EXISTS `photos` (`id` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`interventionId` TEXT, `categorie` TEXT NOT NULL, `fichier` TEXT NOT NULL, " +
+                "`legende` TEXT NOT NULL, `priseLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            DDL_INDEX_PHOTOS_EQUIPEMENT,
+            "CREATE INDEX IF NOT EXISTS `index_photos_interventionId` ON `photos` (`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `releves` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, " +
+                "`equipementId` TEXT, `bpBar` REAL, `hpBar` REAL, `surchauffeK` REAL, " +
+                "`sousRefroidissementK` REAL, `releveLe` INTEGER NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_releves_interventionId` ON `releves` (`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_releves_equipementId` ON `releves` (`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `mouvements_fluide` (`id` TEXT NOT NULL, " +
+                "`interventionId` TEXT NOT NULL, `equipementId` TEXT, `fluide` TEXT NOT NULL, " +
+                "`sens` TEXT NOT NULL, `masseKg` REAL NOT NULL, `le` INTEGER NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_interventionId` " +
+                "ON `mouvements_fluide` (`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_equipementId` " +
+                "ON `mouvements_fluide` (`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `pieces_posees` (`id` TEXT NOT NULL, " +
+                "`interventionId` TEXT NOT NULL, `designation` TEXT NOT NULL, " +
+                "`reference` TEXT NOT NULL, `quantite` REAL NOT NULL, `prixUnitaire` REAL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_pieces_posees_interventionId` " +
+                "ON `pieces_posees` (`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `devis` (`id` TEXT NOT NULL, `numero` TEXT NOT NULL, " +
+                "`clientId` TEXT, `clientNom` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`equipementNom` TEXT NOT NULL, `objet` TEXT NOT NULL, `statut` TEXT NOT NULL, " +
+                "`tauxTva` REAL NOT NULL, `creeLe` TEXT, `valableJusquau` TEXT, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_devis_clientId` ON `devis` (`clientId`)",
+            "CREATE INDEX IF NOT EXISTS `index_devis_equipementId` ON `devis` (`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `lignes_devis` (`id` TEXT NOT NULL, `devisId` TEXT NOT NULL, " +
+                "`designation` TEXT NOT NULL, `quantite` REAL NOT NULL, `unite` TEXT NOT NULL, " +
+                "`prixUnitaire` REAL NOT NULL, `rang` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_lignes_devis_devisId` ON `lignes_devis` (`devisId`)",
+            "CREATE TABLE IF NOT EXISTS `parametres` (`id` INTEGER NOT NULL, " +
+                "`technicien` TEXT NOT NULL, `attestation` TEXT NOT NULL, " +
+                "`themeSombre` INTEGER NOT NULL, `modeGants` INTEGER NOT NULL, " +
+                "`chronoAuto` INTEGER NOT NULL, `tauxHoraire` REAL NOT NULL, " +
+                "`tauxTva` REAL NOT NULL, `derniereSauvegardeLe` INTEGER, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
     }
 }

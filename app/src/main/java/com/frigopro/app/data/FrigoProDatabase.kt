@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * Base locale de l'application.
@@ -26,8 +27,11 @@ import androidx.room.TypeConverters
         Devis::class,
         LigneDevis::class,
         Parametres::class,
+        Technicien::class,
+        PointChecklist::class,
+        Prestation::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -47,9 +51,31 @@ abstract class FrigoProDatabase : RoomDatabase() {
 
     abstract fun parametresDao(): ParametresDao
 
+    abstract fun technicienDao(): TechnicienDao
+
+    abstract fun prestationDao(): PrestationDao
+
     companion object {
 
         const val NOM = "frigopro.db"
+
+        /**
+         * Le catalogue de prestations, garni à la création de la base.
+         *
+         * [MIGRATION_7_8] le pose pour un téléphone déjà garni de tournées ;
+         * une installation neuve ne passe par aucune migration et repartirait
+         * d'un catalogue vide. Les deux chemins partagent donc le même SQL —
+         * voir [SQL_CATALOGUE_INITIAL].
+         *
+         * `onCreate` ne s'exécute qu'une fois, à la création du fichier : rien
+         * n'écrase ensuite un prix que le technicien aurait posé.
+         */
+        private val CATALOGUE_AU_PREMIER_LANCEMENT = object : Callback() {
+
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL(SQL_CATALOGUE_INITIAL)
+            }
+        }
 
         fun creer(contexte: Context): FrigoProDatabase =
             Room.databaseBuilder(
@@ -64,7 +90,9 @@ abstract class FrigoProDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
+                    MIGRATION_7_8,
                 )
+                .addCallback(CATALOGUE_AU_PREMIER_LANCEMENT)
                 .build()
     }
 }

@@ -3,96 +3,116 @@ package com.frigopro.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Palette « froid industriel », reprise telle quelle de la maquette.
+ * Palette de l'application, reprise de la maquette.
  *
- * Les valeurs sont figées et non dérivées de Material You : l'application est
- * un outil de terrain qu'on lit au soleil, gants aux mains, et dont les
- * couleurs *signifient* quelque chose — l'ambre est l'intervention en cours et
- * l'alerte, le cyan est l'action et le fait accompli. Laisser le fond d'écran
- * du téléphone les redéfinir brouillerait cette lecture.
+ * Elle est **neutre et sombre** — un noir profond, des cartes gris anthracite —
+ * pour que la seule couleur d'un écran soit celle qui porte une information.
+ * C'est l'inverse d'un habillage : ici, voir de la couleur veut toujours dire
+ * quelque chose, et cinq teintes suffisent à dire quoi (voir [CouleursStatut]).
+ *
+ * Le fond est presque noir plutôt que gris foncé : sur les dalles OLED des
+ * téléphones récents, un pixel noir est un pixel éteint, et l'application
+ * s'allume vingt fois par jour dans une camionnette.
+ *
+ * Les valeurs sont figées et non dérivées de Material You. Laisser le fond
+ * d'écran du téléphone repeindre un rouge d'urgence en vert effacerait une
+ * information.
  */
 
-// — Sombre, le mode par défaut —————————————————————————————————————————————
+// — Fonds, du plus profond au plus clair ——————————————————————————————————
 
-/** Fond de l'application, le plus profond. */
-val Nuit = Color(0xFF081520)
+/** Fond de l'application. Noir, pour la dalle OLED. */
+val Noir = Color(0xFF0A0A0B)
 
-/** Carte ordinaire, et barre d'onglets. */
-val NuitCarte = Color(0xFF0C2030)
+/** Carte ordinaire. */
+val Carte = Color(0xFF1C1C1E)
 
-/** Surface surélevée : en-têtes, carte de l'intervention en cours. */
-val NuitSurface = Color(0xFF0F2734)
+/**
+ * Carte d'une ligne déjà faite.
+ *
+ * Un ton *sous* la carte ordinaire, et non au-dessus : ce qui est terminé doit
+ * s'effacer du regard, pas le retenir.
+ */
+val CarteEteinte = Color(0xFF141416)
 
-/** Pastille, puce, bouton secondaire. */
-val NuitPuce = Color(0xFF173141)
+/** Surface posée sur une carte : une puce, un champ, une vignette. */
+val Relief = Color(0xFF2C2C2E)
 
-/** Emplacement d'une image en attente de chargement. */
-val NuitImage = Color(0xFF122C3A)
+/** Filet de séparation, à peine visible et c'est voulu. */
+val Filet = Color(0xFF3A3A3C)
 
-/** Filet de séparation. */
-val NuitFilet = Color(0xFF17303F)
+/** Trait discontinu : une zone à remplir, une ligne à ajouter. */
+val Pointille = Color(0xFF48484A)
 
-/** Filet plus marqué, sous un total par exemple. */
-val NuitFiletFort = Color(0xFF1C3A4A)
+// — Textes ————————————————————————————————————————————————————————————————
 
-/** Trait discontinu : zone à remplir, ligne à ajouter. */
-val NuitPointille = Color(0xFF2A4A5C)
+val Texte = Color(0xFFFFFFFF)
 
-/** Texte courant sur fond sombre. */
-val NuitTexte = Color(0xFFE6EFF3)
+/** Sous-titre, unité, légende. Le gris iOS à 55 %. */
+val TexteSecondaire = Color(0x8CEBEBF5)
 
-/** Texte secondaire : sous-titres, unités, légendes. */
-val NuitTexteFaible = Color(0xFF8FA6B4)
+/** Intitulé de section, libellé d'onglet au repos. À 45 %. */
+val TexteTertiaire = Color(0x73EBEBF5)
 
-/** Chevrons et repères de liste, à la limite du lisible et c'est voulu. */
-val NuitTexteTresFaible = Color(0xFF4E6C7E)
+/** Chevron, repère de liste — à la limite du lisible, et c'est le but. À 30 %. */
+val TexteEteint = Color(0x4DEBEBF5)
 
-/** Onglet non retenu dans la barre du bas. */
-val NuitOngletInactif = Color(0xFF6D8695)
+// — Accent ————————————————————————————————————————————————————————————————
 
-// — Accents, communs aux deux modes ————————————————————————————————————————
+/** L'action : ce sur quoi on appuie pour que quelque chose arrive. */
+val Bleu = Color(0xFF0F6FD6)
 
-/** L'action, et ce qui est terminé. */
-val Cyan = Color(0xFF22D3C5)
+/** Bleu éclairci, pour un texte d'action sur un fond déjà bleuté. */
+val BleuClair = Color(0xFF4A9BFF)
 
-/** Texte posé sur [Cyan] : presque noir, pour que le contraste tienne. */
-val SurCyan = Color(0xFF062229)
+/** Texte posé sur un aplat de [Bleu]. */
+val SurBleu = Color(0xFFFFFFFF)
 
-/** Cyan éclairci, pour un tracé fin sur fond sombre. */
-val CyanClair = Color(0xFF7FE3DA)
+// — Les cinq statuts ——————————————————————————————————————————————————————
 
-/** L'intervention en cours, et l'alerte. */
-val Ambre = Color(0xFFFFB343)
+/**
+ * L'urgence, et l'intervention en cours.
+ *
+ * Les deux partagent le rouge à dessein : ce qu'on est en train de faire et ce
+ * qui ne peut pas attendre appellent le même geste — y aller maintenant.
+ */
+val Urgence = Color(0xFFFF453A)
 
-/** Texte d'une alerte développée, sur fond ambre très dilué. */
-val AmbreTexte = Color(0xFFF6DFB8)
+/** Ce qui est prévu et se déroulera comme prévu. */
+val Planifie = Color(0xFF0F6FD6)
 
-/** Bleu froid : l'information qui n'appelle pas d'action. */
-val BleuFroid = Color(0xFF9CC9E3)
+/** Ce qui attend une décision : un devis à envoyer, une fiche à signer. */
+val AValider = Color(0xFFFF9F0A)
+
+/** Le chiffrage, qui n'est ni du travail fait ni du travail promis. */
+val CouleurDevis = Color(0xFFBF5AF2)
+
+/** Ce qui est fait. */
+val Termine = Color(0xFF30D158)
+
+/** Texte posé sur un aplat de [Termine] : très sombre, pour que ça se lise. */
+val SurTermine = Color(0xFF04240D)
 
 // — Clair, quand le technicien coupe le thème sombre ——————————————————————
 
-/** Fond clair : le gris bleuté de la maquette, pas un blanc pur. */
-val Jour = Color(0xFFEDF1F4)
+/** Le gris de fond d'iOS en clair, et non un blanc pur qui éblouirait. */
+val Jour = Color(0xFFF2F2F7)
 
-val JourSurface = Color(0xFFFFFFFF)
+val JourCarte = Color(0xFFFFFFFF)
 
-val JourCarte = Color(0xFFF4F7F9)
+val JourFilet = Color(0xFFD1D1D6)
 
-val JourFilet = Color(0xFFD2DBE1)
+val JourTexte = Color(0xFF000000)
 
-val JourTexte = Color(0xFF0B2A3D)
+val JourTexteSecondaire = Color(0x993C3C43)
 
-val JourTexteFaible = Color(0xFF5C6B76)
+/** Les teintes de statut assombries : sur blanc, les vives ne passent aucun seuil. */
+val BleuSombre = Color(0xFF0A58AC)
 
-/**
- * Cyan assombri pour le mode clair : [Cyan] sur blanc ne passe aucun seuil de
- * contraste. C'est la teinte des liens de la maquette.
- */
-val CyanSombre = Color(0xFF0E7C74)
+val UrgenceSombre = Color(0xFFC9251C)
 
-/** Ambre assombri, même raison. */
-val AmbreSombre = Color(0xFF8A5200)
+val AValiderSombre = Color(0xFF8A5200)
 
-/** Bleu froid assombri, même raison. */
-val BleuFroidSombre = Color(0xFF2C5F7E)
+val DevisSombre = Color(0xFF7B2FA8)
+
+val TermineSombre = Color(0xFF1B7A34)

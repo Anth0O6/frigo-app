@@ -43,7 +43,15 @@ import java.util.UUID
  * @param notes observations relevées sur place.
  * @param urgente intervention à traiter en priorité. Distincte du statut :
  *   une urgence reste une urgence une fois terminée, et c'est ce qui permet
- *   de compter les urgences d'une journée après coup.
+ *   de compter les urgences d'une journée après coup. La maquette les fond en
+ *   une seule dimension ; les garder séparées est ce qui permet de dire « on a
+ *   eu trois urgences cette semaine » une fois qu'elles sont toutes faites.
+ * @param dureeMin durée prévue, en minutes. Sans elle, le planning ne saurait
+ *   pas quelle hauteur donner à un créneau, et deux interventions qui se
+ *   chevauchent ne se verraient pas.
+ * @param technicienId technicien à qui la tournée est confiée, ou `null` quand
+ *   personne n'est encore désigné. Même couple lien / copie que pour le type et
+ *   la machine, et pour les mêmes raisons.
  * @param chrono temps réellement passé sur place. Voir [Chrono] : le calcul
  *   vit là, la ligne n'en porte que les trois horodatages.
  * @param numero référence du compte-rendu, de la forme `INT-2405-018`. Vide
@@ -58,7 +66,7 @@ import java.util.UUID
  */
 @Entity(
     tableName = "interventions",
-    indices = [Index("date")],
+    indices = [Index("date"), Index("technicienId")],
 )
 data class Intervention(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -71,9 +79,12 @@ data class Intervention(
     val clientId: String? = null,
     val equipementId: String? = null,
     val equipementNom: String = "",
-    val statut: StatutIntervention = StatutIntervention.A_FAIRE,
+    val statut: StatutIntervention = StatutIntervention.PLANIFIEE,
     val notes: String = "",
     val urgente: Boolean = false,
+    val dureeMin: Int = DUREE_PAR_DEFAUT_MIN,
+    val technicienId: String? = null,
+    val technicienNom: String = "",
     @Embedded val chrono: Chrono = Chrono(),
     val numero: String = "",
     val signatureFichier: String? = null,
@@ -81,17 +92,48 @@ data class Intervention(
     val modifieLe: Instant = Instant.EPOCH,
 )
 
-/** Avancement d'une intervention dans la journée du technicien. */
+/**
+ * Avancement d'une intervention dans la journée du technicien.
+ *
+ * `A_VALIDER` est arrivé avec la refonte, et désigne autre chose que « pas
+ * encore fait » : le travail est terminé côté technicien, mais quelque chose
+ * attend le client — un devis à accepter, une fiche F-Gas à signer. La
+ * distinction compte, parce qu'une intervention en attente ne se replanifie
+ * pas, elle se relance.
+ */
 enum class StatutIntervention(val libelle: String) {
-    A_FAIRE("À faire"),
+    PLANIFIEE("Planifié"),
     EN_COURS("En cours"),
-    TERMINEE("Terminée"),
+    A_VALIDER("À valider"),
+    TERMINEE("Terminé"),
     ;
 
+    /** Rien n'attend plus personne. */
+    val close: Boolean get() = this == TERMINEE
+
     /**
-     * Statut suivant, en boucle. La carte se touche pour avancer ; repasser
-     * par le début est le seul moyen de corriger une fausse manœuvre sur un
-     * toit, gants aux mains, sans rouvrir le formulaire.
+     * Statut suivant du cycle court, celui qu'on touche sur la carte :
+     * planifié → en cours → terminé, puis on repasse au début.
+     *
+     * `A_VALIDER` n'y figure pas volontairement. Ce n'est pas une étape du
+     * travail mais une attente côté client, et elle se pose depuis la fiche —
+     * la faire traverser à chaque changement de statut la rendrait pénible
+     * seize fois par jour pour le cas rare.
      */
-    fun suivant(): StatutIntervention = entries[(ordinal + 1) % entries.size]
+    fun suivant(): StatutIntervention = when (this) {
+        PLANIFIEE -> EN_COURS
+        EN_COURS -> TERMINEE
+        A_VALIDER -> TERMINEE
+        TERMINEE -> PLANIFIEE
+    }
 }
+
+
+/**
+ * Durée par défaut d'une intervention, en minutes.
+ *
+ * Une heure : ni la visite de contrôle de vingt minutes, ni le remplacement de
+ * compresseur de la journée, mais ce qui demande le moins de correction sur une
+ * tournée ordinaire.
+ */
+const val DUREE_PAR_DEFAUT_MIN: Int = 60

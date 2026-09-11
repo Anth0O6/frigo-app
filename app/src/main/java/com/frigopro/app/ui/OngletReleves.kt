@@ -36,7 +36,8 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
-import com.frigopro.app.ui.theme.Ambre
+import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.Urgence
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
 
@@ -155,13 +156,13 @@ private fun CarteTempsPasse(
                         else -> "${heureLocale(chrono.arriveeLe)} → ${ecoule.enDuree()}"
                     },
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (chrono.enMarche) Ambre else MaterialTheme.colorScheme.onSurface,
+                    color = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onSurface,
                 )
             }
             BoutonContour(
                 texte = if (chrono.enMarche) "Pause" else "Démarrer",
                 onClick = actions.onBasculerChrono,
-                couleur = if (chrono.enMarche) Ambre else MaterialTheme.colorScheme.primary,
+                couleur = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 4.dp),
             )
         }
@@ -354,7 +355,7 @@ private fun descriptionCharge(etat: EtatIntervention): String {
 }
 
 /**
- * Ambre dès qu'un écart sort de sa plage usuelle.
+ * AValider dès qu'un écart sort de sa plage usuelle.
  *
  * C'est un signal, pas un diagnostic : la couleur attire l'œil sur la case,
  * l'aide au dépannage dit ce qu'elle veut dire.
@@ -362,7 +363,7 @@ private fun descriptionCharge(etat: EtatIntervention): String {
 @Composable
 private fun teinteEcart(valeur: Double?, normalBas: Double, normalHaut: Double) =
     if (valeur != null && (valeur < normalBas || valeur > normalHaut)) {
-        Ambre
+        AValider
     } else {
         MaterialTheme.colorScheme.onSurface
     }

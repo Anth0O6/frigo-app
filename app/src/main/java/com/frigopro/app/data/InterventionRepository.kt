@@ -54,7 +54,7 @@ class InterventionRepository(private val dao: InterventionDao) {
         maintenant: Instant = Instant.now(),
     ): Intervention {
         val chrono = intervention.chrono.basculer(maintenant)
-        val statut = if (chrono.enMarche && intervention.statut == StatutIntervention.A_FAIRE) {
+        val statut = if (chrono.enMarche && intervention.statut == StatutIntervention.PLANIFIEE) {
             StatutIntervention.EN_COURS
         } else {
             intervention.statut

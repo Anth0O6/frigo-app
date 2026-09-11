@@ -22,6 +22,8 @@ class SauvegardeRepositoryTest {
     private val daoSuivi = FauxSuiviDao(daoInterventions)
     private val daoDevis = FauxDevisDao()
     private val daoParametres = FauxParametresDao()
+    private val daoTechniciens = FauxTechnicienDao(daoInterventions)
+    private val daoPrestations = FauxPrestationDao()
     private val repository =
         SauvegardeRepository(
             daoInterventions,
@@ -31,6 +33,8 @@ class SauvegardeRepositoryTest {
             daoSuivi,
             daoDevis,
             daoParametres,
+            daoTechniciens,
+            daoPrestations,
         )
 
     @Test
@@ -77,6 +81,8 @@ class SauvegardeRepositoryTest {
             FauxSuiviDao(),
             FauxDevisDao(),
             FauxParametresDao(),
+            FauxTechnicienDao(autreInterventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())

@@ -34,6 +34,9 @@ data class Sauvegarde(
     val devis: List<DevisSauvegarde> = emptyList(),
     val lignesDevis: List<LigneDevisSauvegarde> = emptyList(),
     val parametres: ParametresSauvegarde? = null,
+    val techniciens: List<TechnicienSauvegarde> = emptyList(),
+    val checklists: List<PointChecklistSauvegarde> = emptyList(),
+    val prestations: List<PrestationSauvegarde> = emptyList(),
 )
 
 @Serializable
@@ -106,6 +109,9 @@ data class InterventionSauvegarde(
     val equipementNom: String = "",
     val notes: String = "",
     val urgente: Boolean = false,
+    val dureeMin: Int = DUREE_PAR_DEFAUT_MIN,
+    val technicienId: String? = null,
+    val technicienNom: String = "",
     val arriveeLe: Long? = null,
     val demarreLe: Long? = null,
     val cumuleS: Long = 0L,
@@ -204,10 +210,48 @@ data class ParametresSauvegarde(
     val modifieLe: Long = 0L,
 )
 
+@Serializable
+data class TechnicienSauvegarde(
+    val id: String,
+    val nom: String,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class PointChecklistSauvegarde(
+    val id: String,
+    val interventionId: String,
+    val libelle: String,
+    val fait: Boolean = false,
+    val rang: Int = 0,
+    val modifieLe: Long = 0L,
+)
+
+/**
+ * Une ligne du catalogue.
+ *
+ * Le prix part dans la sauvegarde comme le reste : c'est un tarif d'entreprise,
+ * et le retrouver après un changement de téléphone évite d'avoir à retaper
+ * vingt et une lignes avant de pouvoir chiffrer quoi que ce soit.
+ */
+@Serializable
+data class PrestationSauvegarde(
+    val id: String,
+    val designation: String,
+    val categorie: String,
+    val prixUnitaire: Double = 0.0,
+    val unite: String = "",
+    val rang: Int = 0,
+    val modifieLe: Long = 0L,
+)
+
 /**
  * Version courante du format de fichier.
  *
- * Le format 4 ajoute ce qui s'est passé sur place — temps chronométré,
+ * Le format 5 ajoute les techniciens, la checklist des interventions et le
+ * catalogue de prestations.
+ *
+ * Le format 4 avait ajouté ce qui s'est passé sur place — temps chronométré,
  * relevés, mouvements de fluide, pièces posées, photos avant/après — ainsi que
  * les devis et les réglages.
  *
@@ -216,7 +260,7 @@ data class ParametresSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 4
+const val FORMAT_COURANT: Int = 5
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -305,6 +349,9 @@ internal fun Intervention.versSauvegarde(): InterventionSauvegarde = Interventio
     equipementNom = equipementNom,
     notes = notes,
     urgente = urgente,
+    dureeMin = dureeMin,
+    technicienId = technicienId,
+    technicienNom = technicienNom,
     arriveeLe = chrono.arriveeLe?.toEpochMilli(),
     demarreLe = chrono.demarreLe?.toEpochMilli(),
     cumuleS = chrono.cumuleS,
@@ -392,6 +439,9 @@ internal fun InterventionSauvegarde.versIntervention(): Intervention? {
         statut = avancement,
         notes = notes,
         urgente = urgente,
+        dureeMin = dureeMin,
+        technicienId = technicienId,
+        technicienNom = technicienNom,
         chrono = Chrono(
             arriveeLe = arriveeLe?.let(Instant::ofEpochMilli),
             demarreLe = demarreLe?.let(Instant::ofEpochMilli),
@@ -576,3 +626,63 @@ internal fun ParametresSauvegarde.versParametres(): Parametres = Parametres(
  */
 private fun jourOuNull(valeur: String): LocalDate? =
     runCatching { LocalDate.parse(valeur, FORMAT_DATE) }.getOrNull()
+
+
+// — Les tables arrivées avec le format 5 ————————————————————————————————————
+
+internal fun Technicien.versSauvegarde(): TechnicienSauvegarde = TechnicienSauvegarde(
+    id = id,
+    nom = nom,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun TechnicienSauvegarde.versTechnicien(): Technicien = Technicien(
+    id = id,
+    nom = nom,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+internal fun PointChecklist.versSauvegarde(): PointChecklistSauvegarde = PointChecklistSauvegarde(
+    id = id,
+    interventionId = interventionId,
+    libelle = libelle,
+    fait = fait,
+    rang = rang,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun PointChecklistSauvegarde.versPoint(): PointChecklist = PointChecklist(
+    id = id,
+    interventionId = interventionId,
+    libelle = libelle,
+    fait = fait,
+    rang = rang,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+internal fun Prestation.versSauvegarde(): PrestationSauvegarde = PrestationSauvegarde(
+    id = id,
+    designation = designation,
+    categorie = categorie.name,
+    prixUnitaire = prixUnitaire,
+    unite = unite,
+    rang = rang,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/**
+ * `null` pour une famille inconnue : comme un statut, c'est une valeur fixe de
+ * l'application et non du texte libre, et le fichier entier sera refusé.
+ */
+internal fun PrestationSauvegarde.versPrestation(): Prestation? {
+    val famille = CategoriePrestation.entries.firstOrNull { it.name == categorie } ?: return null
+    return Prestation(
+        id = id,
+        designation = designation,
+        categorie = famille,
+        prixUnitaire = prixUnitaire,
+        unite = unite,
+        rang = rang,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}

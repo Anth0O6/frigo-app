@@ -32,9 +32,9 @@ import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
-import com.frigopro.app.ui.theme.Ambre
-import com.frigopro.app.ui.theme.BleuFroid
-import com.frigopro.app.ui.theme.Cyan
+import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.Planifie
+import com.frigopro.app.ui.theme.Bleu
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.LocalDate
 import java.time.format.TextStyle as TextStyleJava
@@ -217,9 +217,9 @@ private fun BandeauJours(
 @Composable
 private fun LigneHoraire(intervention: Intervention, onOuvrir: () -> Unit) {
     val liseré = when {
-        intervention.urgente -> Ambre
-        intervention.statut == StatutIntervention.TERMINEE -> Cyan
-        else -> BleuFroid
+        intervention.urgente -> AValider
+        intervention.statut == StatutIntervention.TERMINEE -> Bleu
+        else -> Planifie
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
