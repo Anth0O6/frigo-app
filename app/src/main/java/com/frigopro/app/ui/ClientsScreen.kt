@@ -63,6 +63,7 @@ import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.initialesDe
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -634,15 +635,6 @@ private fun PastilleInitiales(nom: String, modifier: Modifier = Modifier) {
         }
     }
 }
-
-/** « BM » pour « Boucherie Martel » ; la première lettre seule si le nom est d'un mot. */
-private fun initialesDe(nom: String): String = nom
-    .split(' ', '-', '\'')
-    .filter { it.isNotBlank() }
-    .take(2)
-    .map { it.first().uppercaseChar() }
-    .joinToString("")
-    .ifEmpty { "?" }
 
 /** « Vitry · 3 machines », ou l'adresse quand le parc est vide. */
 private fun sousTitreClient(client: Client, machines: List<Equipement>): String {

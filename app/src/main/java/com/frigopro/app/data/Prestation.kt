@@ -24,13 +24,7 @@ data class Technicien(
 ) {
 
     /** « KB » pour « Karim Benali » : ce qu'affiche la pastille du planning. */
-    val initiales: String
-        get() = nom.split(' ', '-')
-            .filter { it.isNotBlank() }
-            .take(2)
-            .map { it.first().uppercaseChar() }
-            .joinToString("")
-            .ifEmpty { "?" }
+    val initiales: String get() = initialesDe(nom)
 }
 
 /**

@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.Intervention
+import com.frigopro.app.data.initialesDe
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.theme.StyleChiffrePetit
@@ -255,19 +256,3 @@ private fun CarteCreneau(creneau: Creneau, onOuvrir: () -> Unit, modifier: Modif
 
 private fun sousTitre(intervention: Intervention): String =
     intervention.typeLibelle.ifBlank { intervention.ville }.let { if (it.isBlank()) "" else " · $it" }
-
-/**
- * « KB » pour « Karim Benali ».
- *
- * Déduit du nom recopié sur l'intervention plutôt que lu sur la fiche du
- * technicien : l'intervention porte le nom tel qu'il était, et une tournée de
- * mars doit continuer d'afficher les initiales de qui l'a faite même si la
- * fiche a disparu depuis.
- */
-internal fun initialesDe(nom: String): String = nom
-    .split(' ', '-')
-    .filter { it.isNotBlank() }
-    .take(2)
-    .map { it.first().uppercaseChar() }
-    .joinToString("")
-    .ifEmpty { "?" }

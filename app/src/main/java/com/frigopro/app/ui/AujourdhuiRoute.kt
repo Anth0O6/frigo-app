@@ -23,13 +23,21 @@ fun AujourdhuiRoute(
     modifier: Modifier = Modifier,
     viewModel: AujourdhuiViewModel = viewModel(factory = AujourdhuiViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
+    devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     if (ouverte != null) {
-        InterventionRoute(modifier = modifier, viewModel = detail)
+        InterventionRoute(
+            viewModel = detail,
+            onCreerDevis = {
+                devis.onNouveau(detail.etat.value?.client)
+                onVoirDevis()
+            },
+            modifier = modifier,
+        )
         return
     }
 

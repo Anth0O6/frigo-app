@@ -22,6 +22,7 @@ import com.frigopro.app.data.MouvementFluide
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Photo
+import com.frigopro.app.data.PointChecklist
 import com.frigopro.app.data.PiecePosee
 import com.frigopro.app.data.Releve
 import com.frigopro.app.data.SensFluide
@@ -45,6 +46,12 @@ import java.time.Instant
 
 /** Les quatre volets de l'écran d'une intervention. */
 enum class OngletIntervention(val libelle: String) {
+    /**
+     * Ce qu'on lit en arrivant : le créneau, l'adresse, la machine, et la liste
+     * à cocher. Il vient en premier parce que c'est l'ordre du terrain — on
+     * regarde où l'on est et ce qu'on a à vérifier avant de sortir le manomètre.
+     */
+    FICHE("Fiche"),
     RELEVES("Relevés"),
     PIECES("Pièces"),
     PHOTOS("Photos"),
@@ -67,8 +74,20 @@ data class EtatIntervention(
     val mouvements: List<MouvementFluide> = emptyList(),
     val pieces: List<PiecePosee> = emptyList(),
     val photos: List<Photo> = emptyList(),
+    val checklist: List<PointChecklist> = emptyList(),
     val parametres: Parametres = Parametres(),
 ) {
+
+    /** Combien de points sont cochés, et sur combien. */
+    val pointsFaits: Int get() = checklist.count { it.fait }
+
+    /**
+     * La checklist est-elle finie ?
+     *
+     * Une checklist vide n'est pas « finie » : elle n'est pas encore posée, et
+     * annoncer 0/0 comme un succès dirait le contraire de ce qui est vrai.
+     */
+    val checklistFinie: Boolean get() = checklist.isNotEmpty() && pointsFaits == checklist.size
 
     /** Ce que les relevés suggèrent, ou `null` s'ils n'en disent pas assez. */
     val diagnostic: Diagnostic? get() = releve?.let(Depannage::analyser)
@@ -167,7 +186,15 @@ class InterventionViewModel(
 
     fun onOuvrir(intervention: Intervention) {
         _ouverte.value = intervention.id
-        _onglet.value = OngletIntervention.RELEVES
+        _onglet.value = OngletIntervention.FICHE
+        // La checklist est posée à l'ouverture plutôt qu'à la création de
+        // l'intervention : une intervention saisie la semaine dernière doit la
+        // recevoir aussi, et le dépôt ne la pose qu'une fois.
+        viewModelScope.launch { suivi.preparerChecklist(intervention.id) }
+    }
+
+    fun onBasculerPoint(point: PointChecklist) {
+        viewModelScope.launch { suivi.basculerPoint(point) }
     }
 
     fun onFermer() {
@@ -341,7 +368,7 @@ class InterventionViewModel(
     }
 
     /**
-     * Réunit les six flux de l'intervention.
+     * Réunit les neuf flux de l'intervention.
      *
      * `combine` accepte cinq flux au plus par surcharge typée ; au-delà il
      * faut passer par la variante à tableau, dont le résultat n'est plus
@@ -372,11 +399,13 @@ class InterventionViewModel(
             equipements.equipements,
             clients.clients,
             parametres.parametres,
-        ) { etat, parc, carnet, reglages ->
+            suivi.observerChecklist(id),
+        ) { etat, parc, carnet, reglages, points ->
             etat?.copy(
                 equipement = parc.firstOrNull { it.id == etat.intervention.equipementId },
                 client = carnet.firstOrNull { it.id == etat.intervention.clientId },
                 parametres = reglages,
+                checklist = points,
             )
         }
     }

@@ -30,8 +30,13 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun InterventionRoute(
-    modifier: Modifier = Modifier,
     viewModel: InterventionViewModel,
+    /**
+     * Chiffrer depuis l'intervention. L'écran ne sait pas où va l'onglet Devis :
+     * c'est la coquille qui le sait, et c'est elle qui bascule.
+     */
+    onCreerDevis: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val ecoule by viewModel.ecoule.collectAsStateWithLifecycle()
@@ -114,6 +119,8 @@ fun InterventionRoute(
             onSigner = { signatureOuverte = true },
             onEffacerSignature = viewModel::onEffacerSignature,
             onCloturer = viewModel::onCloturer,
+            onBasculerPoint = viewModel::onBasculerPoint,
+            onCreerDevis = onCreerDevis,
         ),
         modifier = modifier,
     )

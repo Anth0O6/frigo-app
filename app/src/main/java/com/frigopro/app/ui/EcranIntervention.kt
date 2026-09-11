@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Photo
+import com.frigopro.app.data.PointChecklist
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.enChrono
 import com.frigopro.app.ui.composants.BarreActions
@@ -66,6 +67,8 @@ data class ActionsIntervention(
     val onSigner: () -> Unit = {},
     val onEffacerSignature: () -> Unit = {},
     val onCloturer: () -> Unit = {},
+    val onBasculerPoint: (PointChecklist) -> Unit = {},
+    val onCreerDevis: () -> Unit = {},
 )
 
 /**
@@ -105,6 +108,7 @@ fun EcranIntervention(
             )
             Box(modifier = Modifier.weight(1f)) {
                 when (onglet) {
+                    OngletIntervention.FICHE -> OngletFiche(etat = etat, actions = actions)
                     OngletIntervention.RELEVES -> OngletReleves(etat = etat, ecoule = ecoule, actions = actions)
                     OngletIntervention.PIECES -> OngletPieces(etat = etat, actions = actions)
                     OngletIntervention.PHOTOS -> OngletPhotos(
@@ -221,7 +225,19 @@ private fun BarreClotureIntervention(etat: EtatIntervention, actions: ActionsInt
             surCouleur = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onPrimary,
         )
         BoutonPlein(
-            texte = if (etat.intervention.numero.isEmpty()) "Clôturer" else "Compte-rendu",
+            texte = when {
+                etat.intervention.numero.isNotEmpty() -> "Compte-rendu"
+                // Le reste à cocher est dit sur le bouton plutôt que laissé à
+                // découvrir : la checklist porte des obligations, et s'en
+                // apercevoir après avoir quitté le site ne sert plus à rien.
+                // Rien n'est pour autant bloqué — une intervention peut
+                // légitimement se clore sans que tout s'applique, et
+                // l'application n'a pas à en juger.
+                !etat.checklistFinie && etat.checklist.isNotEmpty() ->
+                    "Clôturer · ${etat.checklist.size - etat.pointsFaits} à cocher"
+
+                else -> "Clôturer"
+            },
             onClick = if (etat.intervention.numero.isEmpty()) {
                 actions.onCloturer
             } else {

@@ -76,9 +76,12 @@ import java.time.LocalTime
  */
 @Composable
 fun InterventionsRoute(
+    /** Chiffrer depuis une intervention : la coquille seule sait changer d'onglet. */
+    onAllerAuxDevis: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
+    devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
 ) {
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
@@ -92,7 +95,14 @@ fun InterventionsRoute(
     val semaine by viewModel.semaine.collectAsStateWithLifecycle()
 
     if (ouverte != null) {
-        InterventionRoute(modifier = modifier, viewModel = detail)
+        InterventionRoute(
+            viewModel = detail,
+            onCreerDevis = {
+                devis.onNouveau(detail.etat.value?.client)
+                onAllerAuxDevis()
+            },
+            modifier = modifier,
+        )
         return
     }
 

@@ -48,12 +48,7 @@ data class Parametres(
 ) {
 
     /** Les initiales du technicien, telles que les affiche la pastille des Réglages. */
-    val initiales: String
-        get() = technicien.split(' ', '-')
-            .filter { it.isNotBlank() }
-            .take(2)
-            .map { it.first().uppercaseChar() }
-            .joinToString("")
+    val initiales: String get() = if (technicien.isBlank()) "" else initialesDe(technicien)
 
     companion object {
 

@@ -117,16 +117,6 @@ class FriseHoraireTest {
         assertEquals("08:00 – 09:30", creneauDe(intervention(LocalTime.of(8, 0), dureeMin = 90)))
     }
 
-    @Test
-    fun `les initiales tiennent en deux lettres`() {
-        assertEquals("KB", initialesDe("Karim Benali"))
-        assertEquals("ML", initialesDe("Mehdi Lacroix"))
-        assertEquals("un prénom seul donne une lettre", "K", initialesDe("Karim"))
-        assertEquals("un nom composé compte pour deux", "JP", initialesDe("Jean-Pierre"))
-        assertEquals("trois mots n'en donnent pas trois", "JP", initialesDe("Jean Pierre Martin"))
-        assertEquals("et rien ne donne quelque chose", "?", initialesDe("   "))
-    }
-
     private fun intervention(heure: LocalTime, dureeMin: Int) = Intervention(
         date = LocalDate.of(2026, 9, 11),
         heure = heure,

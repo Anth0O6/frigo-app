@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.CHECKLIST_INITIALE
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.EquipementRepository
@@ -72,7 +73,59 @@ class InterventionViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Boucherie Martel", viewModel.etat.value?.intervention?.client)
-        assertEquals(OngletIntervention.RELEVES, viewModel.onglet.value)
+        assertEquals(
+            "on arrive sur la fiche : le créneau et l'adresse avant le manomètre",
+            OngletIntervention.FICHE,
+            viewModel.onglet.value,
+        )
+        assertEquals(
+            "la checklist est posée à l'ouverture, pas à la création",
+            CHECKLIST_INITIALE.size,
+            viewModel.etat.value?.checklist?.size,
+        )
+        assertEquals("et rien n'est coché d'avance", 0, viewModel.etat.value?.pointsFaits)
+    }
+
+    /**
+     * La checklist ne se repose pas à chaque ouverture : ce qui est coché doit
+     * le rester, sinon la liste ne vaut rien.
+     */
+    @Test
+    fun `rouvrir une intervention ne repose pas sa checklist`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION)
+        val viewModel = creerViewModel()
+        viewModel.onOuvrir(INTERVENTION)
+        advanceUntilIdle()
+        val premier = viewModel.etat.value?.checklist?.first()!!
+        viewModel.onBasculerPoint(premier)
+        advanceUntilIdle()
+
+        viewModel.onFermer()
+        viewModel.onOuvrir(INTERVENTION)
+        advanceUntilIdle()
+
+        assertEquals(CHECKLIST_INITIALE.size, viewModel.etat.value?.checklist?.size)
+        assertEquals("ce qui était coché le reste", 1, viewModel.etat.value?.pointsFaits)
+    }
+
+    @Test
+    fun `une checklist a moitie cochee n'est pas finie`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION)
+        val viewModel = creerViewModel()
+        viewModel.onOuvrir(INTERVENTION)
+        advanceUntilIdle()
+
+        viewModel.onBasculerPoint(viewModel.etat.value?.checklist?.first()!!)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.etat.value?.checklistFinie == true)
+
+        viewModel.etat.value?.checklist?.filterNot { it.fait }?.forEach { point ->
+            viewModel.onBasculerPoint(point)
+            advanceUntilIdle()
+        }
+
+        assertTrue("tout coché, donc finie", viewModel.etat.value?.checklistFinie == true)
     }
 
     // — Chronomètre ————————————————————————————————————————————————————————

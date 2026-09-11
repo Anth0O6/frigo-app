@@ -139,11 +139,19 @@ class Cibles(
     val action: Dp,
     /** Bouton carré d'une barre : appeler, itinéraire, retour. */
     val carre: Dp,
+    /**
+     * Case à cocher de la checklist.
+     *
+     * Elle grandit aussi avec les gants : c'est l'une des commandes qu'on touche
+     * le plus souvent sur un toit, et la seule dont l'oubli se lit plus tard sur
+     * un document réglementaire.
+     */
+    val case: Dp,
 )
 
-private val CiblesNormales = Cibles(action = 56.dp, carre = 52.dp)
+private val CiblesNormales = Cibles(action = 56.dp, carre = 52.dp, case = 26.dp)
 
-private val CiblesGantees = Cibles(action = 68.dp, carre = 64.dp)
+private val CiblesGantees = Cibles(action = 68.dp, carre = 64.dp, case = 34.dp)
 
 /** Les cibles tactiles en vigueur. */
 val LocalCibles = staticCompositionLocalOf { CiblesNormales }
