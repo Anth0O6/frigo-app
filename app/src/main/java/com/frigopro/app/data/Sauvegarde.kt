@@ -290,6 +290,24 @@ private val LIBELLES_HISTORIQUES = mapOf(
 )
 
 /**
+ * Les statuts retirés, et ce qu'ils sont devenus.
+ *
+ * `A_FAIRE` est devenu `PLANIFIEE` au format 5 : le mot a changé parce que
+ * l'écran a changé, pas l'état. Toute sauvegarde écrite avant porte encore
+ * l'ancien nom, et sans cette correspondance elle serait **refusée en entier** —
+ * un statut inconnu fait rejeter le fichier, à dessein. Autrement dit : sans ces
+ * deux lignes, la mise à jour rendrait illisibles toutes les sauvegardes déjà
+ * faites, ce qui est exactement ce que la sauvegarde est censée empêcher.
+ *
+ * La même correspondance vit en SQL dans `MIGRATION_7_8`, et pour la même
+ * raison que pour `typePanne` : un fichier d'alors et une base d'alors doivent
+ * donner le même résultat.
+ */
+private val STATUTS_HISTORIQUES = mapOf(
+    "A_FAIRE" to StatutIntervention.PLANIFIEE,
+)
+
+/**
  * Formats du fichier, dupliqués à dessein de ceux de [Convertisseurs] : le
  * stockage de la base peut changer sans que le fichier en souffre.
  */
@@ -421,7 +439,9 @@ internal fun PhotoSauvegarde.versPhoto(): Photo? {
  * l'ancienne valeur fixe.
  */
 internal fun InterventionSauvegarde.versIntervention(): Intervention? {
-    val avancement = StatutIntervention.entries.firstOrNull { it.name == statut } ?: return null
+    val avancement = StatutIntervention.entries.firstOrNull { it.name == statut }
+        ?: STATUTS_HISTORIQUES[statut]
+        ?: return null
     val jour = runCatching { LocalDate.parse(date, FORMAT_DATE) }.getOrNull() ?: return null
     val moment = runCatching { LocalTime.parse(heure, FORMAT_HEURE) }.getOrNull() ?: return null
 
