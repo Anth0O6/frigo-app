@@ -4,6 +4,8 @@ import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.data.FauxParametresDao
+import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -147,6 +149,9 @@ class ReglagesViewModelTest {
     /** Même raison que dans [InterventionsViewModelTest]. */
     private fun TestScope.creerViewModel(): ReglagesViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        return ReglagesViewModel(TypeInterventionRepository(daoTypes))
+        return ReglagesViewModel(
+            TypeInterventionRepository(daoTypes),
+            ParametresRepository(FauxParametresDao()),
+        )
     }
 }

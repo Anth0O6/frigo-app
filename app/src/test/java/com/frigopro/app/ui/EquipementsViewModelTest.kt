@@ -8,6 +8,8 @@ import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.FauxSuiviDao
+import com.frigopro.app.data.SuiviRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -31,6 +33,7 @@ class EquipementsViewModelTest {
     private val daoInterventions = FauxInterventionDao()
     private val daoEquipements = FauxEquipementDao(daoInterventions)
     private val stockage = FauxRangementPhotos()
+    private val daoSuivi = FauxSuiviDao(daoInterventions)
 
     @After
     fun nettoyer() {
@@ -230,6 +233,7 @@ class EquipementsViewModelTest {
         val viewModel = EquipementsViewModel(
             EquipementRepository(daoEquipements, stockage),
             InterventionRepository(daoInterventions),
+            SuiviRepository(daoSuivi, stockage),
         )
         listOf(
             viewModel.parc,
