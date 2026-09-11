@@ -27,6 +27,20 @@ class DevisRepository(private val dao: DevisDao) {
             devis?.let { DevisComplet(it, lignes) }
         }
 
+    /**
+     * Les devis avec leur montant, et les compteurs qui s'en déduisent.
+     *
+     * Le montant ne vit pas sur la ligne du devis — il est la somme de ses
+     * lignes, et le recopier serait s'exposer à ce qu'il cesse d'être juste
+     * après une modification. Il est donc recalculé, mais par SQL et en une
+     * seule requête (voir [DevisDao.observerTotaux]).
+     */
+    val devisChiffres: Flow<List<DevisChiffre>> =
+        combine(dao.observerTous(), dao.observerTotaux()) { devis, totaux ->
+            val parDevis = totaux.associate { it.devisId to it.montant }
+            devis.map { DevisChiffre(it, (parDevis[it.id] ?: 0.0).auCentime()) }
+        }
+
     /** Le nombre de devis ouverts d'un client, tel que l'affiche sa fiche. */
     fun compterOuverts(clientId: String): Flow<Int> = dao.observerDuClient(clientId).map { liste ->
         liste.count { it.statut == StatutDevis.BROUILLON || it.statut == StatutDevis.ENVOYE }

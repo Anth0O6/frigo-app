@@ -65,6 +65,16 @@ internal fun heureLocale(instant: Instant?): String = instant
 internal fun jourCourt(date: LocalDate): String =
     date.format(DateTimeFormatter.ofPattern("dd/MM"))
 
+/**
+ * « sept. », le mois abrégé d'une pastille de date.
+ *
+ * La locale est imposée plutôt que laissée au système : l'application est en
+ * français, et un téléphone réglé en anglais afficherait « Sep » au milieu
+ * d'une phrase française.
+ */
+internal fun moisCourt(date: LocalDate): String =
+    date.format(DateTimeFormatter.ofPattern("MMM", Locale.FRENCH))
+
 /** Le lundi de la semaine où tombe [date] : l'ancrage du planning. */
 internal fun lundiDe(date: LocalDate): LocalDate =
     date.minusDays((date.dayOfWeek.value - 1).toLong())

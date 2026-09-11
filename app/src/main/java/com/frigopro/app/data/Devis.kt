@@ -110,5 +110,30 @@ data class DevisComplet(
     val totalTtc: Double get() = (totalHt + tva).auCentime()
 }
 
+/**
+ * Le total hors taxes d'un devis, tel que SQL le renvoie.
+ *
+ * Ce n'est pas une entité : aucune table ne lui correspond, c'est le résultat
+ * d'un `GROUP BY` sur les lignes. Room sait remplir une classe de ce genre du
+ * moment que ses noms de propriétés sont ceux des colonnes projetées.
+ */
+data class TotalDevis(val devisId: String, val montant: Double)
+
+/**
+ * Un devis et son montant, tels que les listes et les compteurs les affichent.
+ *
+ * C'est [DevisComplet] sans les lignes : une liste de devis a besoin du total
+ * de chacun, pas du détail, et charger toutes les lignes de tous les devis pour
+ * n'en afficher que la somme serait payer cher un chiffre.
+ */
+data class DevisChiffre(val devis: Devis, val totalHt: Double) {
+
+    val totalTtc: Double get() = (totalHt * (1 + devis.tauxTva / 100)).auCentime()
+
+    /** Un devis qui attend une réponse : c'est ce que comptent les compteurs. */
+    val enAttente: Boolean
+        get() = devis.statut == StatutDevis.BROUILLON || devis.statut == StatutDevis.ENVOYE
+}
+
 /** Arrondit au centime, la seule précision qui ait un sens sur une facture. */
 fun Double.auCentime(): Double = (this * 100).roundToLong() / 100.0

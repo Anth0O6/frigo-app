@@ -41,6 +41,21 @@ abstract class DevisDao {
     @Query("SELECT * FROM lignes_devis")
     abstract suspend fun toutesLesLignes(): List<LigneDevis>
 
+    /**
+     * Le montant hors taxes de chaque devis, en une requête.
+     *
+     * Les compteurs de l'accueil et de l'onglet Devis — « en attente »,
+     * « acceptés », « en cours » — ont tous besoin du total d'un devis. Les
+     * calculer en relisant les lignes devis par devis multiplierait les
+     * requêtes par le nombre de devis ; un `GROUP BY` les donne toutes d'un
+     * coup, et c'est le genre de somme que SQLite fait mieux que Kotlin.
+     *
+     * Un devis sans ligne n'apparaît pas dans le résultat, ce qui est exact :
+     * son total est zéro, et l'appelant le traite comme absent.
+     */
+    @Query("SELECT devisId, SUM(quantite * prixUnitaire) AS montant FROM lignes_devis GROUP BY devisId")
+    abstract fun observerTotaux(): Flow<List<TotalDevis>>
+
     /** Le rang libre suivant, pour poser une ligne à la fin. */
     @Query("SELECT COALESCE(MAX(rang), -1) + 1 FROM lignes_devis WHERE devisId = :devisId")
     abstract suspend fun prochainRang(devisId: String): Int
