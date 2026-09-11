@@ -7,8 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -187,6 +191,61 @@ fun <T> RangeePastilles(
                     maxLines = 1,
                 )
             }
+        }
+    }
+}
+
+/**
+ * La barre de recherche d'une liste.
+ *
+ * Sans icône de validation ni bouton : la liste se filtre à la frappe, et un
+ * geste de plus pour « lancer » la recherche serait un geste pour rien.
+ */
+@Composable
+fun ChampRecherche(
+    valeur: String,
+    onValeur: (String) -> Unit,
+    indication: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            BasicTextField(
+                value = valeur,
+                onValueChange = onValeur,
+                modifier = Modifier.weight(1f),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                singleLine = true,
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { champ ->
+                    Box {
+                        if (valeur.isEmpty()) {
+                            Text(
+                                text = indication,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        champ()
+                    }
+                },
+            )
         }
     }
 }
