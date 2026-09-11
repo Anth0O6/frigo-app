@@ -203,6 +203,14 @@ class FauxDevisDao : DevisDao() {
 
     override suspend fun toutesLesLignes(): List<LigneDevis> = lignes.value
 
+    /** Le `GROUP BY` du vrai DAO : un devis sans ligne n'apparaît pas. */
+    override fun observerTotaux(): Flow<List<TotalDevis>> = lignes.map { liste ->
+        liste.groupBy { it.devisId }
+            .map { (devisId, lignesDuDevis) ->
+                TotalDevis(devisId, lignesDuDevis.sumOf { it.quantite * it.prixUnitaire })
+            }
+    }
+
     override suspend fun prochainRang(devisId: String): Int =
         (lignes.value.filter { it.devisId == devisId }.maxOfOrNull { it.rang } ?: -1) + 1
 

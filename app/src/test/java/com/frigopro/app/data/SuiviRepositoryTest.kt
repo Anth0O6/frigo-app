@@ -284,6 +284,67 @@ class DevisRepositoryTest {
         assertTrue(!StatutDevis.ENVOYE.figé)
     }
 
+    /**
+     * Les compteurs et la liste ont besoin du total de chaque devis, qui est la
+     * somme de ses lignes. Le recopier sur la ligne du devis serait s'exposer à
+     * ce qu'il cesse d'être juste après une modification ; il est donc recalculé,
+     * mais en une seule requête.
+     */
+    @Test
+    fun `chaque devis porte le total de ses lignes`() = runTest {
+        val premier = repository.creer(client = null, aujourdhui = mai)
+        repository.ajouterLigne(premier.id, "Compresseur", 1.0, "pièce", 1240.0)
+        repository.ajouterLigne(premier.id, "Main d'œuvre", 6.0, "h", 68.0)
+        val second = repository.creer(client = null, aujourdhui = mai)
+        repository.ajouterLigne(second.id, "Déplacement", 1.0, "forfait", 45.0)
+        repository.creer(client = null, aujourdhui = mai)
+
+        val chiffres = repository.devisChiffres.first().associateBy { it.devis.id }
+
+        assertEquals(3, chiffres.size)
+        assertEquals(1240.0 + 6 * 68.0, chiffres.getValue(premier.id).totalHt, 0.001)
+        assertEquals(45.0, chiffres.getValue(second.id).totalHt, 0.001)
+        assertEquals(
+            "un devis sans ligne vaut zéro, il ne disparaît pas de la liste",
+            3,
+            chiffres.values.size,
+        )
+        assertTrue(
+            "et son total est nul, pas absent",
+            chiffres.values.any { it.totalHt == 0.0 },
+        )
+    }
+
+    @Test
+    fun `le montant TTC suit le taux porte par le devis`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai, tauxTva = 10.0)
+        repository.ajouterLigne(devis.id, "Main d'œuvre", 2.0, "h", 50.0)
+
+        val chiffre = repository.devisChiffres.first().single()
+
+        assertEquals(100.0, chiffre.totalHt, 0.001)
+        assertEquals("le taux vient du devis, pas d'un réglage global", 110.0, chiffre.totalTtc, 0.001)
+    }
+
+    /**
+     * « En attente » est ce qui attend une réponse. Un devis refusé n'attend
+     * plus rien, et le compter relancerait un client qui a déjà dit non.
+     */
+    @Test
+    fun `seuls un brouillon et un devis envoye sont en attente`() = runTest {
+        val brouillon = repository.creer(client = null, aujourdhui = mai)
+        val envoye = repository.creer(client = null, aujourdhui = mai)
+        val accepte = repository.creer(client = null, aujourdhui = mai)
+        val refuse = repository.creer(client = null, aujourdhui = mai)
+        repository.changerStatut(envoye, StatutDevis.ENVOYE)
+        repository.changerStatut(accepte, StatutDevis.ACCEPTE)
+        repository.changerStatut(refuse, StatutDevis.REFUSE)
+
+        val enAttente = repository.devisChiffres.first().filter { it.enAttente }.map { it.devis.id }
+
+        assertEquals(setOf(brouillon.id, envoye.id), enAttente.toSet())
+    }
+
     @Test
     fun `supprimer un devis emporte ses lignes`() = runTest {
         val devis = repository.creer(client = null, aujourdhui = mai)
