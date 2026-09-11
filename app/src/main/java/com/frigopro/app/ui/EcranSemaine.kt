@@ -1,5 +1,8 @@
 package com.frigopro.app.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
+import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -122,13 +126,13 @@ private fun EnTeteSemaine(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        com.frigopro.app.ui.composants.BoutonCarre(
-            icone = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+        BoutonCarre(
+            icone = Icons.AutoMirrored.Filled.ArrowBack,
             description = "Semaine précédente",
             onClick = onPrecedente,
         )
-        com.frigopro.app.ui.composants.BoutonCarre(
-            icone = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward,
+        BoutonCarre(
+            icone = Icons.AutoMirrored.Filled.ArrowForward,
             description = "Semaine suivante",
             onClick = onSuivante,
         )

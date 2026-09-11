@@ -9,8 +9,6 @@ import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.TypeIntervention
-import com.frigopro.app.data.Parametres
-import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
