@@ -79,6 +79,49 @@ fun FeuilleReglette(
     onReporterEcart: (CoteCircuit, Double) -> Unit,
     onFermer: () -> Unit,
 ) {
+    ModalBottomSheet(onDismissRequest = onFermer) {
+        Text(
+            text = "Réglette pression / température",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = MargeEcran),
+        )
+        CorpsReglette(
+            fluideMachine = fluideMachine,
+            bpRelevee = bpRelevee,
+            hpRelevee = hpRelevee,
+            verifies = verifies,
+            onVerifier = onVerifier,
+            onReporterPression = onReporterPression,
+            onReporterEcart = onReporterEcart,
+        )
+    }
+}
+
+/**
+ * Le corps de la réglette, sans la fenêtre qui le porte.
+ *
+ * Deux entrées y mènent, et elles ne se valent pas : depuis l'onglet **Outils**,
+ * où l'on vient chercher une correspondance sans intervention ouverte, et depuis
+ * l'onglet des **relevés** d'une intervention, manomètre en main, où l'on veut en
+ * plus reporter ce qu'on lit. Une seule réglette pour les deux — en recopier une
+ * seconde aurait garanti qu'elles divergent, et c'est la plus consultée des deux
+ * qui aurait pris du retard.
+ *
+ * Les deux rappels de report sont **facultatifs** : depuis les Outils il n'y a
+ * aucun relevé où reporter, et les boutons disparaissent plutôt que de rester là
+ * sans effet.
+ */
+@Composable
+fun CorpsReglette(
+    fluideMachine: String,
+    bpRelevee: Double?,
+    hpRelevee: Double?,
+    verifies: Set<String>,
+    onVerifier: (String, Boolean) -> Unit,
+    onReporterPression: ((CoteCircuit, Double) -> Unit)? = null,
+    onReporterEcart: ((CoteCircuit, Double) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     var fluide by remember { mutableStateOf(EtatReglette.fluideInitial(fluideMachine)) }
     var cote by remember { mutableStateOf(CoteCircuit.ASPIRATION) }
     var pression by remember {
@@ -94,102 +137,103 @@ fun FeuilleReglette(
         verifie = fluide in verifies,
     )
 
-    ModalBottomSheet(onDismissRequest = onFermer) {
-        Column(
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = MargeEcran),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        ChoixFluide(
+            retenu = fluide,
+            verifies = verifies,
+            onChoisir = { choisi ->
+                fluide = choisi
+                // La pression est ramenée dans la plage du nouveau fluide :
+                // 60 bar ont un sens sur du CO₂ et aucun sur du R-600a, et un
+                // curseur qui resterait hors plage n'afficherait plus rien.
+                pression = EtatReglette.pressionInitiale(
+                    choisi,
+                    pression.takeIf { EtatReglette.plagePressionRelative(choisi)?.contains(it) == true },
+                )
+            },
+        )
+
+        if (!etat.couvert) {
+            Encart(
+                texte = "La courbe de ce fluide n'est pas saisie. Aucune valeur n'est " +
+                    "déduite : une température plausible tirée d'un fluide voisin serait " +
+                    "fausse, et rien ne le dirait.",
+                icone = Icons.Filled.Warning,
+                alerte = true,
+            )
+            return@Column
+        }
+
+        BanniereVerification(
+            fluide = fluide,
+            verifie = etat.verifie,
+            onVerifier = { onVerifier(fluide, it) },
+        )
+
+        RangeePastilles(
+            options = CoteCircuit.entries,
+            retenue = cote,
+            libelle = { it.libelle },
+            onChoisir = { choisi ->
+                cote = choisi
+                // Chaque côté s'ouvre sur sa pression relevée : passer de
+                // l'aspiration au refoulement sans changer la pression
+                // afficherait une température de condensation à 2 bar.
+                val relevee = when (choisi) {
+                    CoteCircuit.ASPIRATION -> bpRelevee
+                    CoteCircuit.REFOULEMENT -> hpRelevee
+                }
+                if (relevee != null) pression = EtatReglette.pressionInitiale(fluide, relevee)
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = MargeEcran),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(text = "Réglette pression / température", style = MaterialTheme.typography.titleLarge)
+                .horizontalScroll(rememberScrollState()),
+        )
 
-            ChoixFluide(
-                retenu = fluide,
-                verifies = verifies,
-                onChoisir = { choisi ->
-                    fluide = choisi
-                    // La pression est ramenée dans la plage du nouveau fluide :
-                    // 60 bar ont un sens sur du CO₂ et aucun sur du R-600a, et un
-                    // curseur qui resterait hors plage n'afficherait plus rien.
-                    pression = EtatReglette.pressionInitiale(
-                        choisi,
-                        pression.takeIf { EtatReglette.plagePressionRelative(choisi)?.contains(it) == true },
-                    )
-                },
+        CurseurPression(
+            fluide = fluide,
+            pression = pression,
+            onPression = { pression = it },
+        )
+
+        CartesSaturation(etat = etat)
+
+        Section(intitule = etat.cote.intituleEcart) {
+            ChampTexte(
+                libelle = "Température relevée sur la tuyauterie (°C)",
+                valeur = temperatureLigne,
+                onValeur = { temperatureLigne = it },
+                clavier = KeyboardType.Decimal,
             )
-
-            if (!etat.couvert) {
-                Encart(
-                    texte = "La courbe de ce fluide n'est pas saisie. Aucune valeur n'est " +
-                        "déduite : une température plausible tirée d'un fluide voisin serait " +
-                        "fausse, et rien ne le dirait.",
-                    icone = Icons.Filled.Warning,
-                    alerte = true,
+            val ecart = etat.ecartK
+            if (ecart == null) {
+                Text(
+                    text = "Saisissez la température lue au contact du tube pour obtenir " +
+                        "${etat.cote.intituleEcart.lowercase()}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                return@Column
-            }
-
-            BanniereVerification(
-                fluide = fluide,
-                verifie = etat.verifie,
-                onVerifier = { onVerifier(fluide, it) },
-            )
-
-            RangeePastilles(
-                options = CoteCircuit.entries,
-                retenue = cote,
-                libelle = { it.libelle },
-                onChoisir = { choisi ->
-                    cote = choisi
-                    // Chaque côté s'ouvre sur sa pression relevée : passer de
-                    // l'aspiration au refoulement sans changer la pression
-                    // afficherait une température de condensation à 2 bar.
-                    val relevee = when (choisi) {
-                        CoteCircuit.ASPIRATION -> bpRelevee
-                        CoteCircuit.REFOULEMENT -> hpRelevee
-                    }
-                    if (relevee != null) pression = EtatReglette.pressionInitiale(fluide, relevee)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-            )
-
-            CurseurPression(
-                fluide = fluide,
-                pression = pression,
-                onPression = { pression = it },
-            )
-
-            CartesSaturation(etat = etat)
-
-            Section(intitule = etat.cote.intituleEcart) {
-                ChampTexte(
-                    libelle = "Température relevée sur la tuyauterie (°C)",
-                    valeur = temperatureLigne,
-                    onValeur = { temperatureLigne = it },
-                    clavier = KeyboardType.Decimal,
+            } else {
+                TuileChiffre(
+                    valeur = "${Nombres.enTexte(ecart)} K",
+                    libelle = etat.cote.intituleEcart.lowercase(),
+                    modifier = Modifier.fillMaxWidth(),
+                    couleur = teinteEcart(
+                        valeur = ecart,
+                        normalBas = if (cote == CoteCircuit.ASPIRATION) 3.0 else 2.0,
+                        normalHaut = 8.0,
+                    ),
                 )
-                val ecart = etat.ecartK
-                if (ecart == null) {
-                    Text(
-                        text = "Saisissez la température lue au contact du tube pour obtenir " +
-                            "${etat.cote.intituleEcart.lowercase()}.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    TuileChiffre(
-                        valeur = "${Nombres.enTexte(ecart)} K",
-                        libelle = etat.cote.intituleEcart.lowercase(),
-                        modifier = Modifier.fillMaxWidth(),
-                        couleur = teinteEcart(
-                            valeur = ecart,
-                            normalBas = if (cote == CoteCircuit.ASPIRATION) 3.0 else 2.0,
-                            normalHaut = 8.0,
-                        ),
-                    )
+                // Le report n'existe que depuis une intervention : consultée
+                // depuis les Outils, la réglette n'a aucun relevé où écrire, et un
+                // bouton sans effet vaut moins que pas de bouton.
+                if (onReporterEcart != null) {
                     BoutonPlein(
                         texte = "Reporter dans le relevé",
                         onClick = { onReporterEcart(cote, ecart) },
@@ -208,9 +252,11 @@ fun FeuilleReglette(
                     }
                 }
             }
+        }
 
-            // Reporter la pression, elle, ne demande aucune vérification : c'est
-            // celle qu'on a lue au manomètre, pas une valeur déduite d'une courbe.
+        // Reporter la pression, elle, ne demande aucune vérification : c'est
+        // celle qu'on a lue au manomètre, pas une valeur déduite d'une courbe.
+        if (onReporterPression != null) {
             BoutonContour(
                 texte = "Reporter ${Nombres.enTexte(pression.arrondiCentieme())} bar en " +
                     if (cote == CoteCircuit.ASPIRATION) "BP" else "HP",
@@ -218,8 +264,8 @@ fun FeuilleReglette(
                 modifier = Modifier.fillMaxWidth(),
                 couleur = MaterialTheme.colorScheme.secondary,
             )
-            EspaceVertical(24)
         }
+        EspaceVertical(24)
     }
 }
 

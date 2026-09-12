@@ -59,7 +59,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Equipement.kt
 │       │   │   ├── Photo.kt
 │       │   │   ├── Chrono.kt              # le temps passé, et son arithmétique
-│       │   │   ├── Fluide.kt              # GWP, équivalent CO₂, périodicité 517/2014
+│       │   │   ├── Fluide.kt              # GWP, classe ISO 817, périodicité 517/2014
+│       │   │   ├── Conversions.kt         # huit familles d'unités, affines
+│       │   │   ├── PuissanceEchangee.kt   # débit × ρ × cp × Δt, dans les trois sens
 │       │   │   ├── CourbesSaturation.kt   # bulle et rosée, les dix-sept fluides
 │       │   │   ├── VerificationFluide.kt  # « j'ai contrôlé cette courbe »
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
@@ -93,7 +95,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── InterventionRepository.kt
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
-│       │       ├── FrigoProApp.kt      # coquille : les cinq onglets
+│       │       ├── FrigoProApp.kt      # coquille : les six onglets
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
 │       │       ├── LigneTournee.kt     # intervention + fiche de son client
@@ -128,6 +130,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── PdfDevis.kt          # le seul à connaître Canvas
 │       │       ├── EtatReglette.kt      # pression ↔ température, et le côté
 │       │       ├── FeuilleReglette.kt   # la réglette, curseur et avertissement
+│       │       ├── EcranOutils.kt       # l'onglet Outils, et le cadre d'un outil
+│       │       ├── OutilsCalculs.kt     # convertisseur, bilan, F-Gas, fiche fluide
+│       │       ├── OutilsViewModel.kt
 │       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
 │       │       ├── SectionsReglages.kt  # technicien, thème, gants, tarifs
 │       │       ├── Nombres.kt           # virgule décimale à la saisie
@@ -271,6 +276,34 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   détendeur dessus. Rien n'est extrapolé hors de la plage saisie, et la courbe du
   CO₂ s'arrête au point critique : au-delà il n'y a plus de saturation, et un
   chiffre inventé serait le plus nuisible là précisément.
+  `ClasseSecurite` porte la classification ISO 817 des fluides du catalogue. Elle
+  commande la façon de travailler : l'inflammabilité décide des outils, du brasage
+  et de la charge admise dans un local, la toxicité de la ventilation. Le libellé
+  porte le **sens** et pas seulement le code, parce que « A2L » ne dit rien à qui
+  n'a pas la table en tête — et un code faux passerait alors inaperçu là où une
+  mention « faiblement inflammable » sur un R-410A sauterait aux yeux. Comme le
+  GWP, rien n'est deviné : un fluide inconnu n'a pas de classe, le dire
+  ininflammable sans rien en savoir étant le genre de supposition qui met le feu à
+  un local technique. `PeriodiciteControle.pour` modélise enfin le **détecteur de
+  fuite fixe**, qui double les intervalles (art. 4 § 3) ; son défaut est *sans*
+  détecteur, et ce défaut est un choix — annoncer un contrôle trop tôt fait perdre
+  une heure, trop tard expose à une sanction. Doubler une absence d'obligation ne
+  veut rien dire : une machine non soumise le reste.
+  `Conversions` décrit chaque unité comme une **fonction affine** de la référence
+  de sa famille. Porter un décalage pour toutes — alors qu'il ne sert qu'aux
+  températures — évite deux codes de conversion dont un seul serait éprouvé. La
+  distinction qui compte est celle entre une **température** et un **écart de
+  température** : 10 °C valent 50 °F, mais un écart de 10 K vaut 18 °F, et les
+  confondre se paie sur une surchauffe. Ce sont deux familles séparées, et la
+  conversion de l'une vers l'autre est refusée. Les facteurs sont les valeurs
+  exactes des définitions, pas des arrondis, qu'un recopiage de proche en proche
+  ferait dériver. `PuissanceEchangee` porte `P = débit × ρ × cp × Δt` dans ses
+  **trois sens**, parce que les trois se posent sur le terrain ; un seul chemin
+  aurait laissé passer une division inversée dans les deux autres. Les valeurs des
+  caloporteurs sont données à une condition de référence, dite dans le modèle et
+  reprise à l'écran : la masse volumique de l'air varie de près de moitié entre une
+  chambre froide et une toiture en août, et le résultat est un **ordre de grandeur
+  juste**, pas un relevé de réception.
   `initialesDe` est partagée : quatre écrans la dérivaient chacun à sa façon, et
   elles divergeaient déjà — « L'Épicerie du coin » donnait « L » sur l'un et
   « LÉ » sur l'autre.
@@ -278,8 +311,12 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `FrigoProApp` est la coquille : cinq onglets, `Aujourd'hui`,
-  `Planning`, `Devis`, `Clients` et `Réglages`, et la barre qui en change.
+- **`ui`** — `FrigoProApp` est la coquille : six onglets, `Aujourd'hui`,
+  `Planning`, `Devis`, `Clients`, `Outils` et `Réglages`, et la barre qui en
+  change. **Six est un de plus que ce que Material recommande**, et les libellés
+  sont déjà abrégés au plus court lisible ; la contrepartie est assumée plutôt que
+  contournée par un menu « plus » — un onglet derrière un menu n'est pas un onglet,
+  et celui-ci doit s'atteindre d'un pouce, gants aux mains.
   L'accueil vient en tête parce qu'il répond à la question qu'on se pose en
   sortant le téléphone — « et maintenant ? » — et le planning juste après, pour
   la suivante : « et le reste de la semaine ? ». `EcranAujourdhui` met en avant
@@ -369,7 +406,29 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   celle qu'on a lue au manomètre. La plage du curseur vient de la courbe et est
   l'**intersection** des deux colonnes : sur un mélange la rosée descend plus bas
   que la bulle et monte moins haut, si bien qu'une plage prise aux extrêmes
-  afficherait « hors plage » aux deux bouts.
+  afficherait « hors plage » aux deux bouts. `CorpsReglette` est le corps commun
+  aux **deux entrées** — l'onglet Outils et l'onglet des relevés d'une
+  intervention — et la feuille n'est plus qu'une coquille autour de lui. Les deux
+  ne se valent pas, et c'est le seul écart : les rappels de report sont
+  **facultatifs**, parce que depuis les Outils il n'y a aucun relevé où écrire et
+  qu'un bouton sans effet vaut moins que pas de bouton.
+  `EcranOutils` tient l'onglet **Outils**, d'une autre nature que les cinq
+  autres : il ne regarde **aucune donnée de l'application**. Ce sont des outils de
+  métier — réglette, convertisseur, bilan de puissance, périodicité réglementaire,
+  fiche fluide — qu'on consulte sans client ni intervention ouverte, et rien n'y
+  est persisté : un convertisseur n'a pas d'état à conserver, et lui donner un
+  historique aurait créé quelque chose à sauvegarder, restaurer et migrer pour
+  rien. Un outil ouvert *remplace* la liste, comme un devis ou une machine
+  ailleurs : une seule profondeur, un `BackHandler`, toujours pas de graphe de
+  navigation. Le **convertisseur** demande la famille avant les unités, parce que
+  c'est l'ordre de la question — « j'ai des psi, je veux des bars » suppose qu'on
+  sait déjà parler de pression —, et deux encarts veillent sur les deux pièges :
+  une pression convertie ne dit pas si elle est relative ou absolue, et une
+  température n'est pas un écart de température. Le **bilan** ne demande que les
+  deux grandeurs connues des trois : les laisser toutes ouvertes aurait posé la
+  question de celle qui gagne. La **fiche fluide** met la classe de sécurité avant
+  le GWP, et c'est volontaire : le GWP décide d'une paperasse, la classe décide de
+  la façon de travailler et de ce qui peut prendre feu.
   Appeler et ouvrir un itinéraire passent par des intentions Android
   (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
   pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
@@ -528,7 +587,7 @@ l'APK : un test rouge bloque la publication.
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
 | `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique |
 | `ChronoTest` | Reprise après pause, heure d'arrivée jamais réécrite, horloge qui recule |
-| `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, silence quand la charge est inconnue |
+| `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, détecteur de fuite qui double les intervalles, classe de sécurité jamais devinée, silence quand la charge est inconnue |
 | `DepannageTest` | Le croisement surchauffe / sous-refroidissement, et le silence d'un relevé muet |
 | `NumerotationTest` | Le rang repart au mois, et une suppression ne réattribue pas un numéro |
 | `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
@@ -537,6 +596,8 @@ l'APK : un test rouge bloque la publication.
 | `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite |
 | `InitialesTest` | « KB », « LÉ » : deux lettres au plus, apostrophe comprise |
 | `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
+| `ConversionsTest` | Les repères du métier (1 bar = 14,5 psi, 0 °C = 32 °F), la distinction température / écart, et l'aller-retour de toute paire d'unités |
+| `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
 | `CourbesSaturationTest` | Cohérence interne des courbes : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant que la courbe n'est pas vérifiée |
 | `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise |
@@ -724,9 +785,11 @@ place » venant en tête :
   numérotation séquentielle **sans trou**, qu'une facture exige et qu'un devis
   n'exige pas — `Numerotation` repart au mois et tolère un numéro abandonné, ce
   qui ne conviendra pas.
-- Détecteur de fuite fixe sur la fiche machine : il double les intervalles de
-  contrôle, ce que `PeriodiciteControle` ne modélise pas encore — elle retient
-  donc toujours la périodicité la plus exigeante.
+- **Détecteur de fuite fixe sur la fiche machine.** `PeriodiciteControle` sait
+  désormais doubler les intervalles, et l'outil F-Gas pose la question ; il reste à
+  porter le champ sur `Equipement` — par une migration — pour que l'accueil et la
+  fiche machine en tiennent compte au lieu de retenir toujours la périodicité la
+  plus exigeante.
 - Plus d'un niveau de machines, si un jour un cas l'exige : `parentId` le
   permettrait, l'écran s'y refuse délibérément (voir « Architecture »).
 - Plusieurs relevés horodatés par intervention : la table les accepte déjà
