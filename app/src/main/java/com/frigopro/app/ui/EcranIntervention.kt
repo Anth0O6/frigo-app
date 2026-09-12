@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -71,6 +72,15 @@ data class ActionsIntervention(
     val onCloturer: () -> Unit = {},
     val onBasculerPoint: (PointChecklist) -> Unit = {},
     val onCreerDevis: () -> Unit = {},
+    /**
+     * Corriger la fiche : le créneau, le client, le type, la machine.
+     *
+     * C'est ici qu'on s'aperçoit d'une erreur d'heure — on ouvre l'intervention
+     * pour travailler, et la fiche est sous les yeux. Obliger à revenir à la
+     * tournée pour la corriger était le chemin le plus long vers la correction la
+     * plus banale.
+     */
+    val onModifierFiche: () -> Unit = {},
 )
 
 /**
@@ -164,6 +174,12 @@ private fun EnTeteIntervention(
                     icone = Icons.AutoMirrored.Filled.ArrowBack,
                     description = "Revenir à la tournée",
                     onClick = actions.onFermer,
+                )
+                BoutonCarre(
+                    icone = Icons.Filled.Edit,
+                    description = "Modifier la fiche de l'intervention",
+                    onClick = actions.onModifierFiche,
+                    fond = MaterialTheme.colorScheme.surfaceContainerHigh,
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

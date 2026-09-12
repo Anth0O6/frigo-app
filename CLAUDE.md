@@ -449,6 +449,18 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   donc traverser par `copy`, et non être réécrit. Les écrans suivent le motif *state hoisting* :
   `InterventionsRoute` (avec état) enveloppe `InterventionsScreen` et
   `FormulaireIntervention` (sans état, testables et prévisualisables).
+  **Le formulaire s'ouvre depuis les quatre endroits où l'on voit une
+  intervention** — la liste du jour, la carte de celle en cours, la frise de la
+  semaine et la fiche ouverte —, ce qui a demandé de rendre `InterventionsRoute`
+  capable de le superposer à n'importe laquelle de ses trois vues plutôt que de
+  sortir par un `return` avant de l'atteindre. Une heure mal saisie se corrige là
+  où elle se voit : l'ouvrir depuis la seule liste du jour obligeait à en sortir
+  d'abord, et depuis la fiche c'était impossible. L'appui long y mène partout, et
+  un bouton visible là où la place le permet — un geste qui ne se voit pas n'est
+  pas une fonctionnalité. **Supprimer passe par une confirmation** qui nomme ce
+  qui disparaît avec la ligne : le temps chronométré, la signature du client, le
+  numéro attribué. Ce qui s'est passé sur place ne se retrouve pas, et l'annuler
+  par `Snackbar` aurait demandé de garder la ligne en attente quelque part.
 - **`ui.theme`** — thème Material 3 **sombre par défaut**, fidèle à la maquette.
   Les couleurs dynamiques (Material You) ont été retirées : elles se justifiaient
   tant que l'application n'avait pas d'identité propre, mais maintenant qu'une
@@ -826,7 +838,5 @@ place » venant en tête :
   interventions passées — les types et les machines montrent une façon de le
   faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
   aucune existence sans client.
-- Confirmation avant suppression d'une intervention (ou annulation par
-  `Snackbar`).
 - Tests d'UI Compose.
 - Synchronisation serveur, le jour où plusieurs techniciens partagent un planning.

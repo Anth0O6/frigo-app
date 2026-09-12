@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -95,22 +96,26 @@ fun InterventionsRoute(
     val frise by viewModel.frise.collectAsStateWithLifecycle()
     val semaine by viewModel.semaine.collectAsStateWithLifecycle()
 
-    if (ouverte != null) {
-        InterventionRoute(
+    BackHandler(enabled = semaineOuverte && ouverte == null) { viewModel.onFermerSemaine() }
+
+    // Un `when` plutôt que trois retours anticipés : le formulaire se pose **après**
+    // ce bloc et doit pouvoir recouvrir n'importe lequel des trois écrans. Avec des
+    // `return`, corriger l'heure depuis une intervention ouverte n'affichait rien —
+    // la feuille était bien là, mais on sortait de la fonction avant de la dessiner.
+    when {
+        ouverte != null -> InterventionRoute(
             viewModel = detail,
             onCreerDevis = {
                 devis.onNouveau(detail.etat.value?.client)
                 onAllerAuxDevis()
             },
+            onModifierFiche = {
+                detail.etat.value?.intervention?.let(viewModel::onModifierIntervention)
+            },
             modifier = modifier,
         )
-        return
-    }
 
-    BackHandler(enabled = semaineOuverte) { viewModel.onFermerSemaine() }
-
-    if (semaineOuverte) {
-        EcranSemaine(
+        semaineOuverte -> EcranSemaine(
             lundi = lundiDe(jour),
             jourRetenu = jour,
             interventions = semaine,
@@ -121,27 +126,27 @@ fun InterventionsRoute(
             onSemainePrecedente = viewModel::onSemainePrecedente,
             onSemaineSuivante = viewModel::onSemaineSuivante,
             onOuvrir = detail::onOuvrir,
+            onModifier = viewModel::onModifierIntervention,
             modifier = modifier,
         )
-        return
-    }
 
-    InterventionsScreen(
-        jour = jour,
-        lignes = lignes,
-        onJourPrecedent = viewModel::onJourPrecedent,
-        onJourSuivant = viewModel::onJourSuivant,
-        onJourChoisi = viewModel::onJourChoisi,
-        onNouvelleIntervention = viewModel::onNouvelleIntervention,
-        onOuvrirSemaine = viewModel::onOuvrirSemaine,
-        onOuvrirIntervention = detail::onOuvrir,
-        onModifierIntervention = viewModel::onModifierIntervention,
-        onChangerStatut = viewModel::onChangerStatut,
-        frise = frise,
-        onBasculerVue = viewModel::onBasculerVue,
-        actions = { MenuSauvegarde() },
-        modifier = modifier,
-    )
+        else -> InterventionsScreen(
+            jour = jour,
+            lignes = lignes,
+            onJourPrecedent = viewModel::onJourPrecedent,
+            onJourSuivant = viewModel::onJourSuivant,
+            onJourChoisi = viewModel::onJourChoisi,
+            onNouvelleIntervention = viewModel::onNouvelleIntervention,
+            onOuvrirSemaine = viewModel::onOuvrirSemaine,
+            onOuvrirIntervention = detail::onOuvrir,
+            onModifierIntervention = viewModel::onModifierIntervention,
+            onChangerStatut = viewModel::onChangerStatut,
+            frise = frise,
+            onBasculerVue = viewModel::onBasculerVue,
+            actions = { MenuSauvegarde() },
+            modifier = modifier,
+        )
+    }
 
     formulaire?.let { etat ->
         FormulaireIntervention(
@@ -265,6 +270,7 @@ fun InterventionsScreen(
                             CarteEnCours(
                                 ligne = ligne,
                                 onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                onModifier = { onModifierIntervention(ligne.intervention) },
                                 onChangerStatut = { onChangerStatut(ligne.intervention) },
                             )
                         } else {
@@ -526,13 +532,14 @@ private fun SeparateurVertical() {
 private fun CarteEnCours(
     ligne: LigneTournee,
     onOuvrir: () -> Unit,
+    onModifier: () -> Unit,
     onChangerStatut: () -> Unit,
 ) {
     val contexte = LocalContext.current
     val intervention = ligne.intervention
     val ecoule = intervention.chrono.ecoulee(java.time.Instant.now())
 
-    Carte(relief = true, liseré = AValider, onClick = onOuvrir) {
+    Carte(relief = true, liseré = AValider, onClick = onOuvrir, onLongClick = onModifier) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -597,6 +604,12 @@ private fun CarteEnCours(
                     fond = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
             }
+            BoutonCarre(
+                icone = Icons.Filled.Edit,
+                description = "Modifier ${intervention.client}",
+                onClick = onModifier,
+                fond = MaterialTheme.colorScheme.surfaceContainerHighest,
+            )
         }
     }
 }
@@ -651,6 +664,18 @@ private fun LigneCompacte(
             if (intervention.urgente && !terminee) {
                 Puce(texte = "URGENCE", couleur = AValider, fond = AValider.copy(alpha = 0.16f))
             }
+            // Un bouton, et pas seulement l'appui long. L'appui long est resté la
+            // convention des cartes du projet, mais il ne se devine pas : corriger
+            // une heure mal saisie était impossible pour qui ne l'avait pas
+            // découvert par hasard, et impossible tout court avec des gants, où
+            // le doigt glisse avant que l'appui soit reconnu.
+            BoutonCarre(
+                icone = Icons.Filled.Edit,
+                description = "Modifier ${intervention.client}",
+                onClick = onModifier,
+                couleur = MaterialTheme.colorScheme.onSurfaceVariant,
+                fond = androidx.compose.ui.graphics.Color.Transparent,
+            )
             PastilleStatut(terminee = terminee, onClick = onChangerStatut)
         }
     }
