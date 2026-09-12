@@ -30,7 +30,6 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
-import com.frigopro.app.ui.composants.EspaceVertical
 import com.frigopro.app.ui.composants.Section
 import java.time.ZoneId
 

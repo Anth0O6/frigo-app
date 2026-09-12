@@ -34,7 +34,6 @@ import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampTexte
-import com.frigopro.app.ui.composants.EspaceVertical
 import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.StyleChiffrePetit
