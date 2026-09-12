@@ -56,6 +56,8 @@ fun EcranSemaine(
     onSemainePrecedente: () -> Unit,
     onSemaineSuivante: () -> Unit,
     onOuvrir: (Intervention) -> Unit,
+    /** Corriger le créneau sans passer par la journée : l'erreur se voit ici. */
+    onModifier: (Intervention) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val duJour = interventions.filter { it.date == jourRetenu }.sortedBy { it.heure }
@@ -91,7 +93,11 @@ fun EcranSemaine(
                     item { Encart(texte = "Journée libre. Rien de prévu ce jour-là.") }
                 }
                 items(items = duJour, key = { it.id }) { intervention ->
-                    LigneHoraire(intervention = intervention, onOuvrir = { onOuvrir(intervention) })
+                    LigneHoraire(
+                        intervention = intervention,
+                        onOuvrir = { onOuvrir(intervention) },
+                        onModifier = { onModifier(intervention) },
+                    )
                 }
             }
         }
@@ -210,7 +216,11 @@ private fun BandeauJours(
 }
 
 @Composable
-private fun LigneHoraire(intervention: Intervention, onOuvrir: () -> Unit) {
+private fun LigneHoraire(
+    intervention: Intervention,
+    onOuvrir: () -> Unit,
+    onModifier: () -> Unit,
+) {
     val liseré = when {
         intervention.urgente -> AValider
         intervention.statut == StatutIntervention.TERMINEE -> Bleu
@@ -225,7 +235,15 @@ private fun LigneHoraire(intervention: Intervention, onOuvrir: () -> Unit) {
                 .width(46.dp)
                 .padding(top = 14.dp),
         )
-        Carte(liseré = liseré, onClick = onOuvrir, modifier = Modifier.weight(1f)) {
+        // Pas de bouton ici : la rangée d'une semaine est trop étroite pour en
+        // porter un sans écraser l'heure et le nom. L'appui long corrige, et
+        // l'écran de l'intervention — à un appui simple — porte le bouton visible.
+        Carte(
+            liseré = liseré,
+            onClick = onOuvrir,
+            onLongClick = onModifier,
+            modifier = Modifier.weight(1f),
+        ) {
             Text(
                 text = intervention.client,
                 style = MaterialTheme.typography.titleSmall,

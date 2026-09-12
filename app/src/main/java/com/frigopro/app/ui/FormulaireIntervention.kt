@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -107,6 +108,7 @@ fun FormulaireIntervention(
     var nouveauTypeOuvert by rememberSaveable { mutableStateOf(false) }
     var nouvelleMachineOuverte by rememberSaveable { mutableStateOf(false) }
     var nouveauTechnicienOuvert by rememberSaveable { mutableStateOf(false) }
+    var suppressionOuverte by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onFermer,
@@ -400,7 +402,7 @@ fun FormulaireIntervention(
             ) {
                 if (!etat.estCreation) {
                     TextButton(
-                        onClick = onSupprimer,
+                        onClick = { suppressionOuverte = true },
                         colors = ButtonDefaults.textButtonColors(
                             contentColor = MaterialTheme.colorScheme.error,
                         ),
@@ -420,6 +422,21 @@ fun FormulaireIntervention(
                 }
             }
         }
+    }
+
+    // Une confirmation, parce qu'une intervention n'est pas qu'une ligne d'agenda :
+    // elle porte le temps chronométré, les relevés, les photos et la signature du
+    // client. Les faire disparaître d'un appui, sans filet, était le seul geste
+    // vraiment irrattrapable de l'application.
+    if (suppressionOuverte) {
+        ConfirmationSuppressionIntervention(
+            etat = etat,
+            onConfirmer = {
+                suppressionOuverte = false
+                onSupprimer()
+            },
+            onFermer = { suppressionOuverte = false },
+        )
     }
 
     if (choixDateOuvert) {
@@ -603,6 +620,62 @@ private fun SelecteurHeure(
         }
     }
 }
+
+/**
+ * Ce qu'une suppression emporte, dit avant et non après.
+ *
+ * Le compte des pièces jointes est rappelé parce que c'est lui qui fait hésiter :
+ * « supprimer l'intervention » se lit comme une ligne d'agenda, « avec sa
+ * signature et ses quatre photos » se lit comme ce que c'est.
+ */
+@Composable
+private fun ConfirmationSuppressionIntervention(
+    etat: EtatFormulaire,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    val origine = etat.origine
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Supprimer cette intervention ?") },
+        text = {
+            Text(
+                text = buildString {
+                    append("« ")
+                    append(etat.client.ifBlank { "Sans client" })
+                    append(" » du ")
+                    append(libelleDateAvecAnnee(etat.date))
+                    append(" sera supprimée.")
+                    if (origine != null) {
+                        val porte = buildList {
+                            if (!origine.chrono.vierge) add("le temps passé")
+                            if (origine.signatureFichier != null) add("la signature du client")
+                            if (origine.numero.isNotBlank()) add("son numéro ${origine.numero}")
+                        }
+                        if (porte.isNotEmpty()) {
+                            append(" Elle porte ")
+                            append(porte.joinToString(", "))
+                            append(" : rien de tout cela ne se récupère.")
+                        }
+                    }
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirmer,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text(text = "Supprimer")
+            }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
 
 @Preview
 @Composable

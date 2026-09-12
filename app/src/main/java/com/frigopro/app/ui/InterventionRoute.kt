@@ -36,6 +36,8 @@ fun InterventionRoute(
      * c'est la coquille qui le sait, et c'est elle qui bascule.
      */
     onCreerDevis: () -> Unit,
+    /** Ouvrir le formulaire de l'intervention : la coquille seule le détient. */
+    onModifierFiche: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
@@ -103,6 +105,7 @@ fun InterventionRoute(
             onSurchauffe = viewModel::onSurchauffe,
             onSousRefroidissement = viewModel::onSousRefroidissement,
             onOuvrirDepannage = viewModel::onOuvrirDepannage,
+            onModifierFiche = onModifierFiche,
             onVerifierFluide = viewModel::onVerifierFluide,
             onMouvement = viewModel::onMouvement,
             onSupprimerMouvement = viewModel::onSupprimerMouvement,

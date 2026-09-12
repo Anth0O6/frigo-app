@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Le fond de l'icône adaptative : le bleu du logo, en dégradé radial.
+
+    Un dégradé et non un aplat, parce que c'est ce que le logo fourni porte — un
+    bleu vif vers le haut qui s'assombrit vers les bords. Les valeurs sont relevées
+    sur l'image source (voir `design/genere-icones.py`).
+
+    Vectoriel plutôt qu'un PNG par densité : un dégradé n'a pas de détail à perdre
+    à l'agrandissement, et cela fait cinq fichiers de moins à tenir d'accord.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="45"
+                android:gradientRadius="78">
+                <item
+                    android:offset="0"
+                    android:color="#FF0A5B9E" />
+                <item
+                    android:offset="0.55"
+                    android:color="#FF073E6B" />
+                <item
+                    android:offset="1"
+                    android:color="#FF04203A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

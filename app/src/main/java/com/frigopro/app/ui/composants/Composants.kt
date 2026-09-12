@@ -71,10 +71,12 @@ fun Carte(
     forme: Shape = MaterialTheme.shapes.large,
     onClick: (() -> Unit)? = null,
     /**
-     * L'appui long. Il porte ici l'action secondaire — modifier la fiche d'une
-     * intervention quand l'appui simple l'ouvre — parce qu'une carte de liste
-     * n'a pas la place d'un second bouton sans cesser d'être balayable du
-     * pouce.
+     * L'appui long. Il porte l'action secondaire — modifier la fiche d'une
+     * intervention quand l'appui simple l'ouvre — et c'est le **seul** chemin là
+     * où la carte n'a pas la largeur d'un bouton de plus, la ligne d'une journée
+     * de la semaine par exemple. Partout où la place existe, il double un bouton
+     * visible plutôt que de le remplacer : un appui long ne s'annonce pas, et il
+     * se perd avec des gants, le doigt glissant avant qu'il soit reconnu.
      */
     onLongClick: (() -> Unit)? = null,
     contenu: @Composable ColumnScope.() -> Unit,

@@ -150,6 +150,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       └── theme/
 │       └── res/                    # chaînes, couleurs, thème XML, icône,
 │                                   # chemins du FileProvider (xml/)
+├── design/                         # le logo source et le script qui en tire
+│                                   # les icônes (voir « Icône »)
 ├── gradle/libs.versions.toml       # versions centralisées
 ├── gradle/wrapper/                 # wrapper committé (jar inclus)
 ├── .github/workflows/build.yml     # CI : tests, APK et Release (sur main)
@@ -447,6 +449,23 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   donc traverser par `copy`, et non être réécrit. Les écrans suivent le motif *state hoisting* :
   `InterventionsRoute` (avec état) enveloppe `InterventionsScreen` et
   `FormulaireIntervention` (sans état, testables et prévisualisables).
+  **Le formulaire s'ouvre depuis les quatre endroits où l'on voit une
+  intervention** — la liste du jour, la carte de celle en cours, la frise de la
+  semaine et la fiche ouverte —, ce qui a demandé de rendre `InterventionsRoute`
+  capable de le superposer à n'importe laquelle de ses trois vues plutôt que de
+  sortir par un `return` avant de l'atteindre. Une heure mal saisie se corrige là
+  où elle se voit : l'ouvrir depuis la seule liste du jour obligeait à en sortir
+  d'abord, et depuis la fiche c'était impossible. La feuille elle-même est un
+  composable à part, `FeuilleFormulaireIntervention`, parce que l'accueil l'ouvre
+  aussi : la recopier dans les deux routes aurait fait diverger cinq flux au
+  premier champ ajouté. Les deux passent le **même** `InterventionsViewModel` —
+  `viewModel()` rend une seule instance par classe —, si bien qu'une saisie
+  commencée dans un onglet se retrouve intacte dans l'autre. L'appui long y mène partout, et
+  un bouton visible là où la place le permet — un geste qui ne se voit pas n'est
+  pas une fonctionnalité. **Supprimer passe par une confirmation** qui nomme ce
+  qui disparaît avec la ligne : le temps chronométré, la signature du client, le
+  numéro attribué. Ce qui s'est passé sur place ne se retrouve pas, et l'annuler
+  par `Snackbar` aurait demandé de garder la ligne en attente quelque part.
 - **`ui.theme`** — thème Material 3 **sombre par défaut**, fidèle à la maquette.
   Les couleurs dynamiques (Material You) ont été retirées : elles se justifiaient
   tant que l'application n'avait pas d'identité propre, mais maintenant qu'une
@@ -462,6 +481,15 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `ChampChiffre`, `ChampRecherche`. La maquette répète partout les mêmes formes ;
   les nommer une fois évite qu'elles divergent écran par écran, ce qui est
   exactement ce qui arrive quand chacun recopie un `Box` et ses marges.
+  **Un champ de saisie possède son texte tant qu'il a le focus**, et ne le reprend
+  de l'état que lorsqu'il l'a perdu. Ce n'est pas une optimisation : un champ qui
+  ne reçoit qu'une `String` laisse Compose replacer le curseur au début à chaque
+  aller-retour par le ViewModel, si bien que la deuxième lettre s'insérait devant
+  la première — « intervention » tapé donnait « nterventioni ». Les champs
+  tiennent donc un `TextFieldValue`, qui porte la position du curseur avec le
+  texte, et `onFocusChanged` dit lequel des deux fait autorité. La resynchro-
+  nisation hors focus reste nécessaire : c'est ce qui fait voir un intitulé
+  nettoyé par le dépôt, ou le champ vidé après enregistrement.
 
 Les dépendances sont assemblées à la main dans `ConteneurApp`, porté par
 `FrigoProApplication` et atteint par `InterventionsViewModel.Factory`. Une
@@ -715,6 +743,32 @@ dossier `files/photos/` et rien d'autre, ou par le sélecteur d'images du systè
 Aucune permission dans les deux cas : ni caméra — l'application ne photographie
 pas elle-même, elle délègue —, ni stockage.
 
+## Icône
+
+Le logo vit dans `design/logo-frigopro.png`, et `design/genere-icones.py` en tire
+tout ce que `res/` contient : c'est le script qui est la source, pas les PNG. Les
+constantes en tête (la boîte de l'emblème dans l'image, le centre et le rayon de
+l'anneau, les deux seuils d'alpha) sont **mesurées sur ce fichier précis** — un
+logo redessiné demande de les reprendre, et c'est pour cela qu'il est versionné.
+
+Une icône adaptative se dessine sur **108 dp dont seuls les 72 dp centraux sont
+garantis visibles** : le lanceur rogne le reste en cercle, en carré arrondi ou en
+goutte selon le téléphone. L'emblème occupe donc 66 % du canevas (`PART_EMBLEME`),
+et le fond est un dégradé radial vectoriel (`drawable/ic_launcher_background.xml`)
+plutôt qu'une couleur plate : c'est lui qui donne la profondeur du logo, et il se
+laisse rogner sans perdre son centre. Les PNG de `mipmap-*` ne servent qu'au
+**plan avant** et aux lanceurs d'avant Android 8 ; `mipmap-anydpi-v26` l'emporte
+sur tous les appareils couverts par `minSdk 26`.
+
+Le seuil d'alpha bas vaut 72 et non zéro, et ce n'est pas un réglage cosmétique :
+le logo est posé sur une carte dont le fond plafonne à une luminance de 64, si
+bien qu'un seuil plus bas la gardait à 30 % d'opacité — un rectangle visible
+derrière l'emblème, une fois l'icône sur un fond clair.
+
+Le flocon vectoriel d'origine reste sous le nom `ic_launcher_monochrome.xml` : il
+sert de **silhouette** aux icônes thématisées d'Android 13, qui demandent une
+forme d'une seule couleur là où le logo en a cinq.
+
 ## Signature et mises à jour
 
 Android n'installe une mise à jour que si elle porte **la même signature** que
@@ -798,7 +852,5 @@ place » venant en tête :
   interventions passées — les types et les machines montrent une façon de le
   faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
   aucune existence sans client.
-- Confirmation avant suppression d'une intervention (ou annulation par
-  `Snackbar`).
 - Tests d'UI Compose.
 - Synchronisation serveur, le jour où plusieurs techniciens partagent un planning.

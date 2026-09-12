@@ -4,6 +4,15 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!--
+        Le calque **monochrome** de l'icône, celui qu'Android teinte lui-même quand
+        l'utilisateur active les icônes thématiques. Il ne peut donc pas être
+        l'emblème en couleurs : une silhouette est tout ce que le système garde.
+
+        Ce flocon était l'icône du projet avant le logo ; il fait exactement ce
+        qu'on attend ici — une forme pleine, lisible à 48 dp, reconnaissable une
+        fois repeinte en gris.
+    -->
     <!-- Flocon stylisé : identité visuelle « froid / frigo ». -->
     <group android:translateX="0" android:translateY="0">
         <path
