@@ -24,6 +24,7 @@ class SauvegardeRepositoryTest {
     private val daoParametres = FauxParametresDao()
     private val daoTechniciens = FauxTechnicienDao(daoInterventions)
     private val daoPrestations = FauxPrestationDao()
+    private val daoVerifications = FauxVerificationFluideDao()
     private val repository =
         SauvegardeRepository(
             daoInterventions,
@@ -35,6 +36,7 @@ class SauvegardeRepositoryTest {
             daoParametres,
             daoTechniciens,
             daoPrestations,
+            daoVerifications,
         )
 
     @Test
@@ -83,6 +85,7 @@ class SauvegardeRepositoryTest {
             FauxParametresDao(),
             FauxTechnicienDao(autreInterventions),
             FauxPrestationDao(),
+            FauxVerificationFluideDao(),
         ).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())
@@ -112,6 +115,7 @@ class SauvegardeRepositoryTest {
             FauxParametresDao(),
             FauxTechnicienDao(autreInterventions),
             FauxPrestationDao(),
+            FauxVerificationFluideDao(),
         ).restaurer(contenu)
 
         assertEquals(EQUIPEMENT, autreEquipements.contenu.single())
@@ -155,6 +159,7 @@ class SauvegardeRepositoryTest {
             FauxParametresDao(),
             FauxTechnicienDao(interventions),
             FauxPrestationDao(),
+            FauxVerificationFluideDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -353,6 +358,7 @@ class SauvegardeRepositoryTest {
             FauxParametresDao(),
             FauxTechnicienDao(viergeInterventions),
             FauxPrestationDao(),
+            FauxVerificationFluideDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -401,6 +407,7 @@ class SauvegardeRepositoryTest {
             FauxParametresDao(),
             FauxTechnicienDao(autreInterventions),
             FauxPrestationDao(),
+            FauxVerificationFluideDao(),
         ).restaurer(export.contenu)
 
         assertEquals(2, export.types)
@@ -495,6 +502,7 @@ class SauvegardeRepositoryTest {
             FauxParametresDao(),
             FauxTechnicienDao(interventions),
             FauxPrestationDao(),
+            FauxVerificationFluideDao(),
         )
     }
 

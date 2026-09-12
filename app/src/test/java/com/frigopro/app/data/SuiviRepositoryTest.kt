@@ -255,7 +255,7 @@ class DevisRepositoryTest {
         )
 
         assertEquals(1920.80, devis.totalHt, 0.001)
-        assertEquals(384.16, devis.tva, 0.001)
+        assertEquals(384.16, devis.tvaDue, 0.001)
         assertEquals(2304.96, devis.totalTtc, 0.001)
     }
 
@@ -355,13 +355,126 @@ class DevisRepositoryTest {
         assertTrue(dao.contenu.isEmpty())
         assertTrue(dao.contenuLignes.isEmpty())
     }
+
+    /**
+     * Une ligne offerte **garde son prix** : c'est le devis qui l'affiche barré,
+     * et le client doit lire ce qu'on lui a donné — une remise invisible n'est pas
+     * un argument de vente. La remettre à zéro aurait aussi interdit de reprendre
+     * le geste sans ressaisir le montant.
+     */
+    @Test
+    fun `une ligne offerte garde son prix et ne compte plus`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai, tauxTva = 20.0)
+        repository.ajouterLigne(devis.id, "Compresseur", 1.0, "pièce", 1000.0)
+        val deplacement = repository.ajouterLigne(devis.id, "Déplacement", 1.0, "forfait", 45.0)!!
+
+        repository.offrirLigne(deplacement, offerte = true)
+
+        val offerte = dao.contenuLignes.single { it.id == deplacement.id }
+        assertEquals("le prix reste, pour s'afficher barré", 45.0, offerte.prixUnitaire, 0.001)
+        assertEquals(0.0, offerte.montant, 0.001)
+        assertEquals(45.0, offerte.montantAvantGeste, 0.001)
+        val complet = repository.observerComplet(devis.id).first()!!
+        assertEquals("seul le compresseur compte", 1000.0, complet.totalHt, 0.001)
+        assertEquals(45.0, complet.gestesCommerciaux, 0.001)
+    }
+
+    @Test
+    fun `reprendre le geste remet la ligne au total`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai)
+        val ligne = repository.ajouterLigne(devis.id, "Déplacement", 1.0, "forfait", 45.0)!!
+        val offerte = repository.offrirLigne(ligne, offerte = true)
+
+        repository.offrirLigne(offerte, offerte = false)
+
+        assertEquals(45.0, repository.observerComplet(devis.id).first()!!.totalHt, 0.001)
+    }
+
+    /**
+     * « Offrir la TVA » est une **remise commerciale égale à son montant**, pas un
+     * taux ramené à zéro : la taxe reste due et le devis doit continuer de la
+     * montrer. Un document qui escamoterait la TVA serait faux, et c'est
+     * l'entreprise qui en répondrait.
+     */
+    @Test
+    fun `la TVA offerte est une remise, et la taxe reste affichee`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai, tauxTva = 20.0)
+        repository.ajouterLigne(devis.id, "Main d'œuvre", 2.0, "h", 50.0)
+
+        repository.offrirTva(devis, offerte = true)
+
+        val complet = repository.observerComplet(devis.id).first()!!
+        assertEquals("le taux n'a pas bougé", 20.0, complet.devis.tauxTva, 0.001)
+        assertEquals("la taxe est toujours due", 20.0, complet.tvaDue, 0.001)
+        assertEquals("et prise en charge", 20.0, complet.remiseTva, 0.001)
+        assertEquals("le client paie le hors taxes", 100.0, complet.totalTtc, 0.001)
+        assertEquals(20.0, complet.gestesCommerciaux, 0.001)
+    }
+
+    /**
+     * En franchise en base il n'y a pas de TVA à offrir. L'écran masque le bouton,
+     * mais le dépôt ne s'en remet pas à l'écran pour garantir une règle de ce
+     * genre : une remise affichée sur un devis sans taxe serait une remise
+     * fantôme.
+     */
+    @Test
+    fun `en franchise en base, offrir la TVA ne fait rien`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai, assujettiTva = false)
+        repository.ajouterLigne(devis.id, "Main d'œuvre", 2.0, "h", 50.0)
+
+        repository.offrirTva(devis, offerte = true)
+
+        val complet = repository.observerComplet(devis.id).first()!!
+        assertTrue("le geste n'a pas été enregistré", !complet.devis.tvaOfferte)
+        assertEquals(0.0, complet.tvaDue, 0.001)
+        assertEquals("pas de TVA, donc le TTC est le HT", 100.0, complet.totalTtc, 0.001)
+    }
+
+    /**
+     * Le régime est **recopié** sur le devis, comme le taux : franchir le seuil de
+     * la franchise ne doit pas faire apparaître de la TVA sur un devis déjà envoyé.
+     */
+    @Test
+    fun `le regime de TVA est recopie sur le devis`() = runTest {
+        val franchise = repository.creer(client = null, aujourdhui = mai, assujettiTva = false)
+
+        assertTrue(!franchise.assujettiTva)
+        assertTrue(repository.creer(client = null, aujourdhui = mai).assujettiTva)
+    }
+
+    /**
+     * La liste et les compteurs lisent le total par SQL : une ligne offerte doit
+     * en sortir, sinon l'en-tête annoncerait un montant que le devis n'affiche pas.
+     */
+    @Test
+    fun `le total calcule par SQL ignore les lignes offertes`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai, tauxTva = 20.0)
+        repository.ajouterLigne(devis.id, "Compresseur", 1.0, "pièce", 1000.0)
+        val deplacement = repository.ajouterLigne(devis.id, "Déplacement", 1.0, "forfait", 45.0)!!
+        repository.offrirLigne(deplacement, offerte = true)
+
+        val chiffre = repository.devisChiffres.first().single()
+
+        assertEquals(1000.0, chiffre.totalHt, 0.001)
+        assertEquals(1200.0, chiffre.totalTtc, 0.001)
+    }
+
+    /** TVA offerte : le compteur « en cours » doit annoncer ce que le client paiera. */
+    @Test
+    fun `le compteur suit la TVA offerte`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai, tauxTva = 20.0)
+        repository.ajouterLigne(devis.id, "Main d'œuvre", 2.0, "h", 50.0)
+        repository.offrirTva(devis, offerte = true)
+
+        assertEquals(100.0, repository.devisChiffres.first().single().totalTtc, 0.001)
+    }
 }
 
 /** Les réglages, et ce qu'une lecture rend quand la ligne unique manque. */
 class ParametresRepositoryTest {
 
     private val dao = FauxParametresDao()
-    private val repository = ParametresRepository(dao)
+    private val repository = ParametresRepository(dao, FauxRangementPhotos())
 
     @Test
     fun `une base sans ligne rend les valeurs par defaut`() = runTest {

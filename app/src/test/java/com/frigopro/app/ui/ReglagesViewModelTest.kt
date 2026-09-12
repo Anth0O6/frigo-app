@@ -6,6 +6,7 @@ import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.FauxParametresDao
+import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
@@ -157,7 +158,7 @@ class ReglagesViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         return ReglagesViewModel(
             TypeInterventionRepository(daoTypes),
-            ParametresRepository(FauxParametresDao()),
+            ParametresRepository(FauxParametresDao(), FauxRangementPhotos()),
             PrestationRepository(daoPrestations),
         )
     }
@@ -176,13 +177,59 @@ class ReglagesViewModelTest {
         daoPrestations.enregistrer(prestation)
         val viewModel = creerViewModel()
 
-        viewModel.onPrixPrestation(prestation, 38.0, "kg")
+        viewModel.onEnregistrerPrestation(prestation.copy(prixUnitaire = 38.0, unite = "kg"))
         advanceUntilIdle()
 
         val enregistree = daoPrestations.contenu.single()
         assertEquals(38.0, enregistree.prixUnitaire, 0.001)
         assertEquals("kg", enregistree.unite)
         assertTrue("elle cesse d'être « à renseigner »", enregistree.tarifee)
+        assertEquals("son rang ne bouge pas", 9, enregistree.rang)
+    }
+
+    /**
+     * Le catalogue livré couvre le métier, pas une entreprise : ce qu'on pose
+     * trois fois par mois et qui n'y figure pas doit pouvoir s'y ajouter, sinon
+     * il finit ressaisi en ligne libre à chaque devis.
+     */
+    @Test
+    fun `une prestation saisie a la main entre au catalogue`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onEnregistrerPrestation(
+            Prestation(
+                designation = "  Vanne 3 voies DN25  ",
+                categorie = CategoriePrestation.PIECES,
+                prixUnitaire = 112.5,
+                unite = "u",
+                parUnite = true,
+            ),
+        )
+        advanceUntilIdle()
+
+        val creee = daoPrestations.contenu.single()
+        assertEquals("Vanne 3 voies DN25", creee.designation)
+        assertEquals(CategoriePrestation.PIECES, creee.categorie)
+        assertEquals(112.5, creee.prixUnitaire, 0.001)
+        assertTrue("elle se compte par unité intérieure", creee.parUnite)
+        assertTrue("elle prend un rang, et se place en fin de liste", creee.rang > 0)
+    }
+
+    /**
+     * Retirer une prestation ne touche pas aux devis : leurs lignes en ont
+     * recopié l'intitulé et le prix. Le test ne vérifie ici que le catalogue, le
+     * reste étant garanti par le modèle.
+     */
+    @Test
+    fun `une prestation retiree quitte le catalogue`() = runTest {
+        val prestation = Prestation(designation = "Forfait obsolète", categorie = CategoriePrestation.DEPANNAGE)
+        daoPrestations.enregistrer(prestation)
+        val viewModel = creerViewModel()
+
+        viewModel.onSupprimerPrestation(prestation)
+        advanceUntilIdle()
+
+        assertTrue(daoPrestations.contenu.isEmpty())
     }
 
     /**
@@ -196,7 +243,7 @@ class ReglagesViewModelTest {
         daoPrestations.enregistrer(prestation)
         val viewModel = creerViewModel()
 
-        viewModel.onPrixPrestation(prestation, -45.0, "forfait")
+        viewModel.onEnregistrerPrestation(prestation.copy(prixUnitaire = -45.0, unite = "forfait"))
         advanceUntilIdle()
 
         assertEquals(0.0, daoPrestations.contenu.single().prixUnitaire, 0.001)

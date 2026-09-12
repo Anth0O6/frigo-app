@@ -52,8 +52,15 @@ abstract class DevisDao {
      *
      * Un devis sans ligne n'apparaît pas dans le résultat, ce qui est exact :
      * son total est zéro, et l'appelant le traite comme absent.
+     *
+     * Le `CASE` écarte les lignes offertes. Sans lui, la liste annoncerait un
+     * montant que le client ne paiera pas — et l'écart serait invisible, puisque
+     * le détail du devis, lui, compterait juste.
      */
-    @Query("SELECT devisId, SUM(quantite * prixUnitaire) AS montant FROM lignes_devis GROUP BY devisId")
+    @Query(
+        "SELECT devisId, SUM(CASE WHEN offerte = 0 THEN quantite * prixUnitaire ELSE 0 END) " +
+            "AS montant FROM lignes_devis GROUP BY devisId",
+    )
     abstract fun observerTotaux(): Flow<List<TotalDevis>>
 
     /** Le rang libre suivant, pour poser une ligne à la fin. */

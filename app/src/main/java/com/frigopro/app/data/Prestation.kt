@@ -1,5 +1,6 @@
 package com.frigopro.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -92,6 +93,28 @@ data class Prestation(
     val categorie: CategoriePrestation,
     val prixUnitaire: Double = 0.0,
     val unite: String = "",
+    /**
+     * La prestation se compte **par unité intérieure** du groupe.
+     *
+     * Poser un split, c'est un groupe extérieur et une unité ; poser un bi-split,
+     * c'est le même groupe et deux unités, et la main-d'œuvre double sans que le
+     * forfait de mise en service double. Les deux cas cohabitent donc dans le
+     * catalogue, et c'est cette case qui les distingue.
+     *
+     * Elle pré-remplit la quantité et rien de plus : la ligne du devis reste
+     * modifiable, parce qu'une deuxième unité au même étage ne coûte pas le même
+     * temps qu'une deuxième unité trois étages plus haut.
+     *
+     * Le `defaultValue` n'est pas décoratif, et c'est le seul endroit du projet où
+     * il est indispensable : le catalogue est posé par un `INSERT` en SQL brut
+     * (voir [SQL_CATALOGUE_INITIAL]) qui ne nomme pas cette colonne. Sans défaut
+     * au niveau SQL, cet `INSERT` violait la contrainte `NOT NULL` sur une base
+     * **neuve** — où Room crée la table sans défaut — et le catalogue arrivait
+     * vide sur toute installation neuve, alors qu'il se remplissait correctement
+     * sur un téléphone mis à jour, dont la migration pose le défaut. Exactement
+     * l'écart annoncé par [MIGRATION_1_2], et qui a fini par mordre.
+     */
+    @ColumnInfo(defaultValue = "0") val parUnite: Boolean = false,
     val rang: Int = 0,
     val modifieLe: Instant = Instant.EPOCH,
 ) {

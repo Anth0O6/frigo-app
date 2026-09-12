@@ -12,7 +12,9 @@ import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxSuiviDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.FauxVerificationFluideDao
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.VerificationFluideRepository
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.SuiviRepository
@@ -50,6 +52,7 @@ class InterventionViewModelTest {
     private val daoEquipements = FauxEquipementDao(daoInterventions)
     private val daoClients = FauxClientDao()
     private val daoParametres = FauxParametresDao()
+    private val daoVerifications = FauxVerificationFluideDao()
     private val stockage = FauxRangementPhotos()
 
     @After
@@ -357,9 +360,11 @@ class InterventionViewModelTest {
             SuiviRepository(daoSuivi, stockage),
             EquipementRepository(daoEquipements, stockage),
             ClientRepository(daoClients),
-            ParametresRepository(daoParametres),
+            ParametresRepository(daoParametres, stockage),
+            VerificationFluideRepository(daoVerifications),
         )
         backgroundScope.launch(ordonnanceur) { viewModel.etat.collect { } }
+        backgroundScope.launch(ordonnanceur) { viewModel.fluidesVerifies.collect { } }
         return viewModel
     }
 

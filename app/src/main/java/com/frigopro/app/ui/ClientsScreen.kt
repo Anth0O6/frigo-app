@@ -63,6 +63,7 @@ import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.initialesDe
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
@@ -89,7 +90,10 @@ fun ClientsRoute(
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val fiche by viewModel.fiche.collectAsStateWithLifecycle()
     val parc by machines.parc.collectAsStateWithLifecycle()
+    val groupes by machines.groupes.collectAsStateWithLifecycle()
     val ouverte by machines.ouverte.collectAsStateWithLifecycle()
+    val unitesOuvertes by machines.unitesOuvertes.collectAsStateWithLifecycle()
+    val groupeOuvert by machines.groupeOuvert.collectAsStateWithLifecycle()
     val photos by machines.photosOuvertes.collectAsStateWithLifecycle()
     val historique by machines.historique.collectAsStateWithLifecycle()
     val relevesMachine by machines.relevesMachine.collectAsStateWithLifecycle()
@@ -125,6 +129,8 @@ fun ClientsRoute(
     if (machineOuverte != null) {
         EcranEquipement(
             equipement = machineOuverte,
+            unites = unitesOuvertes,
+            groupe = groupeOuvert,
             photos = photos,
             historique = historique,
             releves = relevesMachine,
@@ -141,6 +147,8 @@ fun ClientsRoute(
                 )
             },
             onAgrandir = machines::onAgrandir,
+            onOuvrirUnite = machines::onOuvrir,
+            onAjouterUnite = { machines.onAjouterUnite(machineOuverte) },
             onRenommer = { machines.onRenommerMachine(machineOuverte) },
             onModifierFiche = { ficheOuverte = true },
             onSupprimer = { machines.onSupprimerMachine(machineOuverte) },
@@ -161,7 +169,7 @@ fun ClientsRoute(
     } else {
         ClientsScreen(
             clients = clients,
-            parc = parc,
+            groupes = groupes,
             onNouveauClient = viewModel::onNouveauClient,
             onOuvrirFiche = viewModel::onOuvrirFiche,
             onOuvrirMachine = machines::onOuvrir,
@@ -206,12 +214,25 @@ private fun DialoguesMachine(
     }
 
     when (dialogue) {
+        // Une unité et un groupe se nomment de la même façon ; ce qui change est le
+        // périmètre du doublon. Deux groupes homonymes chez un client sont une
+        // confusion, deux unités « Salon » sous deux groupes différents ne le sont
+        // pas — c'est même le cas ordinaire d'un immeuble.
         is DialogueEquipement.Creation -> DialogueIntitule(
-            titre = "Nouvelle machine",
+            titre = dialogue.parent?.let { "Unité de ${it.nom}" } ?: "Nouvelle machine",
             libelleAction = "Ajouter",
-            libelleChamp = "Nom de la machine",
-            messageConflit = MESSAGE_MACHINE_EXISTANTE,
-            estDejaPris = { dejaPris(dialogue.clientId, it, null) },
+            libelleChamp = dialogue.parent?.let { "Nom de l'unité" } ?: "Nom de la machine",
+            messageConflit = dialogue.parent
+                ?.let { "Ce groupe a déjà une unité de ce nom." }
+                ?: MESSAGE_MACHINE_EXISTANTE,
+            estDejaPris = { nom ->
+                val parent = dialogue.parent
+                if (parent == null) {
+                    dejaPris(dialogue.clientId, nom, null)
+                } else {
+                    parc.any { it.parentId == parent.id && it.nom.equals(nom, ignoreCase = true) }
+                }
+            },
             onValider = viewModel::onValiderNom,
             onFermer = viewModel::onFermerDialogue,
         )
@@ -231,6 +252,7 @@ private fun DialoguesMachine(
 
         is DialogueEquipement.Suppression -> ConfirmationSuppressionMachine(
             equipement = dialogue.equipement,
+            unites = parc.count { it.parentId == dialogue.equipement.id },
             onConfirmer = viewModel::onConfirmerSuppression,
             onFermer = viewModel::onFermerDialogue,
         )
@@ -249,6 +271,7 @@ private const val MESSAGE_MACHINE_EXISTANTE = "Ce client a déjà une machine de
 @Composable
 private fun ConfirmationSuppressionMachine(
     equipement: Equipement,
+    unites: Int,
     onConfirmer: () -> Unit,
     onFermer: () -> Unit,
 ) {
@@ -257,8 +280,24 @@ private fun ConfirmationSuppressionMachine(
         title = { Text(text = "Supprimer « ${equipement.nom} » ?") },
         text = {
             Text(
-                text = "Ses photos seront effacées. Les interventions déjà faites sur " +
-                    "cette machine gardent son nom.",
+                text = buildString {
+                    // Ce qu'un groupe emporte doit être dit avant, pas découvert
+                    // après : supprimer un bi-split efface deux fiches d'unité et
+                    // leurs photos, et rien ne les ramènera.
+                    if (unites > 0) {
+                        append(
+                            if (unites == 1) {
+                                "Son unité intérieure sera supprimée avec lui. "
+                            } else {
+                                "Ses $unites unités intérieures seront supprimées avec lui. "
+                            },
+                        )
+                    }
+                    append(
+                        "Ses photos seront effacées. Les interventions déjà faites sur " +
+                            "cette machine gardent son nom.",
+                    )
+                },
             )
         },
         confirmButton = {
@@ -275,14 +314,19 @@ private fun ConfirmationSuppressionMachine(
 @Composable
 fun ClientsScreen(
     clients: List<Client>,
-    parc: List<Equipement>,
+    /**
+     * Le parc **par groupe** : un bi-split est un appareil chez le client, pas
+     * trois lignes. Compter ses unités comme des machines donnerait un parc faux,
+     * et les mettrait au même rang que le groupe dont elles dépendent.
+     */
+    groupes: List<GroupeMachines>,
     onNouveauClient: () -> Unit,
     onOuvrirFiche: (Client) -> Unit,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val parClient = parc.groupBy { it.clientId }
+    val parClient = groupes.groupBy { it.groupe.clientId }
     var recherche by rememberSaveable { mutableStateOf("") }
     val retenus = clients.filter { correspond(it, parClient[it.id].orEmpty(), recherche) }
 
@@ -368,15 +412,17 @@ fun ClientsScreen(
  * Elle porte aussi sur les machines : un technicien se souvient souvent de
  * « la vitrine Costan » sans retrouver le nom du commerce.
  */
-private fun correspond(client: Client, machines: List<Equipement>, recherche: String): Boolean {
+private fun correspond(client: Client, machines: List<GroupeMachines>, recherche: String): Boolean {
     val cherche = recherche.trim().lowercase()
     if (cherche.isEmpty()) return true
+    // Les unités intérieures comptent dans la recherche même si elles ne comptent
+    // pas dans l'affichage : « chambre 3 » est ce dont le client parle au
+    // téléphone, et c'est par là qu'on retrouve l'appareil.
+    fun porte(machine: Equipement) = machine.nom.lowercase().contains(cherche) ||
+        machine.designation.lowercase().contains(cherche)
     return client.nom.lowercase().contains(cherche) ||
         client.ville.lowercase().contains(cherche) ||
-        machines.any { machine ->
-            machine.nom.lowercase().contains(cherche) ||
-                machine.designation.lowercase().contains(cherche)
-        }
+        machines.any { groupe -> porte(groupe.groupe) || groupe.unites.any(::porte) }
 }
 
 /** L'initiale sous laquelle ranger un nom, accents repliés. */
@@ -398,7 +444,7 @@ private fun initiale(nom: String): String {
 @Composable
 fun ClientCard(
     client: Client,
-    machines: List<Equipement>,
+    machines: List<GroupeMachines>,
     onClick: () -> Unit,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: () -> Unit,
@@ -477,7 +523,7 @@ fun ClientCard(
 @Composable
 private fun SectionMachines(
     client: Client,
-    machines: List<Equipement>,
+    machines: List<GroupeMachines>,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: () -> Unit,
     modifier: Modifier = Modifier,
@@ -515,21 +561,34 @@ private fun SectionMachines(
             )
         }
         if (deplie) {
-            machines.forEach { machine ->
+            machines.forEach { groupe ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOuvrirMachine(machine) }
+                        .clickable { onOuvrirMachine(groupe.groupe) }
                         .padding(start = 42.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = machine.nom,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = groupe.groupe.nom,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // Dit ici et non sur la fiche seule : c'est depuis le
+                        // carnet qu'on décide si l'on monte avec une ou trois
+                        // cartouches de filtre.
+                        if (groupe.unites.isNotEmpty()) {
+                            Text(
+                                text = groupe.resume,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
@@ -599,9 +658,15 @@ private fun ClientsScreenPreview() {
                         adresse = "5 place de la Gare",
                     ),
                 ),
-                parc = listOf(
-                    Equipement(id = "e1", clientId = "1", nom = "Vitrine salle 2"),
-                    Equipement(id = "e2", clientId = "1", nom = "Chambre froide positive"),
+                groupes = listOf(
+                    GroupeMachines(Equipement(id = "e1", clientId = "1", nom = "Vitrine salle 2")),
+                    GroupeMachines(
+                        groupe = Equipement(id = "e2", clientId = "1", nom = "Groupe Daikin bi-split"),
+                        unites = listOf(
+                            Equipement(id = "u1", clientId = "1", parentId = "e2", nom = "Salon"),
+                            Equipement(id = "u2", clientId = "1", parentId = "e2", nom = "Chambre"),
+                        ),
+                    ),
                 ),
                 onNouveauClient = {},
                 onOuvrirFiche = {},
@@ -637,7 +702,7 @@ private fun PastilleInitiales(nom: String, modifier: Modifier = Modifier) {
 }
 
 /** « Vitry · 3 machines », ou l'adresse quand le parc est vide. */
-private fun sousTitreClient(client: Client, machines: List<Equipement>): String {
+private fun sousTitreClient(client: Client, machines: List<GroupeMachines>): String {
     val lieu = client.ville.ifBlank { client.adresseComplete }
     val parc = when (machines.size) {
         0 -> ""

@@ -27,6 +27,7 @@ import com.frigopro.app.data.PiecePosee
 import com.frigopro.app.data.Releve
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.SuiviRepository
+import com.frigopro.app.data.VerificationFluideRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -123,6 +124,7 @@ class InterventionViewModel(
     private val equipements: EquipementRepository,
     private val clients: ClientRepository,
     private val parametres: ParametresRepository,
+    private val verifications: VerificationFluideRepository,
 ) : ViewModel() {
 
     private val _ouverte = MutableStateFlow<String?>(null)
@@ -142,6 +144,21 @@ class InterventionViewModel(
     private val _agrandie = MutableStateFlow<Photo?>(null)
 
     val agrandie: StateFlow<Photo?> = _agrandie.asStateFlow()
+
+    /**
+     * Les fluides dont l'utilisateur a contrôlé la courbe de saturation.
+     *
+     * Exposé à part plutôt que porté par [EtatIntervention] : l'état est assemblé
+     * par deux `combine` déjà saturés — cinq flux est le maximum des surcharges
+     * typées —, et surtout cette donnée ne dépend pas de l'intervention ouverte.
+     * Une vérification vaut pour toutes.
+     */
+    val fluidesVerifies: StateFlow<Set<String>> = verifications.verifies
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptySet(),
+        )
 
     /**
      * L'état complet de l'intervention ouverte.
@@ -204,6 +221,19 @@ class InterventionViewModel(
 
     fun onOnglet(cible: OngletIntervention) {
         _onglet.value = cible
+    }
+
+    /**
+     * Marque la courbe d'un fluide vérifiée, ou retire la marque.
+     *
+     * Le nom du technicien est recopié sur la vérification : s'en tenir à une date
+     * laisserait la question « qui a contrôlé ça ? » sans réponse le jour où deux
+     * personnes se partagent l'application, et une vérification s'assume.
+     */
+    fun onVerifierFluide(fluide: String, verifie: Boolean) {
+        viewModelScope.launch {
+            verifications.basculer(fluide, verifie, par = parametres.lire().technicien)
+        }
     }
 
     fun onOuvrirDepannage() {
@@ -428,6 +458,7 @@ class InterventionViewModel(
                     conteneur.equipements,
                     conteneur.clients,
                     conteneur.parametres,
+                    conteneur.verificationsFluide,
                 )
             }
         }

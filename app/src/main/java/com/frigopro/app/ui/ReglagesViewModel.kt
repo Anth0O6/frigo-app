@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -68,6 +69,46 @@ class ReglagesViewModel(
 
     fun onTauxTva(taux: Double) = modifier { it.copy(tauxTva = taux) }
 
+    // — L'identité de l'entreprise : l'en-tête des documents —————————————————
+
+    fun onEntreprise(nom: String) = modifier { it.copy(entreprise = nom) }
+
+    fun onEntrepriseAdresse(adresse: String) = modifier { it.copy(entrepriseAdresse = adresse) }
+
+    fun onEntrepriseTelephone(numero: String) = modifier { it.copy(entrepriseTelephone = numero) }
+
+    fun onEntrepriseEmail(courriel: String) = modifier { it.copy(entrepriseEmail = courriel) }
+
+    fun onEntrepriseSiret(siret: String) = modifier { it.copy(entrepriseSiret = siret) }
+
+    /**
+     * Le régime de TVA.
+     *
+     * Il ne recalcule aucun devis déjà établi : chacun en porte une copie posée à
+     * sa création (voir `Devis.assujettiTva`). Le changer ici ne vaut que pour les
+     * suivants — un devis envoyé en franchise en base doit rester tel qu'il était.
+     */
+    fun onAssujettiTva(assujetti: Boolean) = modifier { it.copy(assujettiTva = assujetti) }
+
+    /**
+     * Pose le logo choisi dans la galerie.
+     *
+     * Le dépôt s'occupe du fichier et de la ligne ensemble, et efface le logo
+     * remplacé : sans cela, changer trois fois de logo laisserait trois images
+     * orphelines dans le dossier, que plus aucun écran ne montrerait et qui
+     * grossiraient chaque archive de sauvegarde.
+     */
+    fun onLogoChoisi(source: Uri) {
+        viewModelScope.launch { parametresRepository.poserLogo(source) }
+    }
+
+    fun onRetirerLogo() {
+        viewModelScope.launch { parametresRepository.retirerLogo() }
+    }
+
+    /** Décode le logo pour l'aperçu, comme une photo de machine. */
+    suspend fun charger(nom: String, coteMax: Int) = parametresRepository.charger(nom, coteMax)
+
     /**
      * Le catalogue, et ses prix.
      *
@@ -77,10 +118,27 @@ class ReglagesViewModel(
     val prestations: StateFlow<List<Prestation>> = prestationRepository.prestations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
 
-    fun onPrixPrestation(prestation: Prestation, prix: Double, unite: String) {
-        viewModelScope.launch {
-            prestationRepository.enregistrer(prestation.copy(prixUnitaire = prix, unite = unite))
-        }
+    /**
+     * Pose ou corrige une prestation du catalogue.
+     *
+     * Un seul point d'entrée pour la création et la correction, parce que le dépôt
+     * ne fait pas la différence : il remplace la ligne de même identifiant, et une
+     * prestation neuve en porte un qui n'existe pas encore. C'est lui qui refuse un
+     * prix négatif et un intitulé vide — une remise se saisit en réduisant le prix,
+     * pas en inversant son signe.
+     */
+    fun onEnregistrerPrestation(prestation: Prestation) {
+        viewModelScope.launch { prestationRepository.enregistrer(prestation) }
+    }
+
+    /**
+     * Retire une prestation du catalogue.
+     *
+     * Sans effet sur les devis : une ligne de devis recopie l'intitulé et le prix
+     * (voir [PrestationDao]), donc un devis déjà envoyé garde ce qu'il disait.
+     */
+    fun onSupprimerPrestation(prestation: Prestation) {
+        viewModelScope.launch { prestationRepository.supprimer(prestation.id) }
     }
 
     private fun modifier(transformation: (Parametres) -> Parametres) {

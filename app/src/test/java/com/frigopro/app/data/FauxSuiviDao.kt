@@ -203,11 +203,20 @@ class FauxDevisDao : DevisDao() {
 
     override suspend fun toutesLesLignes(): List<LigneDevis> = lignes.value
 
-    /** Le `GROUP BY` du vrai DAO : un devis sans ligne n'apparaît pas. */
+    /**
+     * Le `GROUP BY` du vrai DAO : un devis sans ligne n'apparaît pas, et une ligne
+     * offerte compte pour zéro. Le `CASE WHEN offerte = 0` est recopié ici plutôt
+     * que délégué à `LigneDevis.montant` : c'est le contrat SQL qu'on reproduit, et
+     * un faux qui emprunterait la règle au domaine ne vérifierait plus que les deux
+     * disent la même chose.
+     */
     override fun observerTotaux(): Flow<List<TotalDevis>> = lignes.map { liste ->
         liste.groupBy { it.devisId }
             .map { (devisId, lignesDuDevis) ->
-                TotalDevis(devisId, lignesDuDevis.sumOf { it.quantite * it.prixUnitaire })
+                TotalDevis(
+                    devisId,
+                    lignesDuDevis.sumOf { if (it.offerte) 0.0 else it.quantite * it.prixUnitaire },
+                )
             }
     }
 
@@ -315,5 +324,30 @@ class FauxPrestationDao : PrestationDao {
 
     override suspend fun effacer(id: String) {
         lignes.update { liste -> liste.filterNot { it.id == id } }
+    }
+}
+
+/** Les vérifications de courbe, en mémoire. */
+class FauxVerificationFluideDao : VerificationFluideDao {
+
+    private val lignes = MutableStateFlow<List<VerificationFluide>>(emptyList())
+
+    val contenu: List<VerificationFluide> get() = lignes.value
+
+    override fun observerToutes(): Flow<List<VerificationFluide>> = lignes
+
+    override suspend fun toutes(): List<VerificationFluide> = lignes.value
+
+    override suspend fun enregistrer(verification: VerificationFluide) {
+        lignes.update { liste -> liste.filterNot { it.fluide == verification.fluide } + verification }
+    }
+
+    override suspend fun enregistrerToutes(verifications: List<VerificationFluide>) {
+        val noms = verifications.map { it.fluide }.toSet()
+        lignes.update { liste -> liste.filterNot { it.fluide in noms } + verifications }
+    }
+
+    override suspend fun effacer(fluide: String) {
+        lignes.update { liste -> liste.filterNot { it.fluide == fluide } }
     }
 }

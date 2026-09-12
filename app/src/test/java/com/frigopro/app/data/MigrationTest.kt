@@ -321,6 +321,10 @@ class MigrationTest {
         // un téléphone neuf et un téléphone mis à jour n'auraient pas la même
         // application.
         db.query("SELECT `designation`, `categorie` FROM `prestations`").use { assertEquals(21, it.count) }
+        db.query("SELECT `parentId` FROM `equipements`").use { assertEquals(0, it.count) }
+        db.query("SELECT `offerte` FROM `lignes_devis`").use { assertEquals(0, it.count) }
+        db.query("SELECT `tvaOfferte`, `assujettiTva` FROM `devis`").use { assertEquals(0, it.count) }
+        db.query("SELECT `fluide`, `verifieLe` FROM `verifications_fluide`").use { assertEquals(0, it.count) }
     }
 
     /**
@@ -530,9 +534,125 @@ class MigrationTest {
         }
     }
 
+    /**
+     * La version 9 apporte les gestes commerciaux, le multi-split, le régime de
+     * TVA et l'en-tête de l'entreprise. Que de l'ajout — donc ce qui doit être
+     * vérifié, c'est que les valeurs par défaut décrivent bien l'état d'avant.
+     */
+    @Test
+    fun `une base version 8 recoit les gestes commerciaux et le multi-split`() {
+        creerBase(
+            version = 8,
+            empreinte = EMPREINTE_V8,
+            ddl = DDL_V8,
+            insertions = listOf(
+                "INSERT INTO `equipements` (`id`, `clientId`, `nom`, `marque`, `modele`, " +
+                    "`numeroSerie`, `fluide`, `chargeKg`, `misEnServiceLe`, `dernierControleLe`, " +
+                    "`modifieLe`) VALUES ('eq-1', 'cl-1', 'Split salon', 'Daikin', 'FTXM50', " +
+                    "'', 'R32', 1.2, NULL, NULL, 7)",
+                "INSERT INTO `prestations` (`id`, `designation`, `categorie`, `prixUnitaire`, " +
+                    "`unite`, `rang`, `modifieLe`) " +
+                    "VALUES ('presta-18', 'Installation split mural', 'INSTALLATION', 1450.0, " +
+                    "'unité', 18, 7)",
+                "INSERT INTO `devis` (`id`, `numero`, `clientId`, `clientNom`, `equipementId`, " +
+                    "`equipementNom`, `objet`, `statut`, `tauxTva`, `creeLe`, `valableJusquau`, " +
+                    "`modifieLe`) VALUES ('dev-1', 'DEV-2609-001', 'cl-1', 'Hôtel Bellevue', " +
+                    "NULL, '', 'Pose split', 'ENVOYE', 20.0, '2026-09-10', NULL, 7)",
+                "INSERT INTO `lignes_devis` (`id`, `devisId`, `designation`, `quantite`, " +
+                    "`unite`, `prixUnitaire`, `rang`) " +
+                    "VALUES ('lig-1', 'dev-1', 'Installation split mural', 1.0, 'unité', 1450.0, 0)",
+                // Une vraie base de la version 8 porte la ligne unique des
+                // réglages : MIGRATION_6_7 l'y a insérée. Sans elle, le test
+                // interrogerait une table vide et échouerait pour une raison qui
+                // n'a rien à voir avec la migration éprouvée.
+                "INSERT INTO `parametres` " +
+                    "(`id`, `technicien`, `attestation`, `themeSombre`, `modeGants`, " +
+                    "`chronoAuto`, `tauxHoraire`, `tauxTva`, `derniereSauvegardeLe`, `modifieLe`) " +
+                    "VALUES (1, 'Anthony Ouvrard', 'ATT-2024-118', 1, 0, 0, 68.0, 20.0, NULL, 7)",
+            ),
+        )
+
+        val db = ouvrirEtMigrer()
+
+        db.query("SELECT `nom`, `parentId`, `fluide` FROM `equipements`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("Split salon", curseur.getString(0))
+            assertTrue("une machine d'avant le multi-split n'est l'unité de personne", curseur.isNull(1))
+            assertEquals("R32", curseur.getString(2))
+        }
+
+        db.query("SELECT `prixUnitaire`, `parUnite` FROM `prestations`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("le prix déjà saisi survit", 1450.0, curseur.getDouble(0), 0.001)
+            assertEquals("rien ne se compte par unité sans qu'on l'ait dit", 0, curseur.getInt(1))
+        }
+
+        db.query("SELECT `tauxTva`, `tvaOfferte`, `assujettiTva` FROM `devis`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals(20.0, curseur.getDouble(0), 0.001)
+            assertEquals("aucun geste commercial rétroactif", 0, curseur.getInt(1))
+            assertEquals(
+                "un devis d'alors a été fait sous TVA : le régime n'existait pas",
+                1,
+                curseur.getInt(2),
+            )
+        }
+
+        db.query("SELECT `designation`, `prixUnitaire`, `offerte` FROM `lignes_devis`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("Installation split mural", curseur.getString(0))
+            assertEquals(1450.0, curseur.getDouble(1), 0.001)
+            assertEquals("une ligne déjà envoyée n'était pas offerte", 0, curseur.getInt(2))
+        }
+
+        db.query(
+            "SELECT `assujettiTva`, `entreprise`, `entrepriseSiret`, `logoFichier` FROM `parametres`",
+        ).use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals(
+                "assujetti par défaut : le contraire ferait disparaître la TVA des devis",
+                1,
+                curseur.getInt(0),
+            )
+            assertEquals("une entreprise non renseignée reste vide", "", curseur.getString(1))
+            assertEquals("", curseur.getString(2))
+            assertTrue("et aucun logo", curseur.isNull(3))
+        }
+
+        db.query("SELECT `technicien`, `tauxHoraire` FROM `parametres`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("les réglages déjà saisis survivent", "Anthony Ouvrard", curseur.getString(0))
+            assertEquals(68.0, curseur.getDouble(1), 0.001)
+        }
+
+        db.query("SELECT * FROM `verifications_fluide`").use { curseur ->
+            assertEquals("aucune courbe n'est vérifiée d'avance", 0, curseur.count)
+        }
+
+        assertEquals(VERSION_COURANTE, db.version)
+    }
+
+    /** Room refuse une base dont un index manque : celui des unités aussi. */
+    @Test
+    fun `l'index des unites interieures arrive avec la colonne`() {
+        creerBase(version = 8, empreinte = EMPREINTE_V8, ddl = DDL_V8, insertions = emptyList())
+
+        val db = ouvrirEtMigrer()
+
+        val index = buildList {
+            db.query("SELECT `name` FROM `sqlite_master` WHERE `type` = 'index'").use { curseur ->
+                while (curseur.moveToNext()) add(curseur.getString(0))
+            }
+        }
+        assertTrue(
+            "index_equipements_parentId attendu, trouvé $index",
+            index.contains("index_equipements_parentId"),
+        )
+    }
+
     private companion object {
 
-        const val VERSION_COURANTE = 8
+        const val VERSION_COURANTE = 9
 
         /** Empreintes et DDL repris mot pour mot des schémas exportés dans `app/schemas`. */
         const val EMPREINTE_V1 = "576bb93c8e6bdad21224e8d0898547f0"
@@ -542,6 +662,7 @@ class MigrationTest {
         const val EMPREINTE_V5 = "2fea87f26cb4e3f690878aad5160618d"
         const val EMPREINTE_V6 = "3693966e2dd927510a3eecb627dbd8e6"
         const val EMPREINTE_V7 = "c820db45f9ff53441090ae6e040433ab"
+        const val EMPREINTE_V8 = "d5ba8b1487006ccbef5d9ba7bba67b7e"
 
         const val DDL_INTERVENTIONS_V1 =
             "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
@@ -614,6 +735,94 @@ class MigrationTest {
 
         const val DDL_INDEX_DATE =
             "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)"
+
+        /**
+         * Le schéma de la version 8 au complet, repris du schéma exporté.
+         *
+         * Comme pour la version 7 : la migration 8 → 9 ne touche qu'une partie de
+         * ces tables, mais Room valide le schéma **entier** à l'ouverture.
+         */
+        val DDL_V8 = listOf(
+            "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT " +
+                "NULL, `heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT NULL, `typeId` " +
+                "TEXT, `typeLibelle` TEXT NOT NULL, `clientId` TEXT, `equipementId` TEXT, " +
+                "`equipementNom` TEXT NOT NULL, `statut` TEXT NOT NULL, `notes` TEXT NOT NULL, " +
+                "`urgente` INTEGER NOT NULL, `dureeMin` INTEGER NOT NULL, `technicienId` TEXT, " +
+                "`technicienNom` TEXT NOT NULL, `numero` TEXT NOT NULL, `signatureFichier` TEXT, " +
+                "`signeeLe` INTEGER, `modifieLe` INTEGER NOT NULL, `arriveeLe` INTEGER, `demarreLe` " +
+                "INTEGER, `cumuleS` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` (`date`)",
+            "CREATE INDEX IF NOT EXISTS `index_interventions_technicienId` ON `interventions` " +
+                "(`technicienId`)",
+            "CREATE TABLE IF NOT EXISTS `clients` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, " +
+                "`ville` TEXT NOT NULL, `adresse` TEXT NOT NULL, `telephone` TEXT NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `types_intervention` (`id` TEXT NOT NULL, `libelle` TEXT " +
+                "NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `equipements` (`id` TEXT NOT NULL, `clientId` TEXT NOT " +
+                "NULL, `nom` TEXT NOT NULL, `marque` TEXT NOT NULL, `modele` TEXT NOT NULL, " +
+                "`numeroSerie` TEXT NOT NULL, `fluide` TEXT NOT NULL, `chargeKg` REAL, " +
+                "`misEnServiceLe` TEXT, `dernierControleLe` TEXT, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_equipements_clientId` ON `equipements` " +
+                "(`clientId`)",
+            "CREATE TABLE IF NOT EXISTS `photos` (`id` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`interventionId` TEXT, `categorie` TEXT NOT NULL, `fichier` TEXT NOT NULL, `legende` " +
+                "TEXT NOT NULL, `priseLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_photos_equipementId` ON `photos` (`equipementId`)",
+            "CREATE INDEX IF NOT EXISTS `index_photos_interventionId` ON `photos` " +
+                "(`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `releves` (`id` TEXT NOT NULL, `interventionId` TEXT NOT " +
+                "NULL, `equipementId` TEXT, `bpBar` REAL, `hpBar` REAL, `surchauffeK` REAL, " +
+                "`sousRefroidissementK` REAL, `releveLe` INTEGER NOT NULL, `modifieLe` INTEGER NOT " +
+                "NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_releves_interventionId` ON `releves` " +
+                "(`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_releves_equipementId` ON `releves` " +
+                "(`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `mouvements_fluide` (`id` TEXT NOT NULL, `interventionId` " +
+                "TEXT NOT NULL, `equipementId` TEXT, `fluide` TEXT NOT NULL, `sens` TEXT NOT NULL, " +
+                "`masseKg` REAL NOT NULL, `le` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_interventionId` ON " +
+                "`mouvements_fluide` (`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_equipementId` ON " +
+                "`mouvements_fluide` (`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `pieces_posees` (`id` TEXT NOT NULL, `interventionId` " +
+                "TEXT NOT NULL, `designation` TEXT NOT NULL, `reference` TEXT NOT NULL, `quantite` " +
+                "REAL NOT NULL, `prixUnitaire` REAL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_pieces_posees_interventionId` ON `pieces_posees` " +
+                "(`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `devis` (`id` TEXT NOT NULL, `numero` TEXT NOT NULL, " +
+                "`clientId` TEXT, `clientNom` TEXT NOT NULL, `equipementId` TEXT, `equipementNom` " +
+                "TEXT NOT NULL, `objet` TEXT NOT NULL, `statut` TEXT NOT NULL, `tauxTva` REAL NOT " +
+                "NULL, `creeLe` TEXT, `valableJusquau` TEXT, `modifieLe` INTEGER NOT NULL, PRIMARY " +
+                "KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_devis_clientId` ON `devis` (`clientId`)",
+            "CREATE INDEX IF NOT EXISTS `index_devis_equipementId` ON `devis` (`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `lignes_devis` (`id` TEXT NOT NULL, `devisId` TEXT NOT " +
+                "NULL, `designation` TEXT NOT NULL, `quantite` REAL NOT NULL, `unite` TEXT NOT NULL, " +
+                "`prixUnitaire` REAL NOT NULL, `rang` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_lignes_devis_devisId` ON `lignes_devis` " +
+                "(`devisId`)",
+            "CREATE TABLE IF NOT EXISTS `parametres` (`id` INTEGER NOT NULL, `technicien` TEXT " +
+                "NOT NULL, `attestation` TEXT NOT NULL, `themeSombre` INTEGER NOT NULL, `modeGants` " +
+                "INTEGER NOT NULL, `chronoAuto` INTEGER NOT NULL, `tauxHoraire` REAL NOT NULL, " +
+                "`tauxTva` REAL NOT NULL, `derniereSauvegardeLe` INTEGER, `modifieLe` INTEGER NOT " +
+                "NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `techniciens` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `points_checklist` (`id` TEXT NOT NULL, `interventionId` " +
+                "TEXT NOT NULL, `libelle` TEXT NOT NULL, `fait` INTEGER NOT NULL, `rang` INTEGER NOT " +
+                "NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_points_checklist_interventionId` ON " +
+                "`points_checklist` (`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `prestations` (`id` TEXT NOT NULL, `designation` TEXT NOT " +
+                "NULL, `categorie` TEXT NOT NULL, `prixUnitaire` REAL NOT NULL, `unite` TEXT NOT " +
+                "NULL, `rang` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_prestations_categorie` ON `prestations` " +
+                "(`categorie`)",
+        )
 
         /**
          * Le schéma de la version 7 au complet : la migration 7 → 8 ne touche

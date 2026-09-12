@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -13,6 +14,7 @@ import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
 import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.DevisRepository
+import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -69,6 +72,13 @@ class DevisViewModel(
     private val clients: ClientRepository,
     private val parametres: ParametresRepository,
     private val prestations: PrestationRepository,
+    private val equipements: EquipementRepository,
+    /**
+     * Ce qui produit le PDF. Une interface, parce que le dessin est
+     * irréductiblement Android et qu'un ViewModel qui en dépendrait directement ne
+     * se construirait plus dans un test JVM — voir [ProducteurPdf].
+     */
+    private val pdf: ProducteurPdf,
 ) : ViewModel() {
 
     /**
@@ -113,16 +123,40 @@ class DevisViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), null)
 
     /**
+     * Le nombre d'unités intérieures de la machine visée par le devis.
+     *
+     * Vaut 1 quand le devis ne désigne aucune machine, ou qu'elle n'a pas d'unité :
+     * un monosplit en a bien une, confondue avec son groupe, et traiter ce cas à
+     * part aurait demandé deux chemins de calcul pour le même résultat. Le compte
+     * est **dérivé** du parc et non stocké : ajouter une unité change ce que le
+     * prochain devis propose, sans qu'on ait à y penser.
+     *
+     * Le devis visant une unité plutôt qu'un groupe compte pour une : on chiffre
+     * alors ce qu'on fait sur cette unité-là.
+     */
+    val unitesVisees: StateFlow<Int> = combine(complet, equipements.parGroupe) { ouvert, parc ->
+        val machine = ouvert?.devis?.equipementId ?: return@combine 1
+        parc.firstOrNull { it.groupe.id == machine }?.nombreUnites ?: 1
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), 1)
+
+    /**
      * Ajoute une prestation du catalogue au devis ouvert.
      *
      * L'intitulé, l'unité et le prix sont **recopiés** sur la ligne, comme
      * partout ailleurs dans le projet : retirer une prestation du catalogue, ou
      * en changer le tarif, ne doit rien changer à un devis déjà envoyé.
+     *
+     * Une prestation comptée par unité arrive avec la quantité **pré-remplie** du
+     * nombre d'unités du groupe, et pas davantage : la ligne reste modifiable,
+     * parce qu'une deuxième unité au même étage ne coûte pas le même temps qu'une
+     * deuxième unité trois étages plus haut. Proposer est utile, imposer serait
+     * faux.
      */
     fun onAjouterPrestation(prestation: Prestation) {
         onAjouterLigne(
             designation = prestation.designation,
-            quantite = 1.0,
+            quantite = if (prestation.parUnite) unitesVisees.value.toDouble() else 1.0,
             unite = prestation.unite,
             prixUnitaire = prestation.prixUnitaire,
         )
@@ -145,7 +179,11 @@ class DevisViewModel(
      */
     fun onNouveau(client: Client?) {
         viewModelScope.launch {
-            val cree = devis.creer(client = client, tauxTva = reglages.value.tauxTva)
+            val cree = devis.creer(
+                client = client,
+                tauxTva = reglages.value.tauxTva,
+                assujettiTva = reglages.value.assujettiTva,
+            )
             _ouvert.value = cree.id
         }
     }
@@ -176,6 +214,91 @@ class DevisViewModel(
         viewModelScope.launch { devis.enregistrerLigne(ligne) }
     }
 
+    /**
+     * Offre une ligne, ou reprend le geste.
+     *
+     * C'est l'appui **simple** sur une ligne, là où l'appui long supprime. Avant,
+     * l'appui simple supprimait : un contact involontaire faisait disparaître une
+     * ligne sans un mot, et c'est exactement le genre de geste qu'on fait gants
+     * aux mains. L'action fréquente prend l'appui simple, la destructrice l'appui
+     * long — la convention du projet (voir `Carte`).
+     */
+    fun onOffrirLigne(ligne: LigneDevis) {
+        viewModelScope.launch { devis.offrirLigne(ligne, !ligne.offerte) }
+    }
+
+    /** Offre la TVA, ou reprend le geste. Sans objet en franchise en base. */
+    fun onOffrirTva() {
+        val courant = complet.value?.devis ?: return
+        viewModelScope.launch { devis.offrirTva(courant, !courant.tvaOfferte) }
+    }
+
+    /**
+     * Inscrit une prestation au catalogue depuis le devis.
+     *
+     * Ajouter au catalogue sans quitter le chiffrage, c'est ce qui fait qu'on
+     * l'enrichit vraiment : une pièce qu'il faut aller déclarer dans les Réglages
+     * finit saisie en ligne libre, et le catalogue ne grossit jamais. La
+     * prestation est posée **et** ajoutée au devis en cours, puisque c'est bien
+     * pour lui qu'on la saisit.
+     */
+    fun onCreerPrestation(prestation: Prestation) {
+        viewModelScope.launch {
+            // La prestation enregistrée, et non celle reçue : le dépôt a nettoyé
+            // l'intitulé et posé le rang, et c'est cette version-là que la ligne
+            // du devis doit recopier.
+            val creee = prestations.enregistrer(prestation) ?: return@launch
+            if (_ouvert.value != null) onAjouterPrestation(creee)
+        }
+    }
+
+    private val _documentPret = MutableStateFlow<Uri?>(null)
+
+    /**
+     * Le PDF qui vient d'être écrit, prêt à partir.
+     *
+     * Un `StateFlow` que l'écran remet à `null` après avoir ouvert le partage,
+     * plutôt qu'un événement jeté : un événement perdu pendant une rotation aurait
+     * produit un export sans rien envoyer, et l'utilisateur en aurait conclu que le
+     * bouton ne marche pas.
+     */
+    val documentPret: StateFlow<Uri?> = _documentPret.asStateFlow()
+
+    private val _echecExport = MutableStateFlow(false)
+
+    /** L'export a échoué : dit en clair, plutôt qu'un bouton qui ne fait rien. */
+    val echecExport: StateFlow<Boolean> = _echecExport.asStateFlow()
+
+    /**
+     * Écrit le devis ouvert en PDF, et annonce le fichier.
+     *
+     * Le statut n'est **pas** passé à « Envoyé » au passage : exporter n'est pas
+     * envoyer, et le faire annoncerait un devis parti chez le client alors qu'il
+     * attend dans une feuille de partage. C'est l'utilisateur qui change le statut,
+     * quand il sait qu'il l'a envoyé.
+     */
+    fun onExporterPdf() {
+        val ouvert = complet.value ?: return
+        viewModelScope.launch {
+            val document = DocumentDevis.de(
+                devis = ouvert,
+                parametres = reglages.value,
+                client = carnet.value.firstOrNull { it.id == ouvert.devis.clientId },
+            )
+            val produit = pdf.produire(document)
+            if (produit != null) _documentPret.value = produit else _echecExport.value = true
+        }
+    }
+
+    /** L'écran a ouvert le partage : le document n'a plus à être annoncé. */
+    fun onDocumentPartage() {
+        _documentPret.value = null
+    }
+
+    fun onEchecVu() {
+        _echecExport.value = false
+    }
+
     fun onSupprimerLigne(id: String) {
         viewModelScope.launch { devis.supprimerLigne(id) }
     }
@@ -199,6 +322,8 @@ class DevisViewModel(
                     conteneur.clients,
                     conteneur.parametres,
                     conteneur.prestations,
+                    conteneur.equipements,
+                    ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                 )
             }
         }

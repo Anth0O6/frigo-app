@@ -50,6 +50,9 @@ class FauxEquipementDao(
     override suspend fun photosDe(equipementId: String): List<Photo> =
         images.value.filter { it.equipementId == equipementId }
 
+    override suspend fun unitesDe(id: String): List<Equipement> =
+        contenu.filter { it.parentId == id }
+
     override suspend fun photo(id: String): Photo? = images.value.firstOrNull { it.id == id }
 
     override suspend fun toutesLesPhotos(): List<Photo> = images.value

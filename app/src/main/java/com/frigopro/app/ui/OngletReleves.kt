@@ -55,8 +55,12 @@ fun OngletReleves(
     etat: EtatIntervention,
     ecoule: Duration,
     actions: ActionsIntervention,
+    /** Les fluides dont la courbe de saturation a été contrôlée. */
+    fluidesVerifies: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
+    var regletteOuverte by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -105,6 +109,16 @@ fun OngletReleves(
                     ),
                 )
             }
+            // La réglette s'ouvre depuis l'endroit où l'on saisit les pressions,
+            // et pas d'un onglet à part : la question « ça fait combien, ça ? » se
+            // pose manomètre en main, le doigt encore sur la case BP.
+            BoutonContour(
+                texte = "Réglette pression / température",
+                onClick = { regletteOuverte = true },
+                modifier = Modifier.fillMaxWidth(),
+                couleur = MaterialTheme.colorScheme.secondary,
+            )
+
             val diagnostic = etat.diagnostic
             if (diagnostic != null) {
                 Encart(
@@ -120,6 +134,29 @@ fun OngletReleves(
 
         SectionFluide(etat = etat, actions = actions)
         EspaceVertical(24)
+    }
+
+    if (regletteOuverte) {
+        FeuilleReglette(
+            fluideMachine = etat.fluide,
+            bpRelevee = etat.releve?.bpBar,
+            hpRelevee = etat.releve?.hpBar,
+            verifies = fluidesVerifies,
+            onVerifier = actions.onVerifierFluide,
+            onReporterPression = { cote, bar ->
+                when (cote) {
+                    CoteCircuit.ASPIRATION -> actions.onBp(bar)
+                    CoteCircuit.REFOULEMENT -> actions.onHp(bar)
+                }
+            },
+            onReporterEcart = { cote, kelvins ->
+                when (cote) {
+                    CoteCircuit.ASPIRATION -> actions.onSurchauffe(kelvins)
+                    CoteCircuit.REFOULEMENT -> actions.onSousRefroidissement(kelvins)
+                }
+            },
+            onFermer = { regletteOuverte = false },
+        )
     }
 }
 
@@ -361,7 +398,7 @@ private fun descriptionCharge(etat: EtatIntervention): String {
  * l'aide au dépannage dit ce qu'elle veut dire.
  */
 @Composable
-private fun teinteEcart(valeur: Double?, normalBas: Double, normalHaut: Double) =
+internal fun teinteEcart(valeur: Double?, normalBas: Double, normalHaut: Double) =
     if (valeur != null && (valeur < normalBas || valeur > normalHaut)) {
         AValider
     } else {

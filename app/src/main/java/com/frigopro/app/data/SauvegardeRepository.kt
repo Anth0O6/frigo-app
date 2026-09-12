@@ -69,6 +69,7 @@ class SauvegardeRepository(
     private val parametresDao: ParametresDao,
     private val technicienDao: TechnicienDao,
     private val prestationDao: PrestationDao,
+    private val verificationFluideDao: VerificationFluideDao,
     private val maintenant: () -> Instant = { Instant.now() },
 ) {
 
@@ -87,6 +88,7 @@ class SauvegardeRepository(
         val techniciens = technicienDao.tous()
         val checklists = suiviDao.tousLesPoints()
         val prestations = prestationDao.toutes()
+        val verifications = verificationFluideDao.toutes()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -104,6 +106,7 @@ class SauvegardeRepository(
             techniciens = techniciens.map { it.versSauvegarde() },
             checklists = checklists.map { it.versSauvegarde() },
             prestations = prestations.map { it.versSauvegarde() },
+            verificationsFluide = verifications.map { it.versSauvegarde() },
         )
 
         // Les signatures sont des images comme les autres, rangées au même
@@ -111,9 +114,13 @@ class SauvegardeRepository(
         // la restauration, ce qui vide le document de sa valeur.
         val signatures = interventions.mapNotNull { it.signatureFichier }
 
+        // Le logo part avec, pour la même raison : un devis restauré sans
+        // en-tête n'est plus le document qu'on envoyait.
+        val logo = listOfNotNull(parametres?.logoFichier)
+
         return Export(
             contenu = JSON_SAUVEGARDE.encodeToString(sauvegarde),
-            fichiersPhotos = photos.map { it.fichier } + signatures,
+            fichiersPhotos = photos.map { it.fichier } + signatures + logo,
             types = types.size,
             clients = clients.size,
             equipements = equipements.size,
@@ -146,6 +153,7 @@ class SauvegardeRepository(
         val devis = sauvegarde.devis.map { it.versDevis() }
         if (devis.any { it == null }) return ResultatRestauration.Illisible
         val prestations = sauvegarde.prestations.map { it.versPrestation() }
+        val verifications = sauvegarde.verificationsFluide.map { it.versVerification() }
         if (prestations.any { it == null }) return ResultatRestauration.Illisible
 
         // Les types, le carnet puis le parc d'abord : une intervention ne doit
@@ -153,6 +161,7 @@ class SauvegardeRepository(
         // Les techniciens avant les interventions, qui les désignent.
         technicienDao.enregistrerTous(sauvegarde.techniciens.map { it.versTechnicien() })
         prestationDao.enregistrerToutes(prestations.filterNotNull())
+        verificationFluideDao.enregistrerToutes(verifications)
         val types = sauvegarde.types.map { it.versType() }
         val clients = sauvegarde.clients.map { it.versClient() }
         val equipements = sauvegarde.equipements.map { it.versEquipement() }

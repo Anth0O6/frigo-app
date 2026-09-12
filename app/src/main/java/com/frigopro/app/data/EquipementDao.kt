@@ -85,6 +85,10 @@ abstract class EquipementDao {
     @Query("DELETE FROM equipements WHERE id = :id")
     abstract suspend fun effacer(id: String)
 
+    /** Les unités intérieures d'un groupe, pour les emporter avec lui. */
+    @Query("SELECT * FROM equipements WHERE parentId = :id")
+    abstract suspend fun unitesDe(id: String): List<Equipement>
+
     /** Enregistre la machine et répercute son nom sur ses interventions. */
     @Transaction
     open suspend fun renommer(equipement: Equipement) {
@@ -92,8 +96,26 @@ abstract class EquipementDao {
         propagerNom(equipement.id, equipement.nom)
     }
 
+    /**
+     * Supprime la machine, et **ses unités intérieures avec elle**.
+     *
+     * Une unité intérieure n'a aucune existence sans son groupe — c'est le même
+     * raisonnement que le parc d'un client sans le client. Les laisser derrière
+     * les ferait remonter comme des machines indépendantes au client, et personne
+     * ne comprendrait d'où sort une « unité salon » sans groupe.
+     *
+     * Chaque unité passe par le même traitement que le groupe : ses photos
+     * effacées, ses interventions détachées. Une unité a pu être photographiée et
+     * recevoir ses propres interventions, et l'oublier laisserait des fichiers
+     * orphelins qu'aucun écran ne montrerait plus.
+     */
     @Transaction
     open suspend fun supprimer(id: String) {
+        unitesDe(id).forEach { unite ->
+            detacher(unite.id)
+            effacerPhotosDe(unite.id)
+            effacer(unite.id)
+        }
         detacher(id)
         effacerPhotosDe(id)
         effacer(id)

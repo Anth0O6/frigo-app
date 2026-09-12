@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -57,6 +58,7 @@ import com.frigopro.app.data.Photo
 import com.frigopro.app.data.ReductionPhoto
 import com.frigopro.app.data.Releve
 import com.frigopro.app.data.StatutIntervention
+import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
 import java.time.LocalTime
@@ -75,6 +77,13 @@ private val COTE_VIGNETTE = 104.dp
 @Composable
 fun EcranEquipement(
     equipement: Equipement,
+    /**
+     * Les unités intérieures de ce groupe, vide pour un monosplit comme pour une
+     * unité — la hiérarchie n'a qu'un niveau.
+     */
+    unites: List<Equipement>,
+    /** Le groupe dont cette fiche dépend, quand c'est une unité. */
+    groupe: Equipement?,
     photos: List<Photo>,
     historique: List<Intervention>,
     releves: List<Releve>,
@@ -82,6 +91,8 @@ fun EcranEquipement(
     onPhotographier: (CategoriePhoto) -> Unit,
     onChoisirImage: (CategoriePhoto) -> Unit,
     onAgrandir: (Photo) -> Unit,
+    onOuvrirUnite: (Equipement) -> Unit,
+    onAjouterUnite: () -> Unit,
     onRenommer: () -> Unit,
     onModifierFiche: () -> Unit,
     onSupprimer: () -> Unit,
@@ -103,9 +114,15 @@ fun EcranEquipement(
                         val plaque = listOf(equipement.designation, equipement.numeroSerie)
                             .filter { it.isNotBlank() }
                             .joinToString(" · n° ")
-                        if (plaque.isNotEmpty()) {
+                        // Le groupe passe devant la plaque : « Salon » tout seul ne
+                        // se retrouve pas dans un parc de vingt machines, et c'est
+                        // l'appareil dont elle dépend qui la situe.
+                        val sousTitre = listOfNotNull(groupe?.let { "Unité de ${it.nom}" }, plaque)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" · ")
+                        if (sousTitre.isNotEmpty()) {
                             Text(
-                                text = plaque,
+                                text = sousTitre,
                                 style = com.frigopro.app.ui.theme.StyleChiffrePetit,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -162,6 +179,18 @@ fun EcranEquipement(
                     equipement = equipement,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
+            }
+            // Avant les photos : savoir combien d'unités porte l'appareil change
+            // ce qu'on monte sur le toit, et la fiche d'une unité se consulte
+            // ensuite. Un monosplit n'affiche rien de plus qu'un bouton.
+            if (!equipement.estUnite) {
+                item(key = "unites") {
+                    SectionUnites(
+                        unites = unites,
+                        onOuvrirUnite = onOuvrirUnite,
+                        onAjouterUnite = onAjouterUnite,
+                    )
+                }
             }
             if (releves.isNotEmpty()) {
                 item(key = "tendance") {
@@ -342,6 +371,75 @@ private fun LigneHistorique(intervention: Intervention, modifier: Modifier = Mod
     }
 }
 
+/**
+ * Les unités intérieures d'un groupe.
+ *
+ * La section paraît même vide, et c'est voulu : c'est ainsi qu'on apprend qu'on
+ * peut en ajouter. L'application a d'abord été écrite pour le monosplit, où une
+ * machine est une machine ; un bi-split est le même groupe avec deux unités, et
+ * rien dans l'écran ne le disait.
+ *
+ * Chaque unité s'ouvre comme une fiche à part entière — ses photos, son
+ * historique : c'est une unité précise qui fuit ou qui encrasse son filtre, pas
+ * « l'installation », et le relevé comme la photo doivent pouvoir la désigner.
+ */
+@Composable
+private fun SectionUnites(
+    unites: List<Equipement>,
+    onOuvrirUnite: (Equipement) -> Unit,
+    onAjouterUnite: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        TitreSection(
+            texte = when (unites.size) {
+                0 -> "Unités intérieures"
+                1 -> "1 unité intérieure"
+                else -> "${unites.size} unités intérieures"
+            },
+        )
+        if (unites.isEmpty()) {
+            Text(
+                text = "Un monosplit n'en a qu'une, confondue avec le groupe. Pour un " +
+                    "bi-split ou un multi-split, ajoutez-les ici : les prestations " +
+                    "comptées par unité se chiffreront alors au bon nombre.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        unites.forEach { unite ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOuvrirUnite(unite) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = unite.nom,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        BoutonContour(
+            texte = "+ Ajouter une unité",
+            onClick = onAjouterUnite,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            couleur = MaterialTheme.colorScheme.secondary,
+        )
+    }
+}
+
 @Composable
 private fun TitreSection(texte: String, modifier: Modifier = Modifier) {
     Text(
@@ -357,7 +455,12 @@ private fun EcranEquipementPreview() {
     FrigoProTheme {
         Surface {
             EcranEquipement(
-                equipement = Equipement(id = "1", clientId = "c1", nom = "Vitrine salle 2"),
+                equipement = Equipement(id = "1", clientId = "c1", nom = "Groupe Daikin bi-split"),
+                unites = listOf(
+                    Equipement(id = "u1", clientId = "c1", parentId = "1", nom = "Salon"),
+                    Equipement(id = "u2", clientId = "c1", parentId = "1", nom = "Chambre"),
+                ),
+                groupe = null,
                 photos = emptyList(),
                 historique = listOf(
                     Intervention(
@@ -375,6 +478,8 @@ private fun EcranEquipementPreview() {
                 onPhotographier = {},
                 onChoisirImage = {},
                 onAgrandir = {},
+                onOuvrirUnite = {},
+                onAjouterUnite = {},
                 onRenommer = {},
                 onModifierFiche = {},
                 onSupprimer = {},

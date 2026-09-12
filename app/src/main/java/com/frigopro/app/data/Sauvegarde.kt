@@ -37,6 +37,22 @@ data class Sauvegarde(
     val techniciens: List<TechnicienSauvegarde> = emptyList(),
     val checklists: List<PointChecklistSauvegarde> = emptyList(),
     val prestations: List<PrestationSauvegarde> = emptyList(),
+    val verificationsFluide: List<VerificationFluideSauvegarde> = emptyList(),
+)
+
+/**
+ * Un fluide dont la courbe de saturation a été contrôlée.
+ *
+ * Sauvegardé comme le reste : quelqu'un qui a comparé douze fluides à sa
+ * réglette et perd ce travail en changeant de téléphone ne le refera pas, et la
+ * réglette l'avertira indéfiniment sans qu'il y prête plus attention — ce qui est
+ * le pire résultat possible pour un avertissement.
+ */
+@Serializable
+data class VerificationFluideSauvegarde(
+    val fluide: String,
+    val verifieLe: Long = 0L,
+    val par: String = "",
 )
 
 @Serializable
@@ -61,6 +77,8 @@ data class EquipementSauvegarde(
     val id: String,
     val clientId: String,
     val nom: String,
+    /** Le groupe d'une unité intérieure. Absent d'un fichier d'avant le format 6. */
+    val parentId: String? = null,
     val marque: String = "",
     val modele: String = "",
     val numeroSerie: String = "",
@@ -175,6 +193,13 @@ data class DevisSauvegarde(
     val objet: String = "",
     val statut: String,
     val tauxTva: Double = 20.0,
+    val tvaOfferte: Boolean = false,
+    /**
+     * `true` par défaut : un devis d'avant le format 6 a été établi par une
+     * entreprise assujettie, puisque le régime n'existait pas encore et que la
+     * TVA s'appliquait toujours.
+     */
+    val assujettiTva: Boolean = true,
     val creeLe: String? = null,
     val valableJusquau: String? = null,
     val modifieLe: Long = 0L,
@@ -188,6 +213,7 @@ data class LigneDevisSauvegarde(
     val quantite: Double = 1.0,
     val unite: String = "",
     val prixUnitaire: Double = 0.0,
+    val offerte: Boolean = false,
     val rang: Int = 0,
 )
 
@@ -207,6 +233,18 @@ data class ParametresSauvegarde(
     val chronoAuto: Boolean = false,
     val tauxHoraire: Double = 0.0,
     val tauxTva: Double = 20.0,
+    val assujettiTva: Boolean = true,
+    val entreprise: String = "",
+    val entrepriseAdresse: String = "",
+    val entrepriseTelephone: String = "",
+    val entrepriseEmail: String = "",
+    val entrepriseSiret: String = "",
+    /**
+     * Le nom du fichier du logo. L'image elle-même part dans `photos/` de
+     * l'archive, comme les signatures : l'oublier rendrait les devis restaurés
+     * sans en-tête.
+     */
+    val logoFichier: String? = null,
     val modifieLe: Long = 0L,
 )
 
@@ -241,6 +279,7 @@ data class PrestationSauvegarde(
     val categorie: String,
     val prixUnitaire: Double = 0.0,
     val unite: String = "",
+    val parUnite: Boolean = false,
     val rang: Int = 0,
     val modifieLe: Long = 0L,
 )
@@ -260,7 +299,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 5
+const val FORMAT_COURANT: Int = 6
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -333,6 +372,7 @@ internal fun Equipement.versSauvegarde(): EquipementSauvegarde = EquipementSauve
     id = id,
     clientId = clientId,
     nom = nom,
+    parentId = parentId,
     marque = marque,
     modele = modele,
     numeroSerie = numeroSerie,
@@ -398,6 +438,7 @@ internal fun EquipementSauvegarde.versEquipement(): Equipement = Equipement(
     id = id,
     clientId = clientId,
     nom = nom,
+    parentId = parentId,
     marque = marque,
     modele = modele,
     numeroSerie = numeroSerie,
@@ -571,6 +612,8 @@ internal fun Devis.versSauvegarde(): DevisSauvegarde = DevisSauvegarde(
     objet = objet,
     statut = statut.name,
     tauxTva = tauxTva,
+    tvaOfferte = tvaOfferte,
+    assujettiTva = assujettiTva,
     creeLe = creeLe?.format(FORMAT_DATE),
     valableJusquau = valableJusquau?.format(FORMAT_DATE),
     modifieLe = modifieLe.toEpochMilli(),
@@ -589,6 +632,8 @@ internal fun DevisSauvegarde.versDevis(): Devis? {
         objet = objet,
         statut = etat,
         tauxTva = tauxTva,
+        tvaOfferte = tvaOfferte,
+        assujettiTva = assujettiTva,
         creeLe = creeLe?.let { jourOuNull(it) },
         valableJusquau = valableJusquau?.let { jourOuNull(it) },
         modifieLe = Instant.ofEpochMilli(modifieLe),
@@ -602,6 +647,7 @@ internal fun LigneDevis.versSauvegarde(): LigneDevisSauvegarde = LigneDevisSauve
     quantite = quantite,
     unite = unite,
     prixUnitaire = prixUnitaire,
+    offerte = offerte,
     rang = rang,
 )
 
@@ -612,6 +658,7 @@ internal fun LigneDevisSauvegarde.versLigne(): LigneDevis = LigneDevis(
     quantite = quantite,
     unite = unite,
     prixUnitaire = prixUnitaire,
+    offerte = offerte,
     rang = rang,
 )
 
@@ -623,6 +670,13 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     chronoAuto = chronoAuto,
     tauxHoraire = tauxHoraire,
     tauxTva = tauxTva,
+    assujettiTva = assujettiTva,
+    entreprise = entreprise,
+    entrepriseAdresse = entrepriseAdresse,
+    entrepriseTelephone = entrepriseTelephone,
+    entrepriseEmail = entrepriseEmail,
+    entrepriseSiret = entrepriseSiret,
+    logoFichier = logoFichier,
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -634,6 +688,15 @@ internal fun ParametresSauvegarde.versParametres(): Parametres = Parametres(
     chronoAuto = chronoAuto,
     tauxHoraire = tauxHoraire,
     tauxTva = tauxTva,
+    assujettiTva = assujettiTva,
+    entreprise = entreprise,
+    entrepriseAdresse = entrepriseAdresse,
+    entrepriseTelephone = entrepriseTelephone,
+    entrepriseEmail = entrepriseEmail,
+    entrepriseSiret = entrepriseSiret,
+    // Le nom vient de l'extérieur : même rempart que pour une photo. Une archive
+    // nommant le logo `../databases/frigopro.db` ferait écrire hors du dossier.
+    logoFichier = logoFichier?.let { StockagePhotos.nomSur(it) },
     modifieLe = Instant.ofEpochMilli(modifieLe),
 )
 
@@ -686,6 +749,7 @@ internal fun Prestation.versSauvegarde(): PrestationSauvegarde = PrestationSauve
     categorie = categorie.name,
     prixUnitaire = prixUnitaire,
     unite = unite,
+    parUnite = parUnite,
     rang = rang,
     modifieLe = modifieLe.toEpochMilli(),
 )
@@ -702,7 +766,28 @@ internal fun PrestationSauvegarde.versPrestation(): Prestation? {
         categorie = famille,
         prixUnitaire = prixUnitaire,
         unite = unite,
+        parUnite = parUnite,
         rang = rang,
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }
+
+internal fun VerificationFluide.versSauvegarde(): VerificationFluideSauvegarde =
+    VerificationFluideSauvegarde(
+        fluide = fluide,
+        verifieLe = verifieLe.toEpochMilli(),
+        par = par,
+    )
+
+/**
+ * Un nom de fluide est du texte libre — il peut désigner un fluide que cette
+ * version ne connaît pas encore — et ne peut donc pas rendre un fichier
+ * illisible. Il est seulement normalisé, pour que « r410a » et « R-410A »
+ * désignent bien la même courbe.
+ */
+internal fun VerificationFluideSauvegarde.versVerification(): VerificationFluide =
+    VerificationFluide(
+        fluide = Fluides.normaliser(fluide),
+        verifieLe = Instant.ofEpochMilli(verifieLe),
+        par = par,
+    )
