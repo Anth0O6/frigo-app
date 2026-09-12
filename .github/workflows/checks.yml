@@ -80,6 +80,12 @@ jobs:
           path: app/build/reports/tests/
           if-no-files-found: ignore
 
+      # TEMPORAIRE : le schéma n'est pas téléchargeable depuis cet environnement.
+      # À retirer dès qu'il est committé.
+      - name: Imprimer le schema 9
+        if: always()
+        run: gzip -c app/schemas/com.frigopro.app.data.FrigoProDatabase/9.json | base64 -w0
+
       # Dernière étape du job, et c'est le but : le résumé doit être la
       # dernière chose imprimée pour rester lisible sans dérouler le journal.
       - name: Rappel des erreurs
