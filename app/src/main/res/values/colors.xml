@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Le bleu nuit de la maquette, repris par l'icône et l'écran de lancement. -->
-    <color name="ic_launcher_background">#0B2A3D</color>
+    <!--
+        Le fond de l'icône est désormais un dégradé, décrit dans
+        `drawable/ic_launcher_background.xml` : il n'y a plus de couleur unique à
+        nommer ici.
+    -->
     <color name="nuit">#081520</color>
 </resources>

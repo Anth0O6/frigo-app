@@ -150,6 +150,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       └── theme/
 │       └── res/                    # chaînes, couleurs, thème XML, icône,
 │                                   # chemins du FileProvider (xml/)
+├── design/                         # le logo source et le script qui en tire
+│                                   # les icônes (voir « Icône »)
 ├── gradle/libs.versions.toml       # versions centralisées
 ├── gradle/wrapper/                 # wrapper committé (jar inclus)
 ├── .github/workflows/build.yml     # CI : tests, APK et Release (sur main)
@@ -714,6 +716,32 @@ Les photos entrent par l'appareil photo, via un `FileProvider` qui lui ouvre le
 dossier `files/photos/` et rien d'autre, ou par le sélecteur d'images du système.
 Aucune permission dans les deux cas : ni caméra — l'application ne photographie
 pas elle-même, elle délègue —, ni stockage.
+
+## Icône
+
+Le logo vit dans `design/logo-frigopro.png`, et `design/genere-icones.py` en tire
+tout ce que `res/` contient : c'est le script qui est la source, pas les PNG. Les
+constantes en tête (la boîte de l'emblème dans l'image, le centre et le rayon de
+l'anneau, les deux seuils d'alpha) sont **mesurées sur ce fichier précis** — un
+logo redessiné demande de les reprendre, et c'est pour cela qu'il est versionné.
+
+Une icône adaptative se dessine sur **108 dp dont seuls les 72 dp centraux sont
+garantis visibles** : le lanceur rogne le reste en cercle, en carré arrondi ou en
+goutte selon le téléphone. L'emblème occupe donc 66 % du canevas (`PART_EMBLEME`),
+et le fond est un dégradé radial vectoriel (`drawable/ic_launcher_background.xml`)
+plutôt qu'une couleur plate : c'est lui qui donne la profondeur du logo, et il se
+laisse rogner sans perdre son centre. Les PNG de `mipmap-*` ne servent qu'au
+**plan avant** et aux lanceurs d'avant Android 8 ; `mipmap-anydpi-v26` l'emporte
+sur tous les appareils couverts par `minSdk 26`.
+
+Le seuil d'alpha bas vaut 72 et non zéro, et ce n'est pas un réglage cosmétique :
+le logo est posé sur une carte dont le fond plafonne à une luminance de 64, si
+bien qu'un seuil plus bas la gardait à 30 % d'opacité — un rectangle visible
+derrière l'emblème, une fois l'icône sur un fond clair.
+
+Le flocon vectoriel d'origine reste sous le nom `ic_launcher_monochrome.xml` : il
+sert de **silhouette** aux icônes thématisées d'Android 13, qui demandent une
+forme d'une seule couleur là où le logo en a cinq.
 
 ## Signature et mises à jour
 
