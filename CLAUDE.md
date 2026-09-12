@@ -455,7 +455,12 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   capable de le superposer à n'importe laquelle de ses trois vues plutôt que de
   sortir par un `return` avant de l'atteindre. Une heure mal saisie se corrige là
   où elle se voit : l'ouvrir depuis la seule liste du jour obligeait à en sortir
-  d'abord, et depuis la fiche c'était impossible. L'appui long y mène partout, et
+  d'abord, et depuis la fiche c'était impossible. La feuille elle-même est un
+  composable à part, `FeuilleFormulaireIntervention`, parce que l'accueil l'ouvre
+  aussi : la recopier dans les deux routes aurait fait diverger cinq flux au
+  premier champ ajouté. Les deux passent le **même** `InterventionsViewModel` —
+  `viewModel()` rend une seule instance par classe —, si bien qu'une saisie
+  commencée dans un onglet se retrouve intacte dans l'autre. L'appui long y mène partout, et
   un bouton visible là où la place le permet — un geste qui ne se voit pas n'est
   pas une fonctionnalité. **Supprimer passe par une confirmation** qui nomme ce
   qui disparaît avec la ligne : le temps chronométré, la signature du client, le

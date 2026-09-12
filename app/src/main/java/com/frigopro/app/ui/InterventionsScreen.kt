@@ -86,11 +86,6 @@ fun InterventionsRoute(
 ) {
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
-    val clients by viewModel.clients.collectAsStateWithLifecycle()
-    val types by viewModel.types.collectAsStateWithLifecycle()
-    val machines by viewModel.machines.collectAsStateWithLifecycle()
-    val techniciens by viewModel.techniciens.collectAsStateWithLifecycle()
-    val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val semaineOuverte by viewModel.semaineOuverte.collectAsStateWithLifecycle()
     val frise by viewModel.frise.collectAsStateWithLifecycle()
@@ -147,6 +142,28 @@ fun InterventionsRoute(
             modifier = modifier,
         )
     }
+
+    FeuilleFormulaireIntervention(viewModel)
+}
+
+/**
+ * La feuille de saisie d'une intervention, où qu'on l'ouvre.
+ *
+ * Elle est un composable à part plutôt qu'un bloc recopié dans chaque route qui
+ * la montre : l'accueil et le planning l'ouvrent tous les deux — `viewModel()`
+ * leur rend la même instance, donc le même formulaire — et deux copies de ces
+ * cinq flux auraient divergé au premier champ ajouté. Elle ne dessine rien tant
+ * qu'aucune saisie n'est en cours.
+ */
+@Composable
+fun FeuilleFormulaireIntervention(
+    viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
+) {
+    val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
+    val clients by viewModel.clients.collectAsStateWithLifecycle()
+    val types by viewModel.types.collectAsStateWithLifecycle()
+    val machines by viewModel.machines.collectAsStateWithLifecycle()
+    val techniciens by viewModel.techniciens.collectAsStateWithLifecycle()
 
     formulaire?.let { etat ->
         FormulaireIntervention(
