@@ -490,6 +490,114 @@ class SauvegardeRepositoryTest {
     }
 
     /** Un dépôt dont toutes les tables sont vides, pour restaurer à froid. */
+    /**
+     * Le déplacement facturé fait l'aller-retour du fichier, chiffres et origine
+     * compris : c'est *ce* montant-là qui est parti chez le client, et un
+     * itinéraire ne se recalcule pas à l'identique six mois plus tard.
+     */
+    @Test
+    fun `un deplacement facture revient identique`() = runTest {
+        daoDevis.enregistrer(DEVIS_AVEC_TRAJET)
+        daoDevis.enregistrerTrajet(TRAJET)
+
+        val export = repository.exporter()
+        val cible = Cible()
+        cible.depot.restaurer(export.contenu)
+
+        val revenu = cible.devis.contenuTrajets.single()
+        assertEquals(TRAJET, revenu)
+        assertEquals("le calcul reste daté", TRAJET.calculeLe, revenu.calculeLe)
+        assertEquals(OrigineTrajet.CALCULE, revenu.origine)
+    }
+
+    /**
+     * Le tarif revient, la clé non : voir [FORMAT_COURANT]. Et surtout, restaurer
+     * **n'efface pas** la clé déjà saisie sur le téléphone — sinon une
+     * restauration couperait le calcul d'itinéraire sans rien dire.
+     */
+    @Test
+    fun `le tarif revient et la cle du telephone survit`() = runTest {
+        daoParametres.enregistrer(
+            Parametres(
+                modeDeplacement = ModeDeplacement.KM_ET_HEURE,
+                prixKm = 0.45,
+                prixHeureTrajet = 35.0,
+                minimumDeplacement = 25.0,
+                adresseDepart = "12 rue des Lilas, Lyon",
+                cleItineraire = "cle-de-celui-qui-exporte",
+            ),
+        )
+
+        val export = repository.exporter()
+        assertTrue(
+            "la clé ne doit pas figurer dans le fichier",
+            !export.contenu.contains("cle-de-celui-qui-exporte"),
+        )
+
+        val cible = Cible()
+        cible.parametres.enregistrer(Parametres(cleItineraire = "cle-du-telephone-cible"))
+        cible.depot.restaurer(export.contenu)
+
+        val reglages = cible.parametres.contenu!!
+        assertEquals(ModeDeplacement.KM_ET_HEURE, reglages.modeDeplacement)
+        assertEquals(0.45, reglages.prixKm, 0.001)
+        assertEquals(35.0, reglages.prixHeureTrajet, 0.001)
+        assertEquals(25.0, reglages.minimumDeplacement, 0.001)
+        assertEquals("12 rue des Lilas, Lyon", reglages.adresseDepart)
+        assertEquals(
+            "la clé du téléphone qui restaure reste en place",
+            "cle-du-telephone-cible",
+            reglages.cleItineraire,
+        )
+    }
+
+    /** Un mode de facturation inconnu fait refuser le fichier entier. */
+    @Test
+    fun `un mode de deplacement inconnu fait refuser le fichier`() = runTest {
+        val douteux = """
+            {"format": 7, "exporteeLe": "2026-09-12T10:00:00Z",
+             "parametres": {"modeDeplacement": "AU_PIFOMETRE"}}
+        """.trimIndent()
+
+        assertEquals(ResultatRestauration.Illisible, vierge().restaurer(douteux))
+    }
+
+    /** Une origine de trajet inconnue, de même. */
+    @Test
+    fun `une origine de trajet inconnue fait refuser le fichier`() = runTest {
+        val douteux = """
+            {"format": 7, "exporteeLe": "2026-09-12T10:00:00Z",
+             "trajets": [{"id": "t-1", "devisId": "d-1", "origine": "DEVINE"}]}
+        """.trimIndent()
+
+        assertEquals(ResultatRestauration.Illisible, vierge().restaurer(douteux))
+    }
+
+    /**
+     * Un téléphone d'arrivée, avec de quoi regarder ce qui y a été écrit.
+     *
+     * [vierge] rend le dépôt seul, ce qui suffit à la plupart des cas ; ici il
+     * faut aussi inspecter les faux DAO d'arrivée, et surtout pouvoir y poser un
+     * réglage **avant** la restauration — c'est tout l'objet du test sur la clé.
+     */
+    private class Cible {
+        val interventions = FauxInterventionDao()
+        val devis = FauxDevisDao()
+        val parametres = FauxParametresDao()
+        val depot = SauvegardeRepository(
+            interventions,
+            FauxClientDao(),
+            FauxTypeInterventionDao(interventions),
+            FauxEquipementDao(interventions),
+            FauxSuiviDao(),
+            devis,
+            parametres,
+            FauxTechnicienDao(interventions),
+            FauxPrestationDao(),
+            FauxVerificationFluideDao(),
+        )
+    }
+
     private fun vierge(): SauvegardeRepository {
         val interventions = FauxInterventionDao()
         return SauvegardeRepository(
@@ -551,6 +659,32 @@ class SauvegardeRepositoryTest {
             equipementNom = "Vitrine salle 2",
             statut = StatutIntervention.EN_COURS,
             notes = "Fuite au détendeur.",
+            modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
+        )
+
+        val DEVIS_AVEC_TRAJET = Devis(
+            id = "dev-1",
+            numero = "DEV-2609-004",
+            clientId = "cl-1",
+            clientNom = "Boucherie Lemoine",
+            objet = "Remplacement compresseur",
+            statut = StatutDevis.ENVOYE,
+            creeLe = LocalDate.of(2026, 9, 11),
+            modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
+        )
+
+        val TRAJET = Trajet(
+            id = "tr-1",
+            devisId = "dev-1",
+            depart = "12 rue des Lilas, Lyon",
+            arrivee = "Boucherie Lemoine, Rouen",
+            distanceKm = 24.87,
+            dureeMinutes = 22,
+            peages = 8.40,
+            peagesConnus = true,
+            allerRetour = true,
+            origine = OrigineTrajet.CALCULE,
+            calculeLe = Instant.ofEpochMilli(1_757_400_000_000),
             modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
         )
     }

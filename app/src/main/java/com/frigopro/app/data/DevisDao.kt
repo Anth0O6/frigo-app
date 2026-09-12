@@ -82,9 +82,68 @@ abstract class DevisDao {
     @Query("DELETE FROM devis WHERE id = :id")
     abstract suspend fun effacer(id: String)
 
+    // — Le déplacement facturé —
+
+    /**
+     * Le trajet d'un devis, s'il en a un.
+     *
+     * Un devis n'en porte qu'un : c'est un aller chez un client, pas une
+     * tournée. Le jour où un devis couvrirait plusieurs sites, la table les
+     * accepterait déjà — `devisId` n'est pas unique — et seul l'écran aurait à
+     * apprendre à les montrer.
+     */
+    @Query("SELECT * FROM trajets WHERE devisId = :devisId LIMIT 1")
+    abstract fun observerTrajet(devisId: String): Flow<Trajet?>
+
+    @Query("SELECT * FROM trajets")
+    abstract suspend fun tousLesTrajets(): List<Trajet>
+
+    @Upsert
+    abstract suspend fun enregistrerTrajet(trajet: Trajet)
+
+    @Upsert
+    abstract suspend fun enregistrerTrajets(trajets: List<Trajet>)
+
+    @Query("DELETE FROM trajets WHERE devisId = :devisId")
+    abstract suspend fun effacerTrajetDe(devisId: String)
+
+    @Query("DELETE FROM lignes_devis WHERE devisId = :devisId AND deplacement = 1")
+    abstract suspend fun effacerLignesDeplacementDe(devisId: String)
+
+    /**
+     * Pose le trajet et refait *ses* lignes, d'un bloc.
+     *
+     * Les deux écritures ne peuvent pas se séparer : un trajet enregistré sans
+     * ses lignes ne serait pas facturé, des lignes sans leur trajet ne seraient
+     * plus modifiables. Le marqueur `deplacement` est ce qui permet de remplacer
+     * les unes sans toucher aux autres — voir [LigneDevis.deplacement].
+     *
+     * Les lignes du déplacement sont **reposées à la fin** du devis, et c'est
+     * voulu : un déplacement se lit en bas d'un devis, après ce qu'on est venu
+     * faire.
+     */
+    @Transaction
+    open suspend fun enregistrerDeplacement(trajet: Trajet, lignes: List<LigneDevis>) {
+        effacerTrajetDe(trajet.devisId)
+        effacerLignesDeplacementDe(trajet.devisId)
+        enregistrerTrajet(trajet)
+        if (lignes.isNotEmpty()) {
+            val rang = prochainRang(trajet.devisId)
+            enregistrerLignes(lignes.mapIndexed { index, ligne -> ligne.copy(rang = rang + index) })
+        }
+    }
+
+    /** Retire le déplacement d'un devis : le trajet et les lignes qu'il portait. */
+    @Transaction
+    open suspend fun supprimerDeplacement(devisId: String) {
+        effacerTrajetDe(devisId)
+        effacerLignesDeplacementDe(devisId)
+    }
+
     @Transaction
     open suspend fun supprimer(id: String) {
         effacerLignesDe(id)
+        effacerTrajetDe(id)
         effacer(id)
     }
 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
@@ -89,6 +90,33 @@ class ReglagesViewModel(
      * suivants — un devis envoyé en franchise en base doit rester tel qu'il était.
      */
     fun onAssujettiTva(assujetti: Boolean) = modifier { it.copy(assujettiTva = assujetti) }
+
+    // — Le tarif de déplacement ————————————————————————————————————————————
+
+    fun onAdresseDepart(adresse: String) = modifier { it.copy(adresseDepart = adresse) }
+
+    fun onModeDeplacement(mode: ModeDeplacement) = modifier { it.copy(modeDeplacement = mode) }
+
+    /**
+     * Les prix du déplacement.
+     *
+     * Un prix négatif est ramené à zéro plutôt que refusé, comme ceux du
+     * catalogue : à zéro la ligne se voit et appelle une correction, alors qu'un
+     * tarif négatif produirait un devis qui paie le client.
+     */
+    fun onPrixKm(prix: Double?) = modifier { it.copy(prixKm = prix?.coerceAtLeast(0.0) ?: 0.0) }
+
+    fun onPrixHeureTrajet(prix: Double?) =
+        modifier { it.copy(prixHeureTrajet = prix?.coerceAtLeast(0.0) ?: 0.0) }
+
+    fun onMinimumDeplacement(prix: Double?) =
+        modifier { it.copy(minimumDeplacement = prix?.coerceAtLeast(0.0) ?: 0.0) }
+
+    fun onRefacturerPeages(refacturer: Boolean) =
+        modifier { it.copy(refacturerPeages = refacturer) }
+
+    /** La clé est nettoyée : un copier-coller traîne souvent un espace ou un saut. */
+    fun onCleItineraire(cle: String) = modifier { it.copy(cleItineraire = cle.trim()) }
 
     /**
      * Pose le logo choisi dans la galerie.

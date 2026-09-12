@@ -106,6 +106,16 @@ data class LigneDevis(
      * l'argument de vente.
      */
     val offerte: Boolean = false,
+    /**
+     * La ligne a été **produite par le déplacement** et non saisie.
+     *
+     * Le marqueur existe pour une raison précise : [Trajet] garde les données
+     * d'entrée, et recalculer le trajet doit pouvoir remplacer *ses* lignes sans
+     * toucher à celles qu'on a saisies. Sans lui, il faudrait deviner qu'une
+     * ligne intitulée « Déplacement » vient du calcul — ce qui serait faux le
+     * jour où quelqu'un en ajoute une à la main.
+     */
+    val deplacement: Boolean = false,
     val rang: Int = 0,
 ) {
 

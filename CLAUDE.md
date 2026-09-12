@@ -16,7 +16,8 @@ propose des pistes — jamais un verdict — et le contrôle qui tranche chacune
 Un onglet Clients tient le carnet — adresse et téléphone compris — ainsi que le
 parc de machines de chaque client : plaque signalétique, fluide et charge,
 photos, échéance du contrôle d'étanchéité et historique. Un onglet Devis permet
-de chiffrer sur place. Depuis la tournée, appeler un client ou ouvrir
+de chiffrer sur place, **déplacement compris** : temps de trajet, kilomètres et
+péages, au km, à l'heure ou les deux, avec un plancher et le choix de l'offrir. Depuis la tournée, appeler un client ou ouvrir
 l'itinéraire tient en un geste. Les données sont persistées localement, et
 exportables dans une archive de sauvegarde.
 
@@ -67,6 +68,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
 │       │   │   ├── Devis.kt               # devis, lignes et totaux
+│       │   │   ├── Deplacement.kt         # tarif, trajet, et ce qu'il facture
+│       │   │   ├── ServiceItineraire.kt   # le contrat, et la lecture de la réponse
+│       │   │   ├── ItineraireGoogle.kt    # la seule classe qui ouvre une connexion
 │       │   │   ├── Parametres.kt          # les réglages, en une seule ligne
 │       │   │   ├── Prestation.kt          # technicien, checklist, catalogue
 │       │   │   ├── CatalogueDao.kt
@@ -124,6 +128,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── OngletFiche.kt       # créneau, adresse, machine, checklist
 │       │       ├── CouleurStatut.kt     # deux dimensions réduites à une couleur
 │       │       ├── DevisScreen.kt
+│       │       ├── SectionDeplacement.kt  # le déplacement dans un devis
 │       │       ├── DevisViewModel.kt
 │       │       ├── DocumentDevis.kt     # ce que le devis imprimé dit
 │       │       ├── MiseEnPageDevis.kt   # l'arithmétique de la page A4
@@ -269,6 +274,43 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `Parametres.MENTION_FRANCHISE` est nommée plutôt que recopiée — elle paraît à
   l'écran et sur le PDF, et les laisser diverger ferait partir chez un client une
   formule qui n'est pas celle du code général des impôts.
+  **La facturation du déplacement** est le seul endroit de l'application qui
+  sorte du téléphone. `Trajet` porte les chiffres d'un **aller** — distance, durée,
+  péage — et `allerRetour` est une décision de facturation appliquée au calcul, non
+  une distance déjà doublée : stocker le double aurait figé ce choix, et cocher la
+  case après coup aurait laissé un chiffre faux sans que rien ne le signale. Le
+  résultat d'un calcul est en revanche **stocké et jamais recalculé** : un
+  itinéraire est un fait daté venu de l'extérieur, et un devis de mars doit rester
+  chiffrable en février suivant, sans réseau et sans que le prix ait bougé parce
+  qu'une autoroute a ouvert. C'est l'inverse exact des échéances F-Gas, qui se
+  recalculent parce qu'elles ne découlent que de la date du dernier contrôle.
+  `peagesConnus` est séparé du montant, et ce n'est pas un raffinement : « pas de
+  péage sur ce trajet » et « je n'en sais rien » valent tous deux zéro dans une
+  colonne de chiffres et ne valent pas la même chose sur un devis.
+  Le déplacement **devient des lignes de devis ordinaires** (`LignesDeplacement`)
+  plutôt qu'un second chemin vers le total, et c'est la décision centrale : tout ce
+  qui existait fonctionne alors sans retouche — le `GROUP BY` des totaux, la TVA,
+  la pagination du PDF, et « offrir » qui est déjà porté par `LigneDevis.offerte`
+  et s'affiche barré. Un total parallèle aurait demandé de toucher sept endroits,
+  chacun avec ses tests, pour dire la même chose. La contrepartie est assumée :
+  `Trajet` garde les données d'entrée, les lignes en sont l'expression commerciale,
+  et le marqueur `LigneDevis.deplacement` permet de refaire *les siennes* sans
+  toucher à celles qu'on a saisies — une retouche à la main sur une ligne de
+  déplacement est donc perdue au recalcul suivant, et c'est pourquoi le recalcul ne
+  se déclenche jamais tout seul.
+  **Les quantités sont arrondies avant de servir**, et c'est le point le plus
+  subtil de tout le calcul : la quantité s'imprime sur le devis à deux décimales,
+  si bien qu'un montant calculé sur la valeur exacte ne retomberait pas sur la
+  ligne que le client a sous les yeux. Trente-cinq minutes aller-retour font
+  1,1666… h ; la ligne annonce « 1,17 h » et doit valoir 1,17 × le tarif, sinon
+  elle se contredit toute seule. On facture douze secondes de plus, ce qui est sans
+  conséquence, là où un devis qui ne s'additionne pas fait rappeler. Le **plancher**
+  ne s'applique qu'au trajet et jamais aux péages, qui sont des débours : les
+  fondre dedans les ferait disparaître sur les courtes distances — celles,
+  justement, où le plancher joue. Il produit une ligne de **forfait** et non un
+  tarif kilométrique déduit : annoncer « 3 km à 8,33 € » aurait inventé un tarif
+  pour justifier le montant, et un tarif qu'un client peut opposer au trajet
+  suivant.
   `CourbesSaturation` porte les courbes bulle / rosée de dix-sept fluides, écrites
   **en clair** dans un format relisible contre une réglette de poche : ces valeurs
   doivent pouvoir être contrôlées par quelqu'un qui n'écrit pas de code. Elles
@@ -431,6 +473,21 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   question de celle qui gagne. La **fiche fluide** met la classe de sécurité avant
   le GWP, et c'est volontaire : le GWP décide d'une paperasse, la classe décide de
   la façon de travailler et de ce qui peut prendre feu.
+  `SectionDeplacement` est le déplacement dans la feuille d'un devis, posée juste
+  avant les totaux : un déplacement se lit après ce qu'on est venu faire, et avant
+  l'addition. Elle tient la **saisie en cours** en état local et n'écrit qu'à un
+  geste explicite — enregistrer refait les lignes du devis, et sauver à chaque
+  caractère aurait réécrit trois lignes de facture à chaque frappe. Les trois
+  chiffres restent saisissables **après** un calcul : c'est le compteur du véhicule
+  qui fait foi devant un client, pas une estimation. Un recalcul conserve
+  l'aller-retour et le geste commercial, sinon chaque appel du service aurait
+  décoché l'un et repris l'autre — le genre de perte qu'on ne remarque qu'en
+  relisant le total. Le tarif, lui, n'est pas modifiable là : il se règle une fois
+  dans les Réglages, et le proposer sur chaque devis aurait invité à facturer chaque
+  client différemment sans s'en souvenir. Les rappels des deux écrans concernés sont
+  **regroupés en objets** (`EtatDeplacement`, `ActionsDeplacement`,
+  `ActionsTarifDeplacement`) plutôt qu'ajoutés un à un : `EcranDevis` en portait
+  déjà dix-huit et `ReglagesScreen` vingt-cinq.
   Appeler et ouvrir un itinéraire passent par des intentions Android
   (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
   pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
@@ -555,6 +612,15 @@ sur une frise horaire et « à faire » d'une case de liste — c'est le même �
 durée arrive à une heure par défaut : c'est une supposition assumée, sans durée
 le planning ne saurait pas quelle hauteur donner à un créneau.
 
+`MIGRATION_9_10` apporte la facturation du déplacement : la table des trajets, le
+marqueur des lignes qu'ils produisent, et le tarif sur la ligne unique des
+réglages. Tout y est ajout, donc rien à reconstruire. Les défauts disent quelque
+chose : les prix arrivent à **zéro** comme le catalogue et pour la même raison —
+un tarif kilométrique inventé partirait chez un vrai client sans que personne ne
+l'ait relu — et `refacturerPeages` à `1`, parce que qui a avancé un péage
+s'attend à le récupérer et que l'oubli coûte de l'argent là où l'inverse se
+remarque à la lecture du devis.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -628,9 +694,11 @@ l'APK : un test rouge bloque la publication.
 | `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
 | `CourbesSaturationTest` | Cohérence interne des courbes : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant que la courbe n'est pas vérifiée |
-| `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise |
+| `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
+| `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
+| `AnalyseItineraireGoogleTest` | La lecture d'une réponse : entier en texte, durée suffixée, prix en deux morceaux, un 200 sans route qui n'est pas un trajet nul, une devise étrangère qui ne s'ajoute pas |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
@@ -676,7 +744,25 @@ versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
 
-Le format 6 ajoute les unités intérieures (`parentId`), la prestation comptée par
+Le format 7 ajoute la facturation du déplacement : le trajet de chaque devis, le
+marqueur des lignes qu'il a produites, et le tarif kilométrique. Un trajet est
+sauvegardé parce que ce n'est **pas un chiffre qu'on retrouve** : un itinéraire a
+été calculé un jour donné, par un service qui ne rendra pas forcément le même
+résultat six mois plus tard, et si le devis est parti chez le client c'est *ce*
+chiffre-là qui fait foi. `origine` et `calculeLe` partent avec, pour la même
+raison : « calculé le 12 mars » et « saisi à la main » ne se valent pas devant
+quelqu'un qui discute la note, et une origine inconnue fait refuser le fichier au
+même titre qu'un statut.
+
+**La clé du service d'itinéraire n'y est pas**, et c'est le seul réglage
+volontairement laissé de côté. Une sauvegarde protège ce qui ne se retrouve pas ;
+une clé d'API se recopie en trente secondes depuis la console qui l'a émise, et
+elle est facturée à l'usage — une archive déposée sur un espace partagé se serait
+mise à faire payer son propriétaire. La contrepartie est traitée plutôt
+qu'ignorée : une restauration **ne l'efface pas** non plus, sinon restaurer
+par-dessus une installation en service aurait coupé le calcul sans rien dire.
+
+Le format 6 avait ajouté les unités intérieures (`parentId`), la prestation comptée par
 unité, la ligne offerte et le régime de TVA du devis, l'en-tête d'entreprise avec
 son logo, et les vérifications de courbe. **Le logo part dans l'archive comme une
 photo** : un technicien qui restaure sur un téléphone neuf et retrouve ses clients
@@ -742,6 +828,49 @@ Les photos entrent par l'appareil photo, via un `FileProvider` qui lui ouvre le
 dossier `files/photos/` et rien d'autre, ou par le sélecteur d'images du système.
 Aucune permission dans les deux cas : ni caméra — l'application ne photographie
 pas elle-même, elle délègue —, ni stockage.
+
+## Le réseau, et pourquoi il n'y en a qu'un
+
+L'application a longtemps revendiqué de fonctionner entièrement hors ligne, et
+cela reste vrai de tout sauf d'une chose : le **calcul d'itinéraire**. Aucune API
+Android ne calcule une route hors ligne, et les prix de péage ne viennent que
+d'un service distant. D'où la première — et unique — permission de l'application,
+`INTERNET`, qui est une permission dite *normale* : elle se déclare et ne se
+demande pas à l'utilisateur.
+
+Trois règles encadrent cette ouverture :
+
+- **Une seule classe ouvre une connexion**, `ItineraireGoogle`, et c'est là qu'on
+  vérifie ce qui sort du téléphone : deux adresses et une clé, vers un seul hôte.
+  Pas de bibliothèque HTTP — un appel, un POST, un JSON : `HttpURLConnection`
+  suffit là où Retrofit aurait ajouté une dépendance et son transitif.
+- **La saisie à la main reste le chemin de secours**, et non un mode dégradé : un
+  technicien au fond d'une chambre froide n'a pas de réseau, et un devis doit se
+  chiffrer quand même. Sans clé, le calcul est simplement indisponible et l'écran
+  le dit.
+- **La lecture de la réponse est séparée du transport** (`AnalyseItineraireGoogle`)
+  parce que c'est la moitié éprouvable : le protocole HTTP ne s'éprouve pas sur la
+  JVM sans monter un serveur, l'analyse d'une réponse s'éprouve avec une chaîne de
+  caractères. Et c'est là que sont les pièges, tous réels — un entier de 64 bits
+  arrive **en texte** dans le JSON de protobuf, la durée porte son unité
+  (`"1320s"`), un prix de péage se lit en unités *et* en milliardièmes, un code 200
+  avec `routes` vide n'est **pas** un trajet de zéro kilomètre mais une adresse
+  introuvable, et un péage rendu en francs suisses ne s'ajoute pas à un devis en
+  euros — il est déclaré inconnu.
+
+`RaisonEchec` porte un message par situation plutôt qu'un seul, parce que la
+suite n'est pas la même : une clé se corrige dans les Réglages, une adresse se
+réécrit, une absence de réseau se contourne en tapant ses kilomètres.
+
+`TRAFFIC_UNAWARE` est un choix assumé : la durée est celle d'une route libre,
+sans le trafic du moment. C'est ce qu'il faut pour un devis, qui doit annoncer le
+même prix si on le rouvre à 18 h un vendredi — et cela évite au passage la tranche
+tarifaire la plus chère du service.
+
+**La clé ne peut pas vivre dans le dépôt**, qui est public. Même raison que la
+clé de signature, à ceci près que celle-ci est facturée à l'usage : une clé
+publiée se fait consommer par des inconnus aux frais de son propriétaire. Elle se
+saisit donc dans les Réglages, vit en base, et ne part pas dans les sauvegardes.
 
 ## Icône
 
@@ -829,7 +958,15 @@ place » venant en tête :
   il reste à décrire le document — relevés, travaux, signature du client.
 - **Export du registre des fluides.** La table existe et se remplit à chaque
   mouvement ; il manque la sortie exigible lors d'un contrôle.
-- **Optimisation des trajets** depuis la vue semaine.
+- **Optimisation des trajets** depuis la vue semaine. Le calcul d'itinéraire est
+  désormais là (`ServiceItineraire`) ; il manque l'ordonnancement d'une journée,
+  qui est un problème d'un autre ordre — et la question de ce qu'il coûte en appels
+  au service, puisqu'ils sont facturés.
+- **Éprouver le calcul d'itinéraire contre le vrai service.** La lecture de la
+  réponse est couverte par des charges utiles de la forme documentée, mais aucun
+  appel réel n'a été passé : le premier a lieu sur le téléphone, clé en main. Un
+  écart de forme se verrait alors en `REPONSE_ILLISIBLE` plutôt qu'en chiffre faux,
+  ce qui est le bon sens de l'échec, mais ce n'est pas une vérification.
 - **Contrôler les courbes de saturation livrées**, fluide par fluide, contre une
   table constructeur, puis cocher chacune dans la réglette. Tant que ce n'est pas
   fait, elle affiche l'avertissement et refuse de reporter un écart dans un

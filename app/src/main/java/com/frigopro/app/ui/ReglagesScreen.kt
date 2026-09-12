@@ -91,6 +91,15 @@ fun ReglagesRoute(
         prestations = prestations,
         onEnregistrerPrestation = viewModel::onEnregistrerPrestation,
         onSupprimerPrestation = viewModel::onSupprimerPrestation,
+        tarifDeplacement = ActionsTarifDeplacement(
+            onAdresseDepart = viewModel::onAdresseDepart,
+            onMode = viewModel::onModeDeplacement,
+            onPrixKm = viewModel::onPrixKm,
+            onPrixHeure = viewModel::onPrixHeureTrajet,
+            onMinimum = viewModel::onMinimumDeplacement,
+            onRefacturerPeages = viewModel::onRefacturerPeages,
+            onCle = viewModel::onCleItineraire,
+        ),
         modifier = modifier,
     )
 
@@ -160,6 +169,14 @@ fun ReglagesScreen(
     prestations: List<Prestation>,
     onEnregistrerPrestation: (Prestation) -> Unit,
     onSupprimerPrestation: (Prestation) -> Unit,
+    /**
+     * Le tarif de déplacement, en un objet.
+     *
+     * Sept rappels de plus auraient porté cette signature à trente-deux
+     * paramètres ; les regrouper est le même geste que pour la section du
+     * déplacement dans un devis.
+     */
+    tarifDeplacement: ActionsTarifDeplacement,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -222,6 +239,12 @@ fun ReglagesScreen(
                     onAssujettiTva = onAssujettiTva,
                     onChoisirLogo = onChoisirLogo,
                     onRetirerLogo = onRetirerLogo,
+                )
+            }
+            item {
+                SectionDeplacementReglages(
+                    parametres = parametres,
+                    actions = tarifDeplacement,
                 )
             }
             item {
@@ -366,6 +389,7 @@ private fun ReglagesScreenPreview() {
                 onChoisirLogo = {},
                 onRetirerLogo = {},
                 chargerPhoto = { _, _ -> null },
+                tarifDeplacement = ActionsTarifDeplacement(),
             )
         }
     }

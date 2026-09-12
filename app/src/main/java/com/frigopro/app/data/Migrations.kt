@@ -465,3 +465,58 @@ val MIGRATION_8_9: Migration = object : Migration(8, 9) {
         )
     }
 }
+
+/**
+ * Version 10 : la facturation du déplacement.
+ *
+ * Tout y est ajout — une table et des colonnes — donc rien à reconstruire. Le
+ * `NOT NULL DEFAULT` de chaque colonne est obligatoire et non cosmétique :
+ * `ALTER TABLE ADD COLUMN` refuse une colonne non nulle sans valeur par défaut,
+ * et une ligne de réglages existe déjà sur tous les téléphones.
+ *
+ * Les défauts disent quelque chose. `modeDeplacement` arrive à `KM` parce que
+ * c'est le mode le plus répandu et le plus facile à vérifier sur une facture.
+ * Les prix arrivent à **zéro**, comme le catalogue de prestations et pour la
+ * même raison : un tarif kilométrique inventé partirait chez un vrai client
+ * sans que personne ne l'ait relu, alors qu'un zéro se voit et appelle une
+ * correction. `refacturerPeages` arrive à `1` — celui qui a avancé un péage
+ * s'attend par défaut à le récupérer, et l'oubli coûte de l'argent là où
+ * l'inverse se remarque à la lecture du devis.
+ *
+ * `deplacement` sur les lignes de devis arrive à `0` : aucune ligne existante ne
+ * vient d'un calcul de trajet, et les prendre pour telles les ferait effacer au
+ * premier recalcul.
+ *
+ * `peagesConnus` est séparé de `peages` pour la raison dite dans [Trajet] :
+ * « pas de péage » et « je n'en sais rien » valent tous deux zéro dans une
+ * colonne de chiffres et ne valent pas la même chose sur un devis.
+ */
+val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // — Le trajet facturé d'un devis —
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `trajets` (" +
+                "`id` TEXT NOT NULL, `devisId` TEXT NOT NULL, " +
+                "`depart` TEXT NOT NULL, `arrivee` TEXT NOT NULL, " +
+                "`distanceKm` REAL NOT NULL, `dureeMinutes` INTEGER NOT NULL, " +
+                "`peages` REAL NOT NULL, `peagesConnus` INTEGER NOT NULL, " +
+                "`allerRetour` INTEGER NOT NULL, `offert` INTEGER NOT NULL, " +
+                "`origine` TEXT NOT NULL, `calculeLe` INTEGER, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_trajets_devisId` ON `trajets` (`devisId`)")
+
+        // — Les lignes que le déplacement a produites —
+        db.execSQL("ALTER TABLE `lignes_devis` ADD COLUMN `deplacement` INTEGER NOT NULL DEFAULT 0")
+
+        // — Le tarif, sur la ligne unique des réglages —
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `adresseDepart` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `modeDeplacement` TEXT NOT NULL DEFAULT 'KM'")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `prixKm` REAL NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `prixHeureTrajet` REAL NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `minimumDeplacement` REAL NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `refacturerPeages` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `cleItineraire` TEXT NOT NULL DEFAULT ''")
+    }
+}

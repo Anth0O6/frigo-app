@@ -27,12 +27,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.IntituleSection
+import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
 /**
@@ -589,6 +592,174 @@ private fun LignePrestationReglages(prestation: Prestation, onModifier: () -> Un
                 },
                 maxLines = 1,
             )
+        }
+    }
+}
+
+/**
+ * Le tarif de déplacement, et la clé du service d'itinéraire.
+ *
+ * Les prix se règlent **une fois, ici**, et non sur chaque devis : les proposer
+ * à chaque fois aurait invité à facturer chaque client différemment sans s'en
+ * souvenir. Ils arrivent à zéro, comme le catalogue et pour la même raison — un
+ * tarif kilométrique inventé partirait chez un vrai client sans que personne ne
+ * l'ait relu, alors qu'un zéro se voit.
+ *
+ * La section se replie et part repliée : on y vient le jour où l'on pose ses
+ * tarifs, puis presque jamais.
+ */
+data class ActionsTarifDeplacement(
+    val onAdresseDepart: (String) -> Unit = {},
+    val onMode: (ModeDeplacement) -> Unit = {},
+    val onPrixKm: (Double?) -> Unit = {},
+    val onPrixHeure: (Double?) -> Unit = {},
+    val onMinimum: (Double?) -> Unit = {},
+    val onRefacturerPeages: (Boolean) -> Unit = {},
+    val onCle: (String) -> Unit = {},
+)
+
+@Composable
+fun SectionDeplacementReglages(
+    parametres: Parametres,
+    actions: ActionsTarifDeplacement,
+) {
+    var dépliée by remember { mutableStateOf(false) }
+    val tarif = parametres.tarifDeplacement
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        IntituleSection(texte = "Déplacement")
+        Carte(relief = true, onClick = { dépliée = !dépliée }) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = parametres.modeDeplacement.libelle,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        // Ce qui manque est dit en clair, comme pour l'entreprise :
+                        // c'est la seule chose qui doit faire ouvrir cette section.
+                        text = when {
+                            !tarif.renseigne -> "Tarif à renseigner"
+                            else -> listOfNotNull(
+                                "${Nombres.enEuros(parametres.prixKm)}/km"
+                                    .takeIf { parametres.modeDeplacement.compteLesKm },
+                                "${Nombres.enEuros(parametres.prixHeureTrajet)}/h"
+                                    .takeIf { parametres.modeDeplacement.compteLeTemps },
+                            ).joinToString(" + ")
+                        },
+                        style = StyleChiffrePetit,
+                        color = if (tarif.renseigne) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                }
+                Text(
+                    text = if (dépliée) "▾" else "›",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (dépliée) {
+            Carte {
+                ChampTexte(
+                    libelle = "Adresse de départ",
+                    valeur = parametres.adresseDepart,
+                    onValeur = actions.onAdresseDepart,
+                )
+                Text(
+                    text = "Le dépôt, l'atelier ou le domicile : c'est le départ " +
+                        "proposé sur un nouveau devis. Il reste modifiable trajet " +
+                        "par trajet — le deuxième client de la journée se rejoint " +
+                        "depuis le premier.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                EspaceVertical(4)
+                RangeePastilles(
+                    options = ModeDeplacement.entries,
+                    retenue = parametres.modeDeplacement,
+                    libelle = { it.libelle },
+                    onChoisir = actions.onMode,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = "Le kilomètre paie le véhicule, l'heure paie le chauffeur. " +
+                        "Trente kilomètres d'autoroute et trente dans une ville ne " +
+                        "coûtent pas le même temps : les deux ensemble est le cas le " +
+                        "plus juste.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                EspaceVertical(4)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (parametres.modeDeplacement.compteLesKm) {
+                        ChampChiffre(
+                            libelle = "Prix au km",
+                            valeur = parametres.prixKm.takeIf { it > 0.0 },
+                            unite = "€",
+                            onValeur = actions.onPrixKm,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (parametres.modeDeplacement.compteLeTemps) {
+                        ChampChiffre(
+                            libelle = "Heure de trajet",
+                            valeur = parametres.prixHeureTrajet.takeIf { it > 0.0 },
+                            unite = "€",
+                            onValeur = actions.onPrixHeure,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    ChampChiffre(
+                        libelle = "Minimum",
+                        valeur = parametres.minimumDeplacement.takeIf { it > 0.0 },
+                        unite = "€",
+                        onValeur = actions.onMinimum,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text(
+                    text = "Le minimum s'applique au trajet seul : un très petit " +
+                        "déplacement est facturé à ce prix. Les péages s'ajoutent " +
+                        "par-dessus — ce sont des débours, et les fondre dans un " +
+                        "plancher les ferait disparaître sur les courtes distances.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                LigneInterrupteur(
+                    intitule = "Refacturer les péages",
+                    actif = parametres.refacturerPeages,
+                    onChange = actions.onRefacturerPeages,
+                    detail = "Ajoutés au devis sur une ligne à part, doublés en aller-retour.",
+                )
+
+                EspaceVertical(4)
+                ChampTexte(
+                    libelle = "Clé d'itinéraire",
+                    valeur = parametres.cleItineraire,
+                    onValeur = actions.onCle,
+                )
+                Text(
+                    text = "Facultative. Avec elle, le temps de trajet, les kilomètres " +
+                        "et les péages se calculent tout seuls depuis les deux " +
+                        "adresses ; sans elle, ils se saisissent à la main — ce qui " +
+                        "marche aussi sans réseau. La clé vient de la console Google " +
+                        "Cloud, avec l'API Routes activée ; elle est facturée à " +
+                        "l'usage, reste sur ce téléphone, et ne part pas dans les " +
+                        "sauvegardes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

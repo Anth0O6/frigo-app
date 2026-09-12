@@ -72,6 +72,22 @@ jobs:
           path: app/schemas/
           if-no-files-found: warn
 
+      # Le schéma est produit à la compilation, et il est aussi committé : c'est
+      # lui qui permettra d'écrire et d'éprouver la migration suivante. Les deux
+      # doivent donc coïncider — un schéma committé à la main, ou oublié après un
+      # changement d'entité, rendrait la prochaine migration invérifiable.
+      - name: Vérifier que le schéma committé est à jour
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain app/schemas/)" ]; then
+            echo "::error::Le schéma Room committé ne correspond pas à celui que la"
+            echo "::error::compilation produit. Récupérez l'artefact room-schemas et"
+            echo "::error::committez-le. Écarts :"
+            git --no-pager diff -- app/schemas/
+            exit 1
+          fi
+          echo "Schéma committé conforme."
+
       - name: Publish test report on failure
         if: failure()
         uses: actions/upload-artifact@v4

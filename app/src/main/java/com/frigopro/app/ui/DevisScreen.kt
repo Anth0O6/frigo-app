@@ -82,6 +82,9 @@ fun DevisRoute(
     val reglages by viewModel.reglages.collectAsStateWithLifecycle()
     val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
     val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
+    val trajet by viewModel.trajet.collectAsStateWithLifecycle()
+    val calculEnCours by viewModel.calculEnCours.collectAsStateWithLifecycle()
+    val echecItineraire by viewModel.echecItineraire.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // Le partage s'ouvre dès que le PDF est écrit, puis le ViewModel oublie le
@@ -135,6 +138,21 @@ fun DevisRoute(
             onExporterPdf = viewModel::onExporterPdf,
             enTete = reglages.entreprisePresentable,
             onSupprimerLigne = viewModel::onSupprimerLigne,
+            deplacement = EtatDeplacement(
+                trajet = trajet,
+                tarif = reglages.tarifDeplacement,
+                calculEnCours = calculEnCours,
+                echec = echecItineraire,
+                itineraireDisponible = reglages.itineraireDisponible,
+            ),
+            actionsDeplacement = ActionsDeplacement(
+                trajetPropose = viewModel::trajetPropose,
+                onEnregistrer = viewModel::onEnregistrerTrajet,
+                onCalculer = viewModel::onCalculerTrajet,
+                onOffrir = viewModel::onOffrirDeplacement,
+                onRetirer = viewModel::onRetirerDeplacement,
+                onOublierEchec = viewModel::onOublierEchec,
+            ),
             onSupprimer = viewModel::onSupprimer,
             onFermer = viewModel::onFermer,
             modifier = modifier,
@@ -320,6 +338,9 @@ fun EcranDevis(
     /** L'entreprise est renseignée : le PDF portera un en-tête. */
     enTete: Boolean,
     onSupprimerLigne: (String) -> Unit,
+    /** Le déplacement facturé, et ce qu'on peut en faire. */
+    deplacement: EtatDeplacement,
+    actionsDeplacement: ActionsDeplacement,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -416,6 +437,8 @@ fun EcranDevis(
                 modifier = Modifier.fillMaxWidth(),
                 couleur = MaterialTheme.colorScheme.secondary,
             )
+
+            SectionDeplacement(etat = deplacement, actions = actionsDeplacement)
 
             CarteTotaux(devis = devis, onOffrirTva = onOffrirTva)
 

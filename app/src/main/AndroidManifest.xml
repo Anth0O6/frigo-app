@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        La seule permission de l'application, et elle ne sert qu'au calcul
+        d'itinéraire (voir `ItineraireGoogle`) : aucune API Android ne calcule
+        une route hors ligne, et les prix de péage ne viennent que d'un service
+        distant. Tout le reste continue de fonctionner sans réseau, et la saisie
+        à la main des kilomètres reste le chemin de secours — un technicien au
+        fond d'une chambre froide n'a pas de signal.
+
+        `INTERNET` est une permission dite normale : elle ne se demande pas à
+        l'utilisateur, elle se déclare. Ni caméra, ni stockage, ni position : les
+        photos passent par une application tierce, et le point de départ se
+        saisit plutôt que de se relever au GPS.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".FrigoProApplication"
         android:allowBackup="true"
