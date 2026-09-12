@@ -75,6 +75,7 @@ fun DevisRoute(
     val complet by viewModel.complet.collectAsStateWithLifecycle()
     val compteurs by viewModel.compteurs.collectAsStateWithLifecycle()
     val catalogue by viewModel.catalogue.collectAsStateWithLifecycle()
+    val unitesVisees by viewModel.unitesVisees.collectAsStateWithLifecycle()
 
     BackHandler(enabled = complet != null) { viewModel.onFermer() }
 
@@ -90,6 +91,7 @@ fun DevisRoute(
             onAjouterPrestation = viewModel::onAjouterPrestation,
             onCreerPrestation = viewModel::onCreerPrestation,
             catalogue = catalogue,
+            unitesVisees = unitesVisees,
             onOffrirLigne = viewModel::onOffrirLigne,
             onOffrirTva = viewModel::onOffrirTva,
             onSupprimerLigne = viewModel::onSupprimerLigne,
@@ -270,6 +272,8 @@ fun EcranDevis(
     onAjouterPrestation: (Prestation) -> Unit,
     onCreerPrestation: (Prestation) -> Unit,
     catalogue: Map<CategoriePrestation, List<Prestation>>,
+    /** Le nombre d'unités intérieures de la machine visée : 1 pour un monosplit. */
+    unitesVisees: Int,
     onOffrirLigne: (LigneDevis) -> Unit,
     onOffrirTva: () -> Unit,
     onSupprimerLigne: (String) -> Unit,
@@ -406,6 +410,7 @@ fun EcranDevis(
             dejaAuDevis = devis.lignes.map { it.designation }.toSet(),
             onChoisir = onAjouterPrestation,
             onCreer = onCreerPrestation,
+            unitesVisees = unitesVisees,
             onFermer = { catalogueOuvert = false },
         )
     }
@@ -667,6 +672,7 @@ private fun FeuilleCatalogue(
     dejaAuDevis: Set<String>,
     onChoisir: (Prestation) -> Unit,
     onCreer: (Prestation) -> Unit,
+    unitesVisees: Int,
     onFermer: () -> Unit,
 ) {
     // `null` vaut « toutes les familles » : c'est ce qu'on veut en ouvrant,
@@ -683,6 +689,15 @@ private fun FeuilleCatalogue(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(text = "Catalogue", style = MaterialTheme.typography.titleLarge)
+
+            // Dit avant de choisir, et non découvert après : une quantité qui
+            // s'affiche à 3 sans explication se lit comme une erreur de saisie.
+            if (unitesVisees > 1) {
+                Encart(
+                    texte = "$unitesVisees unités intérieures : les prestations comptées " +
+                        "par unité arriveront avec cette quantité, modifiable ensuite.",
+                )
+            }
 
             if (catalogue.isEmpty()) {
                 Encart(
@@ -804,6 +819,19 @@ private fun LignePrestation(
     couleurDeja: Color,
     onChoisir: () -> Unit,
 ) {
+    // « par unité » se lit sur la ligne du catalogue et pas seulement dans sa
+    // boîte d'édition : c'est ce qui explique la quantité pré-remplie.
+    val detail = buildString {
+        append(categorie.libelle)
+        append(" · ")
+        if (prestation.tarifee) {
+            append(Nombres.enEuros(prestation.prixUnitaire))
+            if (prestation.unite.isNotBlank()) append(" / ${prestation.unite}")
+        } else {
+            append("prix à renseigner")
+        }
+        if (prestation.parUnite) append(" · par unité")
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -823,12 +851,7 @@ private fun LignePrestation(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (prestation.tarifee) {
-                        "${categorie.libelle} · ${Nombres.enEuros(prestation.prixUnitaire)}" +
-                            prestation.unite.let { if (it.isBlank()) "" else " / $it" }
-                    } else {
-                        "${categorie.libelle} · prix à renseigner"
-                    },
+                    text = detail,
                     style = StyleChiffrePetit,
                     color = if (prestation.tarifee) {
                         MaterialTheme.colorScheme.onSurfaceVariant

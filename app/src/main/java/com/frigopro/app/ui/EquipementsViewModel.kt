@@ -12,6 +12,7 @@ import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.Photo
@@ -31,8 +32,16 @@ import kotlinx.coroutines.launch
 /** Ce qu'une boîte de dialogue du parc demande. Une seule à la fois, d'où le type unique. */
 sealed interface DialogueEquipement {
 
-    /** Inscrire une machine chez ce client. */
-    data class Creation(val clientId: String) : DialogueEquipement
+    /**
+     * Inscrire une machine chez ce client, ou une unité intérieure sous un
+     * groupe quand [parent] est donné.
+     *
+     * Le même cas sert les deux : nommer et refuser un doublon se font de la même
+     * façon, seul le vocabulaire change. Ce qui diffère est le périmètre du
+     * doublon — chez le client pour un groupe, dans le groupe pour une unité —, et
+     * c'est l'écran qui le tranche.
+     */
+    data class Creation(val clientId: String, val parent: Equipement? = null) : DialogueEquipement
 
     data class Renommage(val equipement: Equipement) : DialogueEquipement
 
@@ -62,11 +71,60 @@ class EquipementsViewModel(
             initialValue = emptyList(),
         )
 
+    /**
+     * Le parc rangé par groupe : c'est ce que le carnet montre.
+     *
+     * Un bi-split est **un** appareil chez le client et non trois lignes : le
+     * compter comme trois machines donnerait un parc faux, et mettrait les unités
+     * au même rang que le groupe dont elles dépendent.
+     */
+    val groupes: StateFlow<List<GroupeMachines>> = equipements.parGroupe
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
     private val _ouverte = MutableStateFlow<String?>(null)
 
     /** Machine dont la fiche est ouverte, ou `null` quand l'écran montre le carnet. */
     val ouverte: StateFlow<Equipement?> = combine(parc, _ouverte) { liste, id ->
         liste.firstOrNull { it.id == id }
+    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = null,
+        )
+
+    /**
+     * Les unités intérieures de la machine ouverte, vide si elle n'en a pas — ou
+     * si c'est elle-même une unité : la hiérarchie est **à un seul niveau**, une
+     * unité ne porte pas d'unité. Le modèle l'autoriserait (`parentId` est libre),
+     * et c'est ici qu'on s'interdit de s'en servir : un arbre de profondeur
+     * quelconque demanderait un écran qui sache le parcourir, pour un besoin qui
+     * n'existe pas — un split se branche sur un groupe, pas sur un autre split.
+     */
+    val unitesOuvertes: StateFlow<List<Equipement>> = combine(parc, _ouverte) { liste, id ->
+        val ouverte = liste.firstOrNull { it.id == id }
+        if (ouverte == null || ouverte.estUnite) emptyList() else liste.filter { it.parentId == id }
+    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    /**
+     * Le groupe de la machine ouverte, quand celle-ci est une unité.
+     *
+     * La fiche d'une unité doit dire de quoi elle dépend : « Salon » tout seul ne
+     * se retrouve pas dans un parc de vingt machines, et on ouvre une unité pour
+     * la photographier sans perdre le fil de l'appareil auquel elle appartient.
+     */
+    val groupeOuvert: StateFlow<Equipement?> = combine(parc, _ouverte) { liste, id ->
+        val parent = liste.firstOrNull { it.id == id }?.parentId
+        parent?.let { identifiant -> liste.firstOrNull { it.id == identifiant } }
     }
         .stateIn(
             scope = viewModelScope,
@@ -133,6 +191,18 @@ class EquipementsViewModel(
         _dialogue.value = DialogueEquipement.Creation(clientId)
     }
 
+    /**
+     * Ajoute une unité intérieure au groupe ouvert.
+     *
+     * Poser un bi-split, c'est un groupe extérieur et deux unités : chacune se
+     * nomme — « Salon », « Chambre » — et se photographie pour elle-même, parce
+     * que c'est une unité précise qui fuit ou qui encrasse son filtre, pas
+     * « l'installation ».
+     */
+    fun onAjouterUnite(groupe: Equipement) {
+        _dialogue.value = DialogueEquipement.Creation(groupe.clientId, parent = groupe)
+    }
+
     fun onRenommerMachine(equipement: Equipement) {
         _dialogue.value = DialogueEquipement.Renommage(equipement)
     }
@@ -153,8 +223,14 @@ class EquipementsViewModel(
         _dialogue.value = null
         viewModelScope.launch {
             when (ouvert) {
-                is DialogueEquipement.Creation ->
-                    equipements.trouverOuCreer(ouvert.clientId, nom)
+                is DialogueEquipement.Creation -> {
+                    val parent = ouvert.parent
+                    if (parent == null) {
+                        equipements.trouverOuCreer(ouvert.clientId, nom)
+                    } else {
+                        equipements.ajouterUnite(parent, nom)
+                    }
+                }
 
                 is DialogueEquipement.Renommage ->
                     equipements.enregistrer(ouvert.equipement.copy(nom = nom))

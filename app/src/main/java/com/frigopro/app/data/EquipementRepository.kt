@@ -77,6 +77,26 @@ class EquipementRepository(
     }
 
     /**
+     * Ajoute une unité intérieure à un groupe.
+     *
+     * Distincte de [trouverOuCreer], qui cherche par nom chez un client : deux
+     * unités peuvent légitimement s'appeler « Salon » chez le même client si elles
+     * pendent de deux groupes différents, et réutiliser la recherche par nom
+     * rattacherait la seconde au premier groupe. Le doublon qui compte ici est
+     * celui au sein du groupe, et c'est l'écran qui le refuse — là où il peut le
+     * dire.
+     *
+     * L'unité **hérite du client** de son groupe : elle ne peut pas appartenir à
+     * quelqu'un d'autre, et le lui demander serait une question sans réponse
+     * possible.
+     */
+    suspend fun ajouterUnite(groupe: Equipement, nom: String): Equipement =
+        enregistrer(Equipement(clientId = groupe.clientId, parentId = groupe.id, nom = nom))
+
+    /** Les unités d'un groupe, pour qui n'observe pas tout le parc. */
+    suspend fun unitesDe(groupeId: String): List<Equipement> = dao.unitesDe(groupeId)
+
+    /**
      * Retire la machine du parc, avec ses photos. Les interventions qui la
      * désignaient gardent son nom et perdent le lien : une tournée passée dit
      * toujours sur quoi on est intervenu.

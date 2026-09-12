@@ -391,7 +391,8 @@ private fun LignePrestationReglages(prestation: Prestation, onModifier: () -> Un
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = prestation.categorie.libelle,
+                    text = prestation.categorie.libelle +
+                        if (prestation.parUnite) " · par unité" else "",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

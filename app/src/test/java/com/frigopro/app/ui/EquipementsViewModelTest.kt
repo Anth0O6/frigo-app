@@ -209,6 +209,107 @@ class EquipementsViewModelTest {
         assertTrue(daoEquipements.contenuPhotos.isEmpty())
     }
 
+    /**
+     * Un bi-split, c'est un groupe et deux unités. L'unité hérite du client de son
+     * groupe : lui en demander un autre serait une question sans réponse possible.
+     */
+    @Test
+    fun `une unite rejoint son groupe, et le client avec`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onAjouterMachine("cl-1")
+        viewModel.onValiderNom("Groupe Daikin")
+        advanceUntilIdle()
+        val groupe = daoEquipements.contenu.single()
+
+        viewModel.onAjouterUnite(groupe)
+        viewModel.onValiderNom("  Salon ")
+        advanceUntilIdle()
+
+        val unite = daoEquipements.contenu.single { it.id != groupe.id }
+        assertEquals("Salon", unite.nom)
+        assertEquals(groupe.id, unite.parentId)
+        assertEquals("cl-1", unite.clientId)
+        assertTrue(unite.estUnite)
+    }
+
+    /**
+     * Le carnet montre des **groupes** : un bi-split est un appareil chez le
+     * client, pas trois lignes. Le compte d'unités est dérivé, si bien qu'en
+     * ajouter une suffit à le changer partout.
+     */
+    @Test
+    fun `le parc par groupe ne compte pas les unites comme des machines`() = runTest {
+        val viewModel = creerViewModel()
+        val groupe = Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin")
+        daoEquipements.enregistrer(groupe)
+        daoEquipements.enregistrer(
+            Equipement(id = "u-1", clientId = "cl-1", parentId = "g-1", nom = "Salon"),
+        )
+        daoEquipements.enregistrer(
+            Equipement(id = "u-2", clientId = "cl-1", parentId = "g-1", nom = "Chambre"),
+        )
+        daoEquipements.enregistrer(Equipement(id = "m-1", clientId = "cl-1", nom = "Vitrine"))
+        advanceUntilIdle()
+
+        val groupes = viewModel.groupes.value
+
+        assertEquals("deux appareils, pas quatre", 2, groupes.size)
+        val biSplit = groupes.single { it.groupe.id == "g-1" }
+        assertEquals(2, biSplit.unites.size)
+        assertTrue(biSplit.multiSplit)
+        assertEquals("2 unités intérieures", biSplit.resume)
+        val monosplit = groupes.single { it.groupe.id == "m-1" }
+        assertEquals("un monosplit en a bien une", 1, monosplit.nombreUnites)
+        assertTrue(!monosplit.multiSplit)
+    }
+
+    /**
+     * La hiérarchie n'a qu'un seul niveau : une unité ouverte ne montre pas
+     * d'unités, elle montre le groupe dont elle dépend. Le modèle l'autoriserait —
+     * `parentId` est libre — et c'est ici qu'on s'interdit de s'en servir.
+     */
+    @Test
+    fun `la fiche d'une unite annonce son groupe et pas d'unites`() = runTest {
+        val viewModel = creerViewModel()
+        val groupe = Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin")
+        val unite = Equipement(id = "u-1", clientId = "cl-1", parentId = "g-1", nom = "Salon")
+        daoEquipements.enregistrer(groupe)
+        daoEquipements.enregistrer(unite)
+        advanceUntilIdle()
+
+        viewModel.onOuvrir(groupe)
+        advanceUntilIdle()
+        assertEquals(listOf("Salon"), viewModel.unitesOuvertes.value.map { it.nom })
+        assertNull("un groupe ne dépend de rien", viewModel.groupeOuvert.value)
+
+        viewModel.onOuvrir(unite)
+        advanceUntilIdle()
+        assertTrue("une unité ne porte pas d'unité", viewModel.unitesOuvertes.value.isEmpty())
+        assertEquals("Groupe Daikin", viewModel.groupeOuvert.value?.nom)
+    }
+
+    /**
+     * Supprimer un groupe emporte ses unités, leurs photos comprises : une fiche
+     * d'unité sans groupe ne se rattacherait à rien, et ses fichiers resteraient
+     * sur le téléphone sans qu'aucun écran ne puisse plus les montrer.
+     */
+    @Test
+    fun `supprimer un groupe emporte ses unites`() = runTest {
+        val viewModel = creerViewModel()
+        val groupe = Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin")
+        daoEquipements.enregistrer(groupe)
+        daoEquipements.enregistrer(
+            Equipement(id = "u-1", clientId = "cl-1", parentId = "g-1", nom = "Salon"),
+        )
+        advanceUntilIdle()
+
+        viewModel.onSupprimerMachine(groupe)
+        viewModel.onConfirmerSuppression()
+        advanceUntilIdle()
+
+        assertTrue(daoEquipements.contenu.isEmpty())
+    }
+
     private fun intervention(machine: Equipement): Intervention = Intervention(
         id = "id-1",
         date = LocalDate.of(2026, 3, 9),
@@ -237,7 +338,10 @@ class EquipementsViewModelTest {
         )
         listOf(
             viewModel.parc,
+            viewModel.groupes,
             viewModel.ouverte,
+            viewModel.unitesOuvertes,
+            viewModel.groupeOuvert,
             viewModel.photosOuvertes,
             viewModel.historique,
         ).forEach { flux -> backgroundScope.launch(ordonnanceur) { flux.collect { } } }

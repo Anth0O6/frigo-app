@@ -13,6 +13,7 @@ import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
 import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.DevisRepository
+import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -69,6 +71,7 @@ class DevisViewModel(
     private val clients: ClientRepository,
     private val parametres: ParametresRepository,
     private val prestations: PrestationRepository,
+    private val equipements: EquipementRepository,
 ) : ViewModel() {
 
     /**
@@ -113,16 +116,40 @@ class DevisViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), null)
 
     /**
+     * Le nombre d'unités intérieures de la machine visée par le devis.
+     *
+     * Vaut 1 quand le devis ne désigne aucune machine, ou qu'elle n'a pas d'unité :
+     * un monosplit en a bien une, confondue avec son groupe, et traiter ce cas à
+     * part aurait demandé deux chemins de calcul pour le même résultat. Le compte
+     * est **dérivé** du parc et non stocké : ajouter une unité change ce que le
+     * prochain devis propose, sans qu'on ait à y penser.
+     *
+     * Le devis visant une unité plutôt qu'un groupe compte pour une : on chiffre
+     * alors ce qu'on fait sur cette unité-là.
+     */
+    val unitesVisees: StateFlow<Int> = combine(complet, equipements.parGroupe) { ouvert, parc ->
+        val machine = ouvert?.devis?.equipementId ?: return@combine 1
+        parc.firstOrNull { it.groupe.id == machine }?.nombreUnites ?: 1
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), 1)
+
+    /**
      * Ajoute une prestation du catalogue au devis ouvert.
      *
      * L'intitulé, l'unité et le prix sont **recopiés** sur la ligne, comme
      * partout ailleurs dans le projet : retirer une prestation du catalogue, ou
      * en changer le tarif, ne doit rien changer à un devis déjà envoyé.
+     *
+     * Une prestation comptée par unité arrive avec la quantité **pré-remplie** du
+     * nombre d'unités du groupe, et pas davantage : la ligne reste modifiable,
+     * parce qu'une deuxième unité au même étage ne coûte pas le même temps qu'une
+     * deuxième unité trois étages plus haut. Proposer est utile, imposer serait
+     * faux.
      */
     fun onAjouterPrestation(prestation: Prestation) {
         onAjouterLigne(
             designation = prestation.designation,
-            quantite = 1.0,
+            quantite = if (prestation.parUnite) unitesVisees.value.toDouble() else 1.0,
             unite = prestation.unite,
             prixUnitaire = prestation.prixUnitaire,
         )
@@ -241,6 +268,7 @@ class DevisViewModel(
                     conteneur.clients,
                     conteneur.parametres,
                     conteneur.prestations,
+                    conteneur.equipements,
                 )
             }
         }
