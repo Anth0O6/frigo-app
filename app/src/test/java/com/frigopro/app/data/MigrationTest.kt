@@ -561,6 +561,14 @@ class MigrationTest {
                 "INSERT INTO `lignes_devis` (`id`, `devisId`, `designation`, `quantite`, " +
                     "`unite`, `prixUnitaire`, `rang`) " +
                     "VALUES ('lig-1', 'dev-1', 'Installation split mural', 1.0, 'unité', 1450.0, 0)",
+                // Une vraie base de la version 8 porte la ligne unique des
+                // réglages : MIGRATION_6_7 l'y a insérée. Sans elle, le test
+                // interrogerait une table vide et échouerait pour une raison qui
+                // n'a rien à voir avec la migration éprouvée.
+                "INSERT INTO `parametres` " +
+                    "(`id`, `technicien`, `attestation`, `themeSombre`, `modeGants`, " +
+                    "`chronoAuto`, `tauxHoraire`, `tauxTva`, `derniereSauvegardeLe`, `modifieLe`) " +
+                    "VALUES (1, 'Anthony Ouvrard', 'ATT-2024-118', 1, 0, 0, 68.0, 20.0, NULL, 7)",
             ),
         )
 
@@ -606,9 +614,15 @@ class MigrationTest {
                 1,
                 curseur.getInt(0),
             )
-            assertEquals("", curseur.getString(1))
+            assertEquals("une entreprise non renseignée reste vide", "", curseur.getString(1))
             assertEquals("", curseur.getString(2))
-            assertTrue(curseur.isNull(3))
+            assertTrue("et aucun logo", curseur.isNull(3))
+        }
+
+        db.query("SELECT `technicien`, `tauxHoraire` FROM `parametres`").use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("les réglages déjà saisis survivent", "Anthony Ouvrard", curseur.getString(0))
+            assertEquals(68.0, curseur.getDouble(1), 0.001)
         }
 
         db.query("SELECT * FROM `verifications_fluide`").use { curseur ->
