@@ -14,6 +14,7 @@ import com.frigopro.app.data.SauvegardeRepository
 import com.frigopro.app.data.StockagePhotos
 import com.frigopro.app.data.SuiviRepository
 import com.frigopro.app.data.TypeInterventionRepository
+import com.frigopro.app.data.VerificationFluideRepository
 
 /**
  * Assemblage manuel des dépendances de l'application.
@@ -52,6 +53,11 @@ class ConteneurApp(private val contexte: Context) {
     /** Le catalogue de prestations, d'où se construisent les devis. */
     val prestations: PrestationRepository by lazy { PrestationRepository(base.prestationDao()) }
 
+    /** Les fluides dont l'utilisateur a contrôlé la courbe de saturation. */
+    val verificationsFluide: VerificationFluideRepository by lazy {
+        VerificationFluideRepository(base.verificationFluideDao())
+    }
+
     val sauvegardes: SauvegardeRepository by lazy {
         SauvegardeRepository(
             base.interventionDao(),
@@ -63,6 +69,7 @@ class ConteneurApp(private val contexte: Context) {
             base.parametresDao(),
             base.technicienDao(),
             base.prestationDao(),
+            base.verificationFluideDao(),
         )
     }
 

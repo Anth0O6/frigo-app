@@ -317,3 +317,28 @@ class FauxPrestationDao : PrestationDao {
         lignes.update { liste -> liste.filterNot { it.id == id } }
     }
 }
+
+/** Les vérifications de courbe, en mémoire. */
+class FauxVerificationFluideDao : VerificationFluideDao {
+
+    private val lignes = MutableStateFlow<List<VerificationFluide>>(emptyList())
+
+    val contenu: List<VerificationFluide> get() = lignes.value
+
+    override fun observerToutes(): Flow<List<VerificationFluide>> = lignes
+
+    override suspend fun toutes(): List<VerificationFluide> = lignes.value
+
+    override suspend fun enregistrer(verification: VerificationFluide) {
+        lignes.update { liste -> liste.filterNot { it.fluide == verification.fluide } + verification }
+    }
+
+    override suspend fun enregistrerToutes(verifications: List<VerificationFluide>) {
+        val noms = verifications.map { it.fluide }.toSet()
+        lignes.update { liste -> liste.filterNot { it.fluide in noms } + verifications }
+    }
+
+    override suspend fun effacer(fluide: String) {
+        lignes.update { liste -> liste.filterNot { it.fluide == fluide } }
+    }
+}

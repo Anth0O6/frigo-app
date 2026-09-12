@@ -412,3 +412,56 @@ val MIGRATION_7_8: Migration = object : Migration(7, 8) {
         db.execSQL(SQL_CATALOGUE_INITIAL)
     }
 }
+
+/**
+ * Les gestes commerciaux, le multi-split, le régime de TVA et l'identité de
+ * l'entreprise.
+ *
+ * Tout y est ajout : aucune colonne ne disparaît, aucune table ne se reconstruit.
+ * Les valeurs par défaut décrivent exactement l'état antérieur — aucune ligne
+ * offerte, aucune TVA offerte, aucune unité intérieure, une entreprise assujettie
+ * et sans en-tête renseignée.
+ *
+ * `assujettiTva` arrive à 1 et non à 0, et le choix compte : supposer la
+ * franchise en base ferait disparaître la TVA des devis d'un artisan qui la
+ * facture, alors que l'inverse — afficher une TVA à quelqu'un qui n'y est pas
+ * assujetti — se remarque à la première lecture du document.
+ *
+ * `parentId` est nullable et **sans clé étrangère**, pour les raisons dites en
+ * [MIGRATION_2_3] : SQLite ne sait pas ajouter une contrainte à une table
+ * existante sans la reconstruire, et une restauration de sauvegarde écrit ligne
+ * après ligne — une contrainte immédiate rejetterait une unité arrivant avant son
+ * groupe.
+ */
+val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // — Le multi-split : une unité intérieure désigne son groupe —
+        db.execSQL("ALTER TABLE `equipements` ADD COLUMN `parentId` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_equipements_parentId` ON `equipements` (`parentId`)")
+
+        // — Une prestation qui se compte par unité intérieure —
+        db.execSQL("ALTER TABLE `prestations` ADD COLUMN `parUnite` INTEGER NOT NULL DEFAULT 0")
+
+        // — Les gestes commerciaux —
+        db.execSQL("ALTER TABLE `lignes_devis` ADD COLUMN `offerte` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `devis` ADD COLUMN `tvaOfferte` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `devis` ADD COLUMN `assujettiTva` INTEGER NOT NULL DEFAULT 1")
+
+        // — Le régime et l'en-tête, sur la ligne unique des réglages —
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `assujettiTva` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `entreprise` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `entrepriseAdresse` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `entrepriseTelephone` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `entrepriseEmail` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `entrepriseSiret` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `logoFichier` TEXT")
+
+        // — Qui a contrôlé quelle courbe de saturation —
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `verifications_fluide` (" +
+                "`fluide` TEXT NOT NULL, `verifieLe` INTEGER NOT NULL, `par` TEXT NOT NULL, " +
+                "PRIMARY KEY(`fluide`))",
+        )
+    }
+}

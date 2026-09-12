@@ -33,6 +33,25 @@ class EquipementRepository(
         liste.sortedWith { a, b -> collateur.compare(a.nom, b.nom) }
     }
 
+    /**
+     * Le parc rangé par groupe : chaque groupe, et ses unités intérieures.
+     *
+     * Le **nombre d'unités se déduit** de la table et ne s'y stocke pas. Un
+     * compteur `nombreUnites` aurait été plus court, et aurait dérivé à la
+     * première unité ajoutée sans passer par l'écran qui l'incrémente — une
+     * restauration de sauvegarde, par exemple. Ici, ajouter une unité suffit à
+     * changer le compte, partout.
+     *
+     * Une machine seule est un groupe sans unité : l'écran n'a donc pas deux cas
+     * à traiter, et le multi-split n'est que le cas où la liste n'est pas vide.
+     */
+    val parGroupe: Flow<List<GroupeMachines>> = equipements.map { liste ->
+        val unitesParParent = liste.filter { it.estUnite }.groupBy { it.parentId }
+        liste.filterNot { it.estUnite }.map { groupe ->
+            GroupeMachines(groupe = groupe, unites = unitesParParent[groupe.id].orEmpty())
+        }
+    }
+
     /** Les photos d'une machine, dans l'ordre où elles ont été prises. */
     fun observerPhotos(equipementId: String): Flow<List<Photo>> = dao.observerPhotos(equipementId)
 
@@ -63,7 +82,11 @@ class EquipementRepository(
      * toujours sur quoi on est intervenu.
      */
     suspend fun supprimer(id: String) {
-        val photos = dao.photosDe(id)
+        // Les photos des unités intérieures avec celles du groupe : le DAO les
+        // emporte en base (voir [EquipementDao.supprimer]), et sans cette
+        // collecte leurs fichiers resteraient sur le téléphone sans qu'aucun
+        // écran ne puisse plus les montrer ni les effacer.
+        val photos = dao.photosDe(id) + dao.unitesDe(id).flatMap { dao.photosDe(it.id) }
         dao.supprimer(id)
         photos.forEach { stockage.supprimer(it.fichier) }
     }

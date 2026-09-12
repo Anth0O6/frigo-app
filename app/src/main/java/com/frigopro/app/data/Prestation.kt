@@ -92,6 +92,19 @@ data class Prestation(
     val categorie: CategoriePrestation,
     val prixUnitaire: Double = 0.0,
     val unite: String = "",
+    /**
+     * La prestation se compte **par unité intérieure** du groupe.
+     *
+     * Poser un split, c'est un groupe extérieur et une unité ; poser un bi-split,
+     * c'est le même groupe et deux unités, et la main-d'œuvre double sans que le
+     * forfait de mise en service double. Les deux cas cohabitent donc dans le
+     * catalogue, et c'est cette case qui les distingue.
+     *
+     * Elle pré-remplit la quantité et rien de plus : la ligne du devis reste
+     * modifiable, parce qu'une deuxième unité au même étage ne coûte pas le même
+     * temps qu'une deuxième unité trois étages plus haut.
+     */
+    val parUnite: Boolean = false,
     val rang: Int = 0,
     val modifieLe: Instant = Instant.EPOCH,
 ) {

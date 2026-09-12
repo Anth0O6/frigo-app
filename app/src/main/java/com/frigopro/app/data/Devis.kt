@@ -52,6 +52,24 @@ data class Devis(
     val objet: String = "",
     val statut: StatutDevis = StatutDevis.BROUILLON,
     val tauxTva: Double = 20.0,
+    /**
+     * La TVA est **offerte** : une remise égale à son montant, et le client paie
+     * le hors taxes.
+     *
+     * C'est une remise et non un taux ramené à zéro, et la distinction n'est pas
+     * cosmétique : la TVA reste due à l'État, et un document qui annoncerait
+     * « TVA 0 % » alors qu'on y est assujetti serait faux. Le devis porte donc la
+     * TVA à son taux, puis la remise en dessous.
+     */
+    val tvaOfferte: Boolean = false,
+    /**
+     * L'entreprise est assujettie à la TVA, recopié des réglages à la création.
+     *
+     * Recopié et non lu : même raison que [tauxTva]. Un devis envoyé en franchise
+     * en base ne doit pas se mettre à afficher de la TVA le jour où l'entreprise
+     * franchit le seuil — c'est le document d'alors qui fait foi.
+     */
+    val assujettiTva: Boolean = true,
     val creeLe: LocalDate? = null,
     val valableJusquau: LocalDate? = null,
     val modifieLe: Instant = Instant.EPOCH,
@@ -78,11 +96,24 @@ data class LigneDevis(
     val quantite: Double = 1.0,
     val unite: String = "",
     val prixUnitaire: Double = 0.0,
+    /**
+     * La ligne est **offerte** : elle ne compte pas dans le total.
+     *
+     * Le prix reste porté par la ligne, et c'est tout l'intérêt : un geste
+     * commercial qu'on ne voit pas n'est pas un geste commercial. Le devis
+     * affiche le prix barré et « offert », si bien que le client lit ce qu'on lui
+     * a donné. Supprimer la ligne aurait été plus simple et aurait effacé
+     * l'argument de vente.
+     */
+    val offerte: Boolean = false,
     val rang: Int = 0,
 ) {
 
-    /** Montant hors taxes de la ligne. */
-    val montant: Double get() = quantite * prixUnitaire
+    /** Montant hors taxes de la ligne — nul si elle est offerte. */
+    val montant: Double get() = if (offerte) 0.0 else quantite * prixUnitaire
+
+    /** Ce que la ligne aurait coûté : c'est ce qui se barre sur le document. */
+    val montantAvantGeste: Double get() = quantite * prixUnitaire
 }
 
 /**
@@ -103,11 +134,34 @@ data class DevisComplet(
     /** Total hors taxes. */
     val totalHt: Double get() = lignes.sumOf { it.montant.auCentime() }
 
+    /**
+     * La TVA due, avant tout geste commercial.
+     *
+     * Nulle en franchise en base : il n'y a alors pas de TVA à afficher, et le
+     * document porte la mention de l'article 293 B du CGI à la place.
+     */
+    val tvaDue: Double
+        get() = if (!devis.assujettiTva) 0.0 else (totalHt * devis.tauxTva / 100.0).auCentime()
+
+    /** La remise quand la TVA est offerte : son montant exact, pas un autre. */
+    val remiseTva: Double get() = if (devis.tvaOfferte) tvaDue else 0.0
+
+    /**
+     * Ce qui a été donné : les lignes offertes, et la TVA si elle l'est.
+     *
+     * Affiché au technicien et non au client : c'est le chiffre qui dit ce que le
+     * geste commercial a coûté, et il se regarde avant d'envoyer, pas après.
+     */
+    val gestesCommerciaux: Double
+        get() = (lignes.filter { it.offerte }.sumOf { it.montantAvantGeste.auCentime() } + remiseTva)
+            .auCentime()
+
     /** Montant de la TVA. */
-    val tva: Double get() = (totalHt * devis.tauxTva / 100.0).auCentime()
+    @Deprecated("Remplacé par tvaDue, qui tient compte de la franchise en base.")
+    val tva: Double get() = tvaDue
 
     /** Total toutes taxes comprises. */
-    val totalTtc: Double get() = (totalHt + tva).auCentime()
+    val totalTtc: Double get() = (totalHt + tvaDue - remiseTva).auCentime()
 }
 
 /**
@@ -128,7 +182,12 @@ data class TotalDevis(val devisId: String, val montant: Double)
  */
 data class DevisChiffre(val devis: Devis, val totalHt: Double) {
 
-    val totalTtc: Double get() = (totalHt * (1 + devis.tauxTva / 100)).auCentime()
+    val totalTtc: Double
+        get() = when {
+            // Franchise en base, ou TVA offerte : le client paie le hors taxes.
+            !devis.assujettiTva || devis.tvaOfferte -> totalHt
+            else -> (totalHt * (1 + devis.tauxTva / 100)).auCentime()
+        }
 
     /** Un devis qui attend une réponse : c'est ce que comptent les compteurs. */
     val enAttente: Boolean
