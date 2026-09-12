@@ -38,6 +38,37 @@ data class Sauvegarde(
     val checklists: List<PointChecklistSauvegarde> = emptyList(),
     val prestations: List<PrestationSauvegarde> = emptyList(),
     val verificationsFluide: List<VerificationFluideSauvegarde> = emptyList(),
+    val trajets: List<TrajetSauvegarde> = emptyList(),
+)
+
+/**
+ * Le déplacement facturé d'un devis.
+ *
+ * Sauvegardé, et il faut le dire : ce n'est pas un chiffre qu'on retrouve. Un
+ * itinéraire a été calculé un jour donné, par un service qui ne rendra pas
+ * forcément le même résultat six mois plus tard — et si le devis est parti chez
+ * le client, c'est *ce* chiffre-là qui fait foi. Le perdre obligerait à
+ * rappeler pour savoir ce qu'on avait facturé.
+ *
+ * [origine] et [calculeLe] partent avec le reste, pour la même raison : « calculé
+ * le 12 mars » et « saisi à la main » ne se valent pas devant un client qui
+ * discute la note.
+ */
+@Serializable
+data class TrajetSauvegarde(
+    val id: String,
+    val devisId: String,
+    val depart: String = "",
+    val arrivee: String = "",
+    val distanceKm: Double = 0.0,
+    val dureeMinutes: Int = 0,
+    val peages: Double = 0.0,
+    val peagesConnus: Boolean = false,
+    val allerRetour: Boolean = false,
+    val offert: Boolean = false,
+    val origine: String = "SAISI",
+    val calculeLe: Long? = null,
+    val modifieLe: Long = 0L,
 )
 
 /**
@@ -214,6 +245,14 @@ data class LigneDevisSauvegarde(
     val unite: String = "",
     val prixUnitaire: Double = 0.0,
     val offerte: Boolean = false,
+    /**
+     * La ligne vient du calcul du déplacement.
+     *
+     * Sans elle, une restauration rendrait indiscernables les lignes du trajet et
+     * celles saisies à la main : le premier recalcul du déplacement aurait alors
+     * effacé les secondes, ou laissé les premières en double.
+     */
+    val deplacement: Boolean = false,
     val rang: Int = 0,
 )
 
@@ -245,6 +284,12 @@ data class ParametresSauvegarde(
      * sans en-tête.
      */
     val logoFichier: String? = null,
+    val adresseDepart: String = "",
+    val modeDeplacement: String = "KM",
+    val prixKm: Double = 0.0,
+    val prixHeureTrajet: Double = 0.0,
+    val minimumDeplacement: Double = 0.0,
+    val refacturerPeages: Boolean = true,
     val modifieLe: Long = 0L,
 )
 
@@ -287,7 +332,18 @@ data class PrestationSauvegarde(
 /**
  * Version courante du format de fichier.
  *
- * Le format 5 ajoute les techniciens, la checklist des interventions et le
+ * Le format 7 ajoute la facturation du déplacement : le trajet de chaque devis,
+ * le marqueur des lignes qu'il a produites, et le tarif kilométrique.
+ *
+ * **La clé du service d'itinéraire n'y est pas**, et c'est le seul réglage
+ * volontairement laissé de côté. Une sauvegarde protège ce qui ne se retrouve
+ * pas ; une clé d'API, elle, se recopie en trente secondes depuis la console qui
+ * l'a émise, et elle est facturée à l'usage — une archive déposée sur un espace
+ * partagé se serait mise à faire payer son propriétaire. Le tarif, lui, part
+ * avec le reste : c'est une décision d'entreprise, et la retrouver sur un
+ * téléphone neuf est exactement ce qu'on attend d'une restauration.
+ *
+ * Le format 5 avait ajouté les techniciens, la checklist des interventions et le
  * catalogue de prestations.
  *
  * Le format 4 avait ajouté ce qui s'est passé sur place — temps chronométré,
@@ -299,7 +355,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 6
+const val FORMAT_COURANT: Int = 7
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -648,6 +704,7 @@ internal fun LigneDevis.versSauvegarde(): LigneDevisSauvegarde = LigneDevisSauve
     unite = unite,
     prixUnitaire = prixUnitaire,
     offerte = offerte,
+    deplacement = deplacement,
     rang = rang,
 )
 
@@ -659,6 +716,7 @@ internal fun LigneDevisSauvegarde.versLigne(): LigneDevis = LigneDevis(
     unite = unite,
     prixUnitaire = prixUnitaire,
     offerte = offerte,
+    deplacement = deplacement,
     rang = rang,
 )
 
@@ -677,28 +735,94 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     entrepriseEmail = entrepriseEmail,
     entrepriseSiret = entrepriseSiret,
     logoFichier = logoFichier,
+    adresseDepart = adresseDepart,
+    modeDeplacement = modeDeplacement.name,
+    prixKm = prixKm,
+    prixHeureTrajet = prixHeureTrajet,
+    minimumDeplacement = minimumDeplacement,
+    refacturerPeages = refacturerPeages,
+    // `cleItineraire` n'est volontairement pas exportée : voir [FORMAT_COURANT].
     modifieLe = modifieLe.toEpochMilli(),
 )
 
-internal fun ParametresSauvegarde.versParametres(): Parametres = Parametres(
-    technicien = technicien,
-    attestation = attestation,
-    themeSombre = themeSombre,
-    modeGants = modeGants,
-    chronoAuto = chronoAuto,
-    tauxHoraire = tauxHoraire,
-    tauxTva = tauxTva,
-    assujettiTva = assujettiTva,
-    entreprise = entreprise,
-    entrepriseAdresse = entrepriseAdresse,
-    entrepriseTelephone = entrepriseTelephone,
-    entrepriseEmail = entrepriseEmail,
-    entrepriseSiret = entrepriseSiret,
-    // Le nom vient de l'extérieur : même rempart que pour une photo. Une archive
-    // nommant le logo `../databases/frigopro.db` ferait écrire hors du dossier.
-    logoFichier = logoFichier?.let { StockagePhotos.nomSur(it) },
-    modifieLe = Instant.ofEpochMilli(modifieLe),
+/**
+ * Les réglages du fichier, ou `null` si l'un d'eux nomme une valeur inconnue.
+ *
+ * @param cleActuelle la clé d'itinéraire déjà présente sur ce téléphone. Le
+ *   fichier ne la transporte pas (voir [FORMAT_COURANT]), et la restauration ne
+ *   doit pas l'effacer : restaurer une sauvegarde par-dessus une installation en
+ *   service aurait sinon coupé le calcul d'itinéraire sans rien dire.
+ */
+internal fun ParametresSauvegarde.versParametres(cleActuelle: String = ""): Parametres? {
+    // Un mode inconnu **fait refuser le fichier**, au même titre qu'un statut :
+    // c'est une valeur fixe de l'application, pas un intitulé libre. Le ramener à
+    // `KM` par défaut aurait facturé au kilomètre un artisan qui facture à
+    // l'heure, sans que rien ne le signale.
+    val mode = ModeDeplacement.entries.firstOrNull { it.name == modeDeplacement }
+        ?: return null
+    return Parametres(
+        technicien = technicien,
+        attestation = attestation,
+        themeSombre = themeSombre,
+        modeGants = modeGants,
+        chronoAuto = chronoAuto,
+        tauxHoraire = tauxHoraire,
+        tauxTva = tauxTva,
+        assujettiTva = assujettiTva,
+        entreprise = entreprise,
+        entrepriseAdresse = entrepriseAdresse,
+        entrepriseTelephone = entrepriseTelephone,
+        entrepriseEmail = entrepriseEmail,
+        entrepriseSiret = entrepriseSiret,
+        // Le nom vient de l'extérieur : même rempart que pour une photo. Une archive
+        // nommant le logo `../databases/frigopro.db` ferait écrire hors du dossier.
+        logoFichier = logoFichier?.let { StockagePhotos.nomSur(it) },
+        adresseDepart = adresseDepart,
+        modeDeplacement = mode,
+        prixKm = prixKm,
+        prixHeureTrajet = prixHeureTrajet,
+        minimumDeplacement = minimumDeplacement,
+        refacturerPeages = refacturerPeages,
+        cleItineraire = cleActuelle,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun Trajet.versSauvegarde(): TrajetSauvegarde = TrajetSauvegarde(
+    id = id,
+    devisId = devisId,
+    depart = depart,
+    arrivee = arrivee,
+    distanceKm = distanceKm,
+    dureeMinutes = dureeMinutes,
+    peages = peages,
+    peagesConnus = peagesConnus,
+    allerRetour = allerRetour,
+    offert = offert,
+    origine = origine.name,
+    calculeLe = calculeLe?.toEpochMilli(),
+    modifieLe = modifieLe.toEpochMilli(),
 )
+
+/** `null` si l'origine est inconnue : le fichier est alors refusé en entier. */
+internal fun TrajetSauvegarde.versTrajet(): Trajet? {
+    val source = OrigineTrajet.entries.firstOrNull { it.name == origine } ?: return null
+    return Trajet(
+        id = id,
+        devisId = devisId,
+        depart = depart,
+        arrivee = arrivee,
+        distanceKm = distanceKm,
+        dureeMinutes = dureeMinutes,
+        peages = peages,
+        peagesConnus = peagesConnus,
+        allerRetour = allerRetour,
+        offert = offert,
+        origine = source,
+        calculeLe = calculeLe?.let(Instant::ofEpochMilli),
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
 
 /**
  * Une date du fichier, ou `null` si elle est mal formée.

@@ -165,6 +165,46 @@ class DevisRepository(private val dao: DevisDao) {
         return basculee
     }
 
+    // — Le déplacement facturé —
+
+    /** Le trajet d'un devis, s'il en porte un. */
+    fun observerTrajet(devisId: String): Flow<Trajet?> = dao.observerTrajet(devisId)
+
+    /**
+     * Pose le trajet d'un devis et refait les lignes qu'il facture.
+     *
+     * Le tarif est passé et non lu ici : il vient des réglages, et le dépôt des
+     * devis n'a pas à connaître celui des réglages. C'est aussi ce qui rend la
+     * règle éprouvable sans base de réglages.
+     *
+     * Le trajet est horodaté comme le reste — c'est le rôle du dépôt — mais
+     * [Trajet.calculeLe], lui, n'est pas touché : il dit quand le *service* a
+     * répondu, pas quand on a coché une case, et les confondre ferait passer un
+     * trajet vieux de six mois pour un calcul du jour.
+     */
+    suspend fun enregistrerDeplacement(trajet: Trajet, tarif: TarifDeplacement): Trajet {
+        val horodate = trajet.copy(modifieLe = Instant.now())
+        dao.enregistrerDeplacement(horodate, LignesDeplacement.pour(horodate, tarif))
+        return horodate
+    }
+
+    /** Retire le déplacement d'un devis, et les lignes qu'il avait posées. */
+    suspend fun supprimerDeplacement(devisId: String) = dao.supprimerDeplacement(devisId)
+
+    /**
+     * Offre le déplacement, ou reprend le geste.
+     *
+     * Les lignes sont refaites pour que leur `offerte` suive : elles portent le
+     * geste, et c'est par elles que le total et le PDF l'apprennent. Les
+     * chiffres du trajet restent intacts — même raison que pour une ligne
+     * offerte, le montant barré est l'argument de vente.
+     */
+    suspend fun offrirDeplacement(
+        trajet: Trajet,
+        tarif: TarifDeplacement,
+        offert: Boolean,
+    ): Trajet = enregistrerDeplacement(trajet.copy(offert = offert), tarif)
+
     suspend fun supprimer(id: String) = dao.supprimer(id)
 }
 

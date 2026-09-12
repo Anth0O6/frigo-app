@@ -71,4 +71,17 @@ object Convertisseurs {
 
     @TypeConverter
     fun versStatutDevis(valeur: String?): StatutDevis? = valeur?.let(StatutDevis::valueOf)
+
+    @TypeConverter
+    fun depuisModeDeplacement(mode: ModeDeplacement?): String? = mode?.name
+
+    @TypeConverter
+    fun versModeDeplacement(valeur: String?): ModeDeplacement? =
+        valeur?.let(ModeDeplacement::valueOf)
+
+    @TypeConverter
+    fun depuisOrigineTrajet(origine: OrigineTrajet?): String? = origine?.name
+
+    @TypeConverter
+    fun versOrigineTrajet(valeur: String?): OrigineTrajet? = valeur?.let(OrigineTrajet::valueOf)
 }

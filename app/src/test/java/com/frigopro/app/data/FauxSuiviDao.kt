@@ -243,6 +243,42 @@ class FauxDevisDao : DevisDao() {
     override suspend fun effacer(id: String) {
         documents.update { liste -> liste.filterNot { it.id == id } }
     }
+
+    // — Le déplacement facturé —
+
+    private val deplacements = MutableStateFlow<List<Trajet>>(emptyList())
+
+    val contenuTrajets: List<Trajet> get() = deplacements.value
+
+    override fun observerTrajet(devisId: String): Flow<Trajet?> =
+        deplacements.map { liste -> liste.firstOrNull { it.devisId == devisId } }
+
+    override suspend fun tousLesTrajets(): List<Trajet> = deplacements.value
+
+    override suspend fun enregistrerTrajet(trajet: Trajet) {
+        deplacements.update { liste -> liste.filterNot { it.id == trajet.id } + trajet }
+    }
+
+    override suspend fun enregistrerTrajets(trajets: List<Trajet>) {
+        val identifiants = trajets.map { it.id }.toSet()
+        deplacements.update { liste -> liste.filterNot { it.id in identifiants } + trajets }
+    }
+
+    override suspend fun effacerTrajetDe(devisId: String) {
+        deplacements.update { liste -> liste.filterNot { it.devisId == devisId } }
+    }
+
+    /**
+     * Le `WHERE deplacement = 1` du vrai DAO.
+     *
+     * Recopié plutôt que déduit, pour la même raison que le `CASE WHEN offerte`
+     * ci-dessus : c'est le contrat SQL qu'on reproduit, et un faux qui filtrerait
+     * autrement ne vérifierait plus que les deux disent la même chose — ici, que
+     * recalculer un trajet n'emporte pas les lignes saisies à la main.
+     */
+    override suspend fun effacerLignesDeplacementDe(devisId: String) {
+        lignes.update { liste -> liste.filterNot { it.devisId == devisId && it.deplacement } }
+    }
 }
 
 /** La ligne unique des réglages, en mémoire. */

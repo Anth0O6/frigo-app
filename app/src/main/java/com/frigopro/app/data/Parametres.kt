@@ -73,6 +73,36 @@ data class Parametres(
      * restaurée sur un autre téléphone doit retrouver son logo.
      */
     val logoFichier: String? = null,
+    /**
+     * L'adresse d'où l'on part : le dépôt, l'atelier, le domicile.
+     *
+     * C'est le point de départ proposé pour tout nouveau trajet. Il reste
+     * modifiable trajet par trajet — une tournée ne repart pas toujours du
+     * dépôt, et le deuxième client de la journée se rejoint depuis le premier.
+     */
+    val adresseDepart: String = "",
+    val modeDeplacement: ModeDeplacement = ModeDeplacement.KM,
+    val prixKm: Double = 0.0,
+    /**
+     * Le prix d'une heure de **trajet**, distinct de [tauxHoraire].
+     *
+     * Les séparer n'est pas une subtilité comptable : conduire n'est pas
+     * intervenir, et beaucoup facturent la route moins cher que la main-d'œuvre
+     * — voire au tarif d'un aide. Les confondre aurait interdit ce choix.
+     */
+    val prixHeureTrajet: Double = 0.0,
+    val minimumDeplacement: Double = 0.0,
+    val refacturerPeages: Boolean = true,
+    /**
+     * La clé du service de routage, saisie ici et nulle part ailleurs.
+     *
+     * Elle ne peut pas vivre dans le dépôt, qui est public — même raison que la
+     * clé de signature, à ceci près que celle-ci est facturée à l'usage : une
+     * clé publiée se fait consommer par des inconnus aux frais de son
+     * propriétaire. Vide, le calcul automatique est simplement indisponible et
+     * la saisie à la main reste le chemin normal.
+     */
+    val cleItineraire: String = "",
     val derniereSauvegardeLe: Instant? = null,
     val modifieLe: Instant = Instant.EPOCH,
 ) {
@@ -90,6 +120,25 @@ data class Parametres(
 
     /** La mention qui remplace la TVA en franchise en base. */
     val mentionTva: String get() = if (assujettiTva) "" else MENTION_FRANCHISE
+
+    /**
+     * Le tarif de déplacement, rassemblé pour le calcul.
+     *
+     * Les champs sont à plat en base — une table à une ligne n'a pas besoin
+     * d'être structurée — mais le calcul, lui, reçoit un objet : c'est ce qui
+     * permet de l'éprouver sans base et sans réglages.
+     */
+    val tarifDeplacement: TarifDeplacement
+        get() = TarifDeplacement(
+            mode = modeDeplacement,
+            prixKm = prixKm,
+            prixHeure = prixHeureTrajet,
+            minimum = minimumDeplacement,
+            refacturerPeages = refacturerPeages,
+        )
+
+    /** Le calcul automatique est possible : une clé a été saisie. */
+    val itineraireDisponible: Boolean get() = cleItineraire.isNotBlank()
 
     companion object {
 
