@@ -476,6 +476,15 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `ChampChiffre`, `ChampRecherche`. La maquette répète partout les mêmes formes ;
   les nommer une fois évite qu'elles divergent écran par écran, ce qui est
   exactement ce qui arrive quand chacun recopie un `Box` et ses marges.
+  **Un champ de saisie possède son texte tant qu'il a le focus**, et ne le reprend
+  de l'état que lorsqu'il l'a perdu. Ce n'est pas une optimisation : un champ qui
+  ne reçoit qu'une `String` laisse Compose replacer le curseur au début à chaque
+  aller-retour par le ViewModel, si bien que la deuxième lettre s'insérait devant
+  la première — « intervention » tapé donnait « nterventioni ». Les champs
+  tiennent donc un `TextFieldValue`, qui porte la position du curseur avec le
+  texte, et `onFocusChanged` dit lequel des deux fait autorité. La resynchro-
+  nisation hors focus reste nécessaire : c'est ce qui fait voir un intitulé
+  nettoyé par le dépôt, ou le champ vidé après enregistrement.
 
 Les dépendances sont assemblées à la main dans `ConteneurApp`, porté par
 `FrigoProApplication` et atteint par `InterventionsViewModel.Factory`. Une

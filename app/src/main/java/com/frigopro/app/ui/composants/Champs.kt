@@ -19,15 +19,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.ui.Nombres
@@ -57,7 +61,17 @@ fun ChampChiffre(
     modifier: Modifier = Modifier,
     couleur: Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    var saisie by remember(valeur) { mutableStateOf(Nombres.enTexte(valeur)) }
+    var etat by remember { mutableStateOf(champDe(valeur)) }
+    var aLeFocus by remember { mutableStateOf(false) }
+
+    // `remember(valeur)` reconstruisait l'état à chaque aller-retour par la base,
+    // ce qui replaçait le curseur au début : même défaut que [ChampTexte], et la
+    // même règle le corrige.
+    LaunchedEffect(valeur, aLeFocus) {
+        if (!aLeFocus && Nombres.versDecimal(etat.text) != valeur) {
+            etat = champDe(valeur)
+        }
+    }
 
     Surface(
         modifier = modifier,
@@ -74,12 +88,14 @@ fun ChampChiffre(
             )
             Row(verticalAlignment = Alignment.Bottom) {
                 BasicTextField(
-                    value = saisie,
-                    onValueChange = { texte ->
-                        saisie = texte
-                        onValeur(Nombres.versDecimal(texte))
+                    value = etat,
+                    onValueChange = { saisi ->
+                        etat = saisi
+                        onValeur(Nombres.versDecimal(saisi.text))
                     },
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .onFocusChanged { aLeFocus = it.isFocused },
                     textStyle = StyleChiffre.copy(color = couleur),
                     singleLine = true,
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -91,7 +107,7 @@ fun ChampChiffre(
                     ),
                     decorationBox = { champ ->
                         Box {
-                            if (saisie.isEmpty()) {
+                            if (etat.text.isEmpty()) {
                                 Text(
                                     text = "—",
                                     style = StyleChiffre,
@@ -132,10 +148,34 @@ fun ChampTexte(
     lignes: Int = 1,
     clavier: KeyboardType = KeyboardType.Text,
 ) {
+    // Le texte **et la position du curseur** sont tenus ici, pas reconstruits à
+    // chaque recomposition depuis `valeur`. C'est ce qui corrige un défaut qui se
+    // voyait à la frappe : sur les champs dont la valeur fait un aller-retour par
+    // la base — l'objet d'un devis, la raison sociale — la valeur redescendait
+    // après le premier caractère, le champ reprenait un texte sans sélection, et
+    // le curseur retombait à zéro. La suite de la frappe s'insérait donc **avant**
+    // la première lettre : « intervention » s'écrivait « nterventioni ».
+    var etat by remember { mutableStateOf(TextFieldValue(valeur, TextRange(valeur.length))) }
+    var aLeFocus by remember { mutableStateOf(false) }
+
+    // Hors focus seulement, la valeur d'en haut fait autorité. Pendant la frappe
+    // c'est le champ qui décide, sans quoi le nettoyage appliqué à l'écriture —
+    // un `trim`, par exemple — mangerait l'espace qu'on est en train de taper.
+    LaunchedEffect(valeur, aLeFocus) {
+        if (!aLeFocus && etat.text != valeur) {
+            etat = TextFieldValue(valeur, TextRange(valeur.length))
+        }
+    }
+
     androidx.compose.material3.OutlinedTextField(
-        value = valeur,
-        onValueChange = onValeur,
-        modifier = modifier.fillMaxWidth(),
+        value = etat,
+        onValueChange = { saisi ->
+            etat = saisi
+            onValeur(saisi.text)
+        },
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { aLeFocus = it.isFocused },
         label = { Text(text = libelle) },
         singleLine = lignes == 1,
         minLines = lignes,
@@ -152,6 +192,12 @@ fun ChampTexte(
             cursorColor = MaterialTheme.colorScheme.primary,
         ),
     )
+}
+
+/** Un champ prêt à être édité : le texte du nombre, curseur à la fin. */
+private fun champDe(valeur: Double?): TextFieldValue {
+    val texte = Nombres.enTexte(valeur)
+    return TextFieldValue(texte, TextRange(texte.length))
 }
 
 /** Une rangée de pastilles dont une seule est retenue : les onglets de la maquette. */
