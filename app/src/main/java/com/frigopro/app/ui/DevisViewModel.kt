@@ -16,11 +16,16 @@ import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.LigneDevis
+import com.frigopro.app.data.OrigineTrajet
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
+import com.frigopro.app.data.RaisonEchec
+import com.frigopro.app.data.ResultatItineraire
+import com.frigopro.app.data.ServiceItineraire
 import com.frigopro.app.data.StatutDevis
+import com.frigopro.app.data.Trajet
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +37,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 /**
  * Les trois chiffres de l'en-tête des devis.
@@ -79,6 +85,12 @@ class DevisViewModel(
      * se construirait plus dans un test JVM — voir [ProducteurPdf].
      */
     private val pdf: ProducteurPdf,
+    /**
+     * Le calcul d'itinéraire. Une interface, pour la même raison que [pdf] : le
+     * réseau ne se joint pas depuis un test JVM, et un faux service suffit à
+     * éprouver ce que l'écran en fait.
+     */
+    private val itineraires: ServiceItineraire,
 ) : ViewModel() {
 
     /**
@@ -161,6 +173,28 @@ class DevisViewModel(
             prixUnitaire = prestation.prixUnitaire,
         )
     }
+
+    /** Le trajet du devis ouvert, s'il en porte un. */
+    val trajet: StateFlow<Trajet?> = _ouvert
+        .flatMapLatest { id -> if (id == null) flowOf(null) else devis.observerTrajet(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), null)
+
+    private val _calculEnCours = MutableStateFlow(false)
+
+    /** Un calcul est en vol : l'écran désactive le bouton et le dit. */
+    val calculEnCours: StateFlow<Boolean> = _calculEnCours.asStateFlow()
+
+    private val _echecItineraire = MutableStateFlow<RaisonEchec?>(null)
+
+    /**
+     * Pourquoi le dernier calcul n'a rien rendu.
+     *
+     * Porté par l'état plutôt que jeté : l'écran doit dire *ce qui* a échoué,
+     * parce que la suite n'est pas la même — une clé se corrige dans les
+     * Réglages, une adresse se réécrit, une absence de réseau se contourne en
+     * saisissant les kilomètres à la main.
+     */
+    val echecItineraire: StateFlow<RaisonEchec?> = _echecItineraire.asStateFlow()
 
     fun onOuvrir(document: Devis) {
         _ouvert.value = document.id
@@ -309,6 +343,100 @@ class DevisViewModel(
         viewModelScope.launch { devis.supprimer(id) }
     }
 
+    // — Le déplacement facturé —
+
+    /**
+     * Le trajet tel qu'il doit être proposé à l'ouverture d'un devis qui n'en a
+     * pas encore : au départ du dépôt, vers l'adresse du client.
+     *
+     * Rien n'est enregistré ici — c'est une proposition de saisie. Créer une
+     * ligne de trajet à zéro kilomètre dès l'ouverture d'un devis aurait mis un
+     * déplacement sur des devis qui n'en comportent pas : un devis rédigé au
+     * bureau, par exemple.
+     */
+    fun trajetPropose(): Trajet {
+        val document = complet.value?.devis
+        val client = carnet.value.firstOrNull { it.id == document?.clientId }
+        return Trajet(
+            devisId = document?.id.orEmpty(),
+            depart = reglages.value.adresseDepart,
+            arrivee = client?.adresseComplete.orEmpty(),
+        )
+    }
+
+    /** Efface le message d'échec : l'écran le fait quand on retouche une adresse. */
+    fun onOublierEchec() {
+        _echecItineraire.value = null
+    }
+
+    /**
+     * Enregistre un trajet saisi à la main, et refait ses lignes de devis.
+     *
+     * L'origine passe à [OrigineTrajet.SAISI] et `calculeLe` est effacé : dès
+     * qu'on retouche un chiffre, ce n'est plus le résultat du service, et laisser
+     * « calculé le 12 mars » sur des valeurs corrigées aurait fait passer une
+     * saisie pour un relevé.
+     */
+    fun onEnregistrerTrajet(saisi: Trajet) {
+        viewModelScope.launch {
+            devis.enregistrerDeplacement(
+                saisi.copy(origine = OrigineTrajet.SAISI, calculeLe = null),
+                reglages.value.tarifDeplacement,
+            )
+        }
+    }
+
+    /**
+     * Demande l'itinéraire au service, puis enregistre ce qu'il rend.
+     *
+     * Le trajet reçu ne remplace pas les choix de facturation déjà faits :
+     * l'aller-retour et le geste commercial sont repris de [base]. Les écraser
+     * aurait décoché l'aller-retour à chaque recalcul, et c'est exactement le
+     * genre de perte qu'on ne remarque qu'en relisant le total.
+     */
+    fun onCalculerTrajet(base: Trajet) {
+        if (_calculEnCours.value) return
+        _calculEnCours.value = true
+        _echecItineraire.value = null
+        viewModelScope.launch {
+            try {
+                when (val resultat = itineraires.itineraire(base.depart, base.arrivee)) {
+                    is ResultatItineraire.Trouve -> devis.enregistrerDeplacement(
+                        base.copy(
+                            distanceKm = resultat.distanceKm,
+                            dureeMinutes = resultat.dureeMinutes,
+                            peages = resultat.peages,
+                            peagesConnus = resultat.peagesConnus,
+                            origine = OrigineTrajet.CALCULE,
+                            calculeLe = Instant.now(),
+                        ),
+                        reglages.value.tarifDeplacement,
+                    )
+
+                    is ResultatItineraire.Echec -> _echecItineraire.value = resultat.raison
+                }
+            } finally {
+                // Dans un `finally` : une annulation du scope — l'écran qu'on
+                // quitte — laisserait sinon le bouton grisé pour de bon.
+                _calculEnCours.value = false
+            }
+        }
+    }
+
+    /** Offre le déplacement, ou reprend le geste. */
+    fun onOffrirDeplacement(offert: Boolean) {
+        val courant = trajet.value ?: return
+        viewModelScope.launch {
+            devis.offrirDeplacement(courant, reglages.value.tarifDeplacement, offert)
+        }
+    }
+
+    /** Retire le déplacement du devis, et les lignes qu'il avait posées. */
+    fun onRetirerDeplacement() {
+        val courant = trajet.value ?: return
+        viewModelScope.launch { devis.supprimerDeplacement(courant.devisId) }
+    }
+
     companion object {
 
         private const val TEMPS_ARRET_COLLECTE_MS = 5_000L
@@ -324,6 +452,7 @@ class DevisViewModel(
                     conteneur.prestations,
                     conteneur.equipements,
                     ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
+                    conteneur.itineraires,
                 )
             }
         }
