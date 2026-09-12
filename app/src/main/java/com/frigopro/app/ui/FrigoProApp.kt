@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.RequestQuote
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
@@ -27,13 +28,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * Les cinq sections de l'application.
+ * Les six sections de l'application.
  *
  * L'accueil vient en premier parce qu'il répond à la question qu'on se pose en
  * sortant le téléphone — « et maintenant ? » — et le planning juste après, pour
  * la question suivante : « et le reste de la semaine ? ». Réglages ferme la
  * marche : c'est là que vit la sauvegarde, qu'on ouvre rarement mais dont
  * l'absence se paierait cher.
+ *
+ * **Outils** se range juste avant, et c'est une section d'une autre nature que les
+ * cinq autres : elle ne regarde aucune donnée de l'application. Une réglette, un
+ * convertisseur, une périodicité réglementaire se consultent sans client ni
+ * intervention — au téléphone, devant une plaque, en préparant une tournée — et
+ * les enfouir dans la fiche d'une intervention obligeait à en ouvrir une pour
+ * convertir des psi.
+ *
+ * Six est **un de plus que ce que Material recommande**, et le libellé s'en
+ * ressent : ils sont déjà abrégés au plus court lisible. La contrepartie est
+ * assumée plutôt que contournée par un menu « plus » — un onglet derrière un menu
+ * n'est pas un onglet, et celui-ci doit s'atteindre d'un pouce, gants aux mains.
  */
 enum class Onglet(val libelle: String, val icone: ImageVector) {
     AUJOURDHUI("Auj.", Icons.Filled.Today),
@@ -43,13 +56,14 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
     TOURNEE("Planning", Icons.AutoMirrored.Filled.EventNote),
     DEVIS("Devis", Icons.Filled.RequestQuote),
     CLIENTS("Clients", Icons.Filled.Contacts),
+    OUTILS("Outils", Icons.Filled.Straighten),
     REGLAGES("Réglages", Icons.Filled.Tune),
 }
 
 /**
  * Coquille de l'application : la section affichée et la barre qui en change.
  *
- * Pas de graphe de navigation. Avec cinq sections sans lien hiérarchique, une
+ * Pas de graphe de navigation. Avec six sections sans lien hiérarchique, une
  * variable d'état suffit, et `rememberSaveable` la fait survivre à une rotation
  * comme à la mise en arrière-plan. La bibliothèque de navigation aura son
  * intérêt le jour où il faudra une pile arrière — une fiche client ouverte en
@@ -91,6 +105,7 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                 )
                 Onglet.CLIENTS -> ClientsRoute()
                 Onglet.DEVIS -> DevisRoute()
+                Onglet.OUTILS -> OutilsRoute()
                 Onglet.REGLAGES -> ReglagesRoute()
             }
         }
@@ -100,7 +115,9 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                     selected = onglet == cible,
                     onClick = { onglet = cible },
                     icon = { Icon(imageVector = cible.icone, contentDescription = null) },
-                    label = { Text(text = cible.libelle) },
+                    // `maxLines` explicite : à six onglets la place d'un libellé se
+                    // compte, et un retour à la ligne décalerait toute la barre.
+                    label = { Text(text = cible.libelle, maxLines = 1) },
                 )
             }
         }
