@@ -72,6 +72,15 @@ jobs:
           path: app/schemas/
           if-no-files-found: warn
 
+      # TEMPORAIRE : a retirer une fois le schema 10 committe.
+      - name: Imprimer le dernier schema Room
+        if: always()
+        run: |
+          dernier=$(ls -1 app/schemas/com.frigopro.app.data.FrigoProDatabase/*.json \
+            | sort -V | tail -1)
+          echo "=== $dernier ==="
+          cat "$dernier"
+
       - name: Publish test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
