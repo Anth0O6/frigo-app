@@ -50,6 +50,7 @@ import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
 import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.LigneDevis
+import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.ui.composants.BoutonCarre
@@ -556,7 +557,10 @@ private fun CarteTotaux(devis: DevisComplet, onOffrirTva: () -> Unit) {
         } else {
             // Franchise en base : pas de TVA, et la mention est obligatoire.
             Text(
-                text = "TVA non applicable, art. 293 B du CGI",
+                // La constante, et non la phrase recopiée : elle paraît aussi sur le
+                // PDF, et deux formulations divergentes enverraient chez un client
+                // une mention qui n'est pas celle du code général des impôts.
+                text = Parametres.MENTION_FRANCHISE,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
