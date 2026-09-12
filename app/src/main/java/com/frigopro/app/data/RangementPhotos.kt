@@ -23,6 +23,16 @@ interface RangementPhotos {
 
     suspend fun importer(source: Uri): String?
 
+    /**
+     * Range une image fabriquée par l'application elle-même — une signature
+     * tracée au doigt, aujourd'hui la seule.
+     *
+     * Elle ne passe pas par [importer] : il n'y a ni `Uri`, ni EXIF à
+     * redresser, et surtout rien à réduire — une signature est déjà petite, et
+     * la recompresser abîmerait un trait fin sans rien faire gagner.
+     */
+    suspend fun enregistrerImage(image: Bitmap): String?
+
     suspend fun supprimer(nom: String)
 
     suspend fun charger(nom: String, coteMax: Int): Bitmap?

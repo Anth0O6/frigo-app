@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.Chrono
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
@@ -10,9 +11,11 @@ import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
+import com.frigopro.app.data.FauxTechnicienDao
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,6 +33,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -39,6 +43,7 @@ class InterventionsViewModelTest {
     private val daoClients = FauxClientDao()
     private val daoTypes = FauxTypeInterventionDao(dao)
     private val daoEquipements = FauxEquipementDao(dao)
+    private val daoTechniciens = FauxTechnicienDao(dao)
 
     @After
     fun nettoyer() {
@@ -125,7 +130,7 @@ class InterventionsViewModelTest {
         enregistrer(viewModel, client = "Fromagerie Hardy", ville = "Caudebec")
         advanceUntilIdle()
 
-        assertEquals(StatutIntervention.A_FAIRE, dao.contenu.single().statut)
+        assertEquals(StatutIntervention.PLANIFIEE, dao.contenu.single().statut)
 
         viewModel.onChangerStatut(dao.contenu.single())
         advanceUntilIdle()
@@ -139,7 +144,7 @@ class InterventionsViewModelTest {
         advanceUntilIdle()
         assertEquals(
             "revenir au début permet de corriger une fausse manœuvre",
-            StatutIntervention.A_FAIRE,
+            StatutIntervention.PLANIFIEE,
             dao.contenu.single().statut,
         )
     }
@@ -520,6 +525,57 @@ class InterventionsViewModelTest {
             ClientRepository(daoClients),
             TypeInterventionRepository(daoTypes),
             EquipementRepository(daoEquipements, FauxRangementPhotos()),
+            TechnicienRepository(daoTechniciens),
         )
+    }
+
+    /**
+     * Confier une tournée à quelqu'un, et le couple lien / copie que cela pose :
+     * l'intervention garde le nom tel qu'il était, pour qu'une tournée de mars
+     * continue de dire qui l'a faite même si la fiche disparaît.
+     */
+    @Test
+    fun `un technicien inscrit au passage est retenu par le formulaire`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+
+        viewModel.onNouveauTechnicien("Karim Benali")
+        advanceUntilIdle()
+
+        val inscrit = daoTechniciens.contenu.single()
+        assertEquals("Karim Benali", inscrit.nom)
+        assertEquals(inscrit.id, viewModel.formulaire.value?.technicienId)
+        assertEquals("le nom est recopié sur la saisie", "Karim Benali", viewModel.formulaire.value?.technicienNom)
+    }
+
+    /**
+     * Le formulaire n'affiche qu'une partie d'une intervention : corriger une
+     * heure ne doit pas effacer le temps chronométré ni le numéro attribué.
+     * C'est [EtatFormulaireTest] qui tient la règle ; ici on vérifie qu'elle
+     * survit au chemin réel, dépôt compris.
+     */
+    @Test
+    fun `modifier une intervention faite n'efface pas son chrono ni son numero`() = runTest {
+        val faite = Intervention(
+            date = LocalDate.now(),
+            heure = LocalTime.of(8, 30),
+            client = "Boucherie Lemoine",
+            ville = "Rouen",
+            statut = StatutIntervention.TERMINEE,
+            numero = "INT-2609-012",
+            chrono = Chrono(cumuleS = 5_400),
+        )
+        dao.enregistrer(faite)
+        val viewModel = creerViewModel()
+
+        viewModel.onModifierIntervention(faite)
+        viewModel.onFormulaireChange(viewModel.formulaire.value!!.copy(heure = LocalTime.of(9, 0)))
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val relue = dao.contenu.single { it.id == faite.id }
+        assertEquals(LocalTime.of(9, 0), relue.heure)
+        assertEquals("le temps chronométré survit", 5_400L, relue.chrono.cumuleS)
+        assertEquals("le numéro attribué survit", "INT-2609-012", relue.numero)
     }
 }

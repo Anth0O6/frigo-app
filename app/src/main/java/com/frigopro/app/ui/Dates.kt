@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 
 /** Format d'heure partagé par la liste et le formulaire. */
@@ -48,3 +49,44 @@ internal fun LocalDate.versMillisUtc(): Long =
 
 internal fun Long.versLocalDate(): LocalDate =
     Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
+
+/**
+ * L'heure locale d'un horodatage : « 08:00 », ou un tiret s'il n'y en a pas.
+ *
+ * Le fuseau du système, et non UTC : c'est l'heure à laquelle le technicien
+ * est arrivé chez son client qui compte, pas celle de Greenwich.
+ */
+internal fun heureLocale(instant: Instant?): String = instant
+    ?.atZone(java.time.ZoneId.systemDefault())
+    ?.toLocalTime()
+    ?.format(FORMAT_HEURE)
+    ?: "—"
+
+/** « 14/05 », la date courte des historiques et du registre. */
+internal fun jourCourt(date: LocalDate): String =
+    date.format(DateTimeFormatter.ofPattern("dd/MM"))
+
+/**
+ * « LUN », le jour de la semaine des pastilles du planning.
+ *
+ * Tronqué à trois lettres : le français abrège en « lun. », et le point mangerait
+ * une pastille déjà étroite. La locale est imposée, comme partout ailleurs ici.
+ */
+internal fun jourSemaineCourt(date: LocalDate): String = date.dayOfWeek
+    .getDisplayName(TextStyle.SHORT, Locale.FRENCH)
+    .uppercase(Locale.FRENCH)
+    .take(3)
+
+/**
+ * « sept. », le mois abrégé d'une pastille de date.
+ *
+ * La locale est imposée plutôt que laissée au système : l'application est en
+ * français, et un téléphone réglé en anglais afficherait « Sep » au milieu
+ * d'une phrase française.
+ */
+internal fun moisCourt(date: LocalDate): String =
+    date.format(DateTimeFormatter.ofPattern("MMM", Locale.FRENCH))
+
+/** Le lundi de la semaine où tombe [date] : l'ancrage du planning. */
+internal fun lundiDe(date: LocalDate): LocalDate =
+    date.minusDays((date.dayOfWeek.value - 1).toLong())

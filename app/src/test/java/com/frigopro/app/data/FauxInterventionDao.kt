@@ -28,6 +28,18 @@ class FauxInterventionDao : InterventionDao {
                 .sortedWith(compareByDescending<Intervention> { it.date }.thenByDescending { it.heure })
         }
 
+    override fun observer(id: String): Flow<Intervention?> =
+        lignes.map { liste -> liste.firstOrNull { it.id == id } }
+
+    override fun observerPeriode(debut: LocalDate, fin: LocalDate): Flow<List<Intervention>> =
+        lignes.map { liste ->
+            liste.filter { it.date >= debut && it.date <= fin }
+                .sortedWith(compareBy<Intervention> { it.date }.thenBy { it.heure })
+        }
+
+    override suspend fun numerosAttribues(): List<String> =
+        lignes.value.map { it.numero }.filter { it.isNotEmpty() }
+
     override suspend fun toutes(): List<Intervention> = lignes.value
 
     override suspend fun enregistrer(intervention: Intervention) {
@@ -65,6 +77,20 @@ class FauxInterventionDao : InterventionDao {
     fun propagerNom(equipementId: String, nom: String) {
         lignes.update { liste ->
             liste.map { if (it.equipementId == equipementId) it.copy(equipementNom = nom) else it }
+        }
+    }
+
+    /** Voir [TechnicienDao.propagerNom]. */
+    fun propagerTechnicien(technicienId: String, nom: String) {
+        lignes.update { liste ->
+            liste.map { if (it.technicienId == technicienId) it.copy(technicienNom = nom) else it }
+        }
+    }
+
+    /** Voir [TechnicienDao.detacher] : le lien tombe, le nom reste. */
+    fun detacherTechnicien(technicienId: String) {
+        lignes.update { liste ->
+            liste.map { if (it.technicienId == technicienId) it.copy(technicienId = null) else it }
         }
     }
 

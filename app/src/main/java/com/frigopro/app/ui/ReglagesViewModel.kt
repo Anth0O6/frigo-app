@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.Prestation
+import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +40,53 @@ sealed interface DialogueReglages {
  * Il ne tient que les types d'intervention pour l'instant ; c'est ici que les
  * réglages suivants viendront se ranger.
  */
-class ReglagesViewModel(private val typeRepository: TypeInterventionRepository) : ViewModel() {
+class ReglagesViewModel(
+    private val typeRepository: TypeInterventionRepository,
+    private val parametresRepository: ParametresRepository,
+    private val prestationRepository: PrestationRepository,
+) : ViewModel() {
+
+    /** Les réglages, jamais `null` : voir [ParametresRepository]. */
+    val parametres: StateFlow<Parametres> = parametresRepository.parametres
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = Parametres(),
+        )
+
+    fun onThemeSombre(actif: Boolean) = modifier { it.copy(themeSombre = actif) }
+
+    fun onModeGants(actif: Boolean) = modifier { it.copy(modeGants = actif) }
+
+    fun onChronoAuto(actif: Boolean) = modifier { it.copy(chronoAuto = actif) }
+
+    fun onTechnicien(nom: String) = modifier { it.copy(technicien = nom) }
+
+    fun onAttestation(mention: String) = modifier { it.copy(attestation = mention) }
+
+    fun onTauxHoraire(taux: Double) = modifier { it.copy(tauxHoraire = taux) }
+
+    fun onTauxTva(taux: Double) = modifier { it.copy(tauxTva = taux) }
+
+    /**
+     * Le catalogue, et ses prix.
+     *
+     * Il est livré avec les intitulés du métier et sans les tarifs ; c'est donc
+     * ici qu'ils se posent, et nulle part ailleurs.
+     */
+    val prestations: StateFlow<List<Prestation>> = prestationRepository.prestations
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    fun onPrixPrestation(prestation: Prestation, prix: Double, unite: String) {
+        viewModelScope.launch {
+            prestationRepository.enregistrer(prestation.copy(prixUnitaire = prix, unite = unite))
+        }
+    }
+
+    private fun modifier(transformation: (Parametres) -> Parametres) {
+        viewModelScope.launch { parametresRepository.modifier(transformation) }
+    }
+
 
     val types: StateFlow<List<TypeIntervention>> = typeRepository.types
         .stateIn(
@@ -105,7 +155,11 @@ class ReglagesViewModel(private val typeRepository: TypeInterventionRepository) 
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                ReglagesViewModel(conteneur.typesIntervention)
+                ReglagesViewModel(
+                    conteneur.typesIntervention,
+                    conteneur.parametres,
+                    conteneur.prestations,
+                )
             }
         }
     }

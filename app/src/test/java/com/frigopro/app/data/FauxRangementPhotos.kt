@@ -32,6 +32,10 @@ class FauxRangementPhotos(
     override suspend fun importer(source: Uri): String? =
         if (captureAboutit) "importee-${fichiers.size + 1}.jpg".also { fichiers += it } else null
 
+    /** Aucun `Bitmap` ne se fabrique hors d'Android : seul le nom rangé compte. */
+    override suspend fun enregistrerImage(image: Bitmap): String? =
+        if (captureAboutit) "signature-${fichiers.size + 1}.png".also { fichiers += it } else null
+
     override suspend fun supprimer(nom: String) {
         fichiers.remove(nom)
     }

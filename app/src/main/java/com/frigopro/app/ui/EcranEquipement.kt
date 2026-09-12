@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.DropdownMenu
@@ -54,6 +55,7 @@ import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.Photo
 import com.frigopro.app.data.ReductionPhoto
+import com.frigopro.app.data.Releve
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.ui.theme.FrigoProTheme
 import java.time.LocalDate
@@ -75,11 +77,13 @@ fun EcranEquipement(
     equipement: Equipement,
     photos: List<Photo>,
     historique: List<Intervention>,
+    releves: List<Releve>,
     chargerPhoto: suspend (String, Int) -> Bitmap?,
     onPhotographier: (CategoriePhoto) -> Unit,
     onChoisirImage: (CategoriePhoto) -> Unit,
     onAgrandir: (Photo) -> Unit,
     onRenommer: () -> Unit,
+    onModifierFiche: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -90,8 +94,24 @@ fun EcranEquipement(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                // La coquille pose déjà la marge du haut : la laisser ici la
+                // compterait deux fois.
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
-                    Text(text = equipement.nom, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column {
+                        Text(text = equipement.nom, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val plaque = listOf(equipement.designation, equipement.numeroSerie)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" · n° ")
+                        if (plaque.isNotEmpty()) {
+                            Text(
+                                text = plaque,
+                                style = com.frigopro.app.ui.theme.StyleChiffrePetit,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onFermer) {
@@ -106,6 +126,12 @@ fun EcranEquipement(
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = "Renommer la machine",
+                        )
+                    }
+                    IconButton(onClick = onModifierFiche) {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = "Plaque signalétique et fluide",
                         )
                     }
                     IconButton(onClick = onSupprimer) {
@@ -131,7 +157,23 @@ fun EcranEquipement(
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            CategoriePhoto.entries.forEach { categorie ->
+            item(key = "identite") {
+                IdentiteMachine(
+                    equipement = equipement,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+            if (releves.isNotEmpty()) {
+                item(key = "tendance") {
+                    TendanceReleves(
+                        releves = releves,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            // Seules les catégories de la machine : « avant » et « après »
+            // appartiennent à une intervention et n'ont rien à faire ici.
+            CategoriePhoto.deMachine.forEach { categorie ->
                 item(key = categorie.name) {
                     SectionPhotos(
                         categorie = categorie,
@@ -328,11 +370,13 @@ private fun EcranEquipementPreview() {
                         statut = StatutIntervention.TERMINEE,
                     ),
                 ),
+                releves = emptyList(),
                 chargerPhoto = { _, _ -> null },
                 onPhotographier = {},
                 onChoisirImage = {},
                 onAgrandir = {},
                 onRenommer = {},
+                onModifierFiche = {},
                 onSupprimer = {},
                 onFermer = {},
                 modifier = Modifier.height(600.dp),

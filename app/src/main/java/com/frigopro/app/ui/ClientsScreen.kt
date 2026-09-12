@@ -63,7 +63,12 @@ import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.initialesDe
+import com.frigopro.app.ui.composants.ChampRecherche
+import com.frigopro.app.ui.composants.Encart
+import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.theme.FrigoProTheme
+import com.frigopro.app.ui.theme.StyleChiffrePetit
 
 /**
  * Point d'entrée de l'onglet, branché sur le [ClientsViewModel] et sur le
@@ -87,6 +92,8 @@ fun ClientsRoute(
     val ouverte by machines.ouverte.collectAsStateWithLifecycle()
     val photos by machines.photosOuvertes.collectAsStateWithLifecycle()
     val historique by machines.historique.collectAsStateWithLifecycle()
+    val relevesMachine by machines.relevesMachine.collectAsStateWithLifecycle()
+    var ficheOuverte by remember { mutableStateOf(false) }
     val dialogue by machines.dialogue.collectAsStateWithLifecycle()
     val agrandie by machines.agrandie.collectAsStateWithLifecycle()
 
@@ -120,6 +127,7 @@ fun ClientsRoute(
             equipement = machineOuverte,
             photos = photos,
             historique = historique,
+            releves = relevesMachine,
             chargerPhoto = machines::charger,
             onPhotographier = { categorie ->
                 val prise = machines.preparerCapture()
@@ -134,10 +142,22 @@ fun ClientsRoute(
             },
             onAgrandir = machines::onAgrandir,
             onRenommer = { machines.onRenommerMachine(machineOuverte) },
+            onModifierFiche = { ficheOuverte = true },
             onSupprimer = { machines.onSupprimerMachine(machineOuverte) },
             onFermer = machines::onFermer,
             modifier = modifier,
         )
+
+        if (ficheOuverte) {
+            DialogueFicheMachine(
+                equipement = machineOuverte,
+                onValider = {
+                    machines.onEnregistrerFiche(it)
+                    ficheOuverte = false
+                },
+                onFermer = { ficheOuverte = false },
+            )
+        }
     } else {
         ClientsScreen(
             clients = clients,
@@ -263,23 +283,21 @@ fun ClientsScreen(
     modifier: Modifier = Modifier,
 ) {
     val parClient = parc.groupBy { it.clientId }
+    var recherche by rememberSaveable { mutableStateOf("") }
+    val retenus = clients.filter { correspond(it, parClient[it.id].orEmpty(), recherche) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         // La barre d'onglets, sous cet écran, pose déjà la marge du bas ;
         // l'y ajouter ici la compterait deux fois.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(text = "Clients") },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            )
-        },
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(onClick = onNouveauClient) {
+            FloatingActionButton(
+                onClick = onNouveauClient,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.PersonAdd,
                     contentDescription = "Ajouter un client",
@@ -287,32 +305,86 @@ fun ClientsScreen(
             }
         },
     ) { innerPadding ->
-        if (clients.isEmpty()) {
-            CarnetVide(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+        Column(modifier = Modifier.padding(innerPadding)) {
+            Text(
+                text = "Clients",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(items = clients, key = { it.id }) { client ->
-                    ClientCard(
-                        client = client,
-                        machines = parClient[client.id].orEmpty(),
-                        onClick = { onOuvrirFiche(client) },
-                        onOuvrirMachine = onOuvrirMachine,
-                        onAjouterMachine = { onAjouterMachine(client.id) },
-                    )
+            ChampRecherche(
+                valeur = recherche,
+                onValeur = { recherche = it },
+                indication = "Nom, ville, machine…",
+                modifier = Modifier.padding(horizontal = MargeEcran),
+            )
+            if (clients.isEmpty()) {
+                CarnetVide(modifier = Modifier.fillMaxSize())
+            } else if (retenus.isEmpty()) {
+                Encart(
+                    texte = "Aucun client ne correspond à « ${recherche.trim()} ».",
+                    modifier = Modifier.padding(MargeEcran),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = MargeEcran,
+                        end = MargeEcran,
+                        top = 12.dp,
+                        bottom = 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    // Groupé par initiale : dans un carnet qui grossit, c'est
+                    // le repère qui évite de faire défiler à l'aveugle.
+                    retenus.groupBy { initiale(it.nom) }.forEach { (lettre, groupe) ->
+                        item(key = "lettre-$lettre") {
+                            Text(
+                                text = lettre,
+                                style = StyleChiffrePetit,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 2.dp, top = 4.dp),
+                            )
+                        }
+                        items(items = groupe, key = { it.id }) { client ->
+                            ClientCard(
+                                client = client,
+                                machines = parClient[client.id].orEmpty(),
+                                onClick = { onOuvrirFiche(client) },
+                                onOuvrirMachine = onOuvrirMachine,
+                                onAjouterMachine = { onAjouterMachine(client.id) },
+                            )
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * La recherche du carnet.
+ *
+ * Elle porte aussi sur les machines : un technicien se souvient souvent de
+ * « la vitrine Costan » sans retrouver le nom du commerce.
+ */
+private fun correspond(client: Client, machines: List<Equipement>, recherche: String): Boolean {
+    val cherche = recherche.trim().lowercase()
+    if (cherche.isEmpty()) return true
+    return client.nom.lowercase().contains(cherche) ||
+        client.ville.lowercase().contains(cherche) ||
+        machines.any { machine ->
+            machine.nom.lowercase().contains(cherche) ||
+                machine.designation.lowercase().contains(cherche)
+        }
+}
+
+/** L'initiale sous laquelle ranger un nom, accents repliés. */
+private fun initiale(nom: String): String {
+    val premiere = nom.trim().firstOrNull()?.uppercaseChar() ?: return "#"
+    return java.text.Normalizer.normalize(premiere.toString(), java.text.Normalizer.Form.NFD)
+        .first()
+        .toString()
 }
 
 /**
@@ -334,23 +406,26 @@ fun ClientCard(
 ) {
     val contexte = LocalContext.current
 
-    Card(
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
+                Row(
                     modifier = Modifier
                         .weight(1f)
                         .clickable(onClick = onClick)
-                        .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp),
+                        .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    PastilleInitiales(nom = client.nom)
+                    Column {
                     Text(
                         text = client.nom,
                         style = MaterialTheme.typography.titleMedium,
@@ -358,27 +433,14 @@ fun ClientCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = client.adresseComplete,
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = sousTitreClient(client, machines),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (client.appelable) {
-                        Text(
-                            text = client.telephone,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
                     }
                 }
                 if (client.appelable) {
@@ -548,4 +610,39 @@ private fun ClientsScreenPreview() {
             )
         }
     }
+}
+
+
+/**
+ * La pastille d'initiales d'un client.
+ *
+ * Elle ne remplace pas le nom, elle l'ancre : dans une liste qu'on parcourt du
+ * pouce, une forme colorée se retrouve plus vite qu'une ligne de texte.
+ */
+@Composable
+private fun PastilleInitiales(nom: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.size(44.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = initialesDe(nom),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+    }
+}
+
+/** « Vitry · 3 machines », ou l'adresse quand le parc est vide. */
+private fun sousTitreClient(client: Client, machines: List<Equipement>): String {
+    val lieu = client.ville.ifBlank { client.adresseComplete }
+    val parc = when (machines.size) {
+        0 -> ""
+        1 -> "1 machine"
+        else -> "${machines.size} machines"
+    }
+    return listOf(lieu, parc).filter { it.isNotBlank() }.joinToString(" · ")
 }

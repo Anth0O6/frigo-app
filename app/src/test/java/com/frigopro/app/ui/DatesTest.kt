@@ -60,3 +60,73 @@ class DatesTest {
         assertTrue("la première lettre doit être une majuscule : $titre", titre.first().isUpperCase())
     }
 }
+
+/**
+ * Le montant abrégé des tuiles.
+ *
+ * Sur trois tuiles côte à côte, « 12 400,00 € » est tronqué, et un montant
+ * tronqué ne dit rien — ou dit autre chose. La forme longue reste celle des
+ * lignes et des totaux, où elle a la place et doit être exacte.
+ */
+class NombresTest {
+
+    /**
+     * Le bug que ce test garde fermé : `enTexte` coupait les zéros de fin pour
+     * retirer « 6,20 » → « 6,2 », et le faisait aussi **sans virgule**. « 450 »
+     * devenait donc « 45 » dès qu'on demandait zéro décimale — un montant faux
+     * d'un facteur dix, et parfaitement plausible à l'œil.
+     */
+    @Test
+    fun `un entier ne perd pas ses zeros`() {
+        assertEquals("450", Nombres.enTexte(450.0, decimales = 0))
+        assertEquals("9800", Nombres.enTexte(9_800.0, decimales = 0))
+        assertEquals("100", Nombres.enTexte(100.0, decimales = 0))
+    }
+
+    @Test
+    fun `les zeros apres la virgule disparaissent toujours`() {
+        assertEquals("6,2", Nombres.enTexte(6.20))
+        assertEquals("3", Nombres.enTexte(3.0))
+        assertEquals("50", Nombres.enTexte(50.0, decimales = 1))
+    }
+
+    @Test
+    fun `un petit montant garde ses unites`() {
+        assertEquals("450 €", espacesNormales(Nombres.enEurosCourt(450.0)))
+        assertEquals("les centimes ne tiennent pas sur une tuile", "450 €", espacesNormales(Nombres.enEurosCourt(450.40)))
+        assertEquals("9 800 €", espacesNormales(Nombres.enEurosCourt(9_800.0)))
+    }
+
+    @Test
+    fun `au-dela de dix mille on abrege en milliers`() {
+        assertEquals("12,4 k€", espacesNormales(Nombres.enEurosCourt(12_400.0)))
+        assertEquals("une decimale suffit", "12,5 k€", espacesNormales(Nombres.enEurosCourt(12_460.0)))
+        assertEquals("un compte rond ne porte pas de decimale", "50 k€", espacesNormales(Nombres.enEurosCourt(50_000.0)))
+    }
+
+    @Test
+    fun `le million a son abreviation`() {
+        assertEquals("1,2 M€", espacesNormales(Nombres.enEurosCourt(1_200_000.0)))
+    }
+
+    @Test
+    fun `rien vaut zero et non une case vide`() {
+        assertEquals("0 €", espacesNormales(Nombres.enEurosCourt(0.0)))
+    }
+
+    /**
+     * La forme longue groupe les milliers avec un espace insécable étroit, que
+     * la locale française choisit et qui n'est pas celui d'un clavier. On le
+     * normalise plutôt que de le recopier dans le test : une assertion qui
+     * dépend du caractère exact casse au premier changement de JDK.
+     */
+    @Test
+    fun `la forme longue reste exacte au centime`() {
+        assertEquals("12 400,00 €", espacesNormales(Nombres.enEuros(12_400.0)))
+        assertEquals("450,40 €", espacesNormales(Nombres.enEuros(450.40)))
+    }
+
+    private fun espacesNormales(texte: String): String =
+        texte.map { if (it.isWhitespace() || it.code == 0x00A0 || it.code == 0x202F) ' ' else it }
+            .joinToString("")
+}

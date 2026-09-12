@@ -83,9 +83,16 @@ android {
         unitTests.isIncludeAndroidResources = true
 
         // Sans cela, un `testDebugUnitTest` vert ne dit pas ce qu'il a exécuté.
+        //
+        // `exceptionFormat` est ce qui fait la différence quand il est rouge :
+        // sans lui le journal ne donne que le nom du test, et la comparaison qui
+        // a échoué — « attendu X, obtenu Y » — ne vit que dans le rapport HTML.
+        // Or c'est précisément cette ligne qui dit quoi corriger.
         unitTests.all {
             it.testLogging {
                 events("passed", "skipped", "failed")
+                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+                showStackTraces = false
             }
         }
     }

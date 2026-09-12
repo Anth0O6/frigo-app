@@ -1,0 +1,58 @@
+package com.frigopro.app.data
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import java.time.Instant
+
+/**
+ * Les réglages de l'application, en une seule ligne.
+ *
+ * En base plutôt qu'en `DataStore`, pour une raison précise : la sauvegarde
+ * est une archive qu'on restaure sur un téléphone neuf, et un technicien qui
+ * retrouve ses clients mais pas son taux horaire ni son attestation fluides
+ * considérera — à juste titre — que la restauration a échoué. Ce qui est
+ * sauvegardé doit l'être entièrement, et ce qui vit dans la base l'est
+ * gratuitement.
+ *
+ * La table n'a qu'une ligne, d'identifiant fixe [UNIQUE]. Une table à une
+ * ligne est un peu curieuse, mais elle évite un second mécanisme de
+ * persistance, une seconde migration à écrire et un second format à
+ * sauvegarder.
+ *
+ * @param themeSombre `true` par défaut. L'application se lit en chambre
+ *   froide, sur un toit et dans un local technique ; un fond blanc y éblouit.
+ * @param modeGants agrandit les cibles tactiles. Voir `Cibles` dans le thème.
+ * @param chronoAuto démarre le chronomètre dès qu'une intervention passe en
+ *   cours, sans attendre un second geste. Désactivé par défaut : démarrer un
+ *   chronomètre à l'insu du technicien fausserait le temps facturé, et il vaut
+ *   mieux un chrono oublié qu'un chrono faux.
+ * @param tauxHoraire taux horaire hors taxes de la main-d'œuvre, repris par
+ *   défaut sur une ligne de devis.
+ * @param tauxTva taux de TVA proposé à la création d'un devis. Le devis en
+ *   garde ensuite sa propre copie.
+ * @param attestation mention de l'attestation de capacité fluides, qui figure
+ *   sur les comptes-rendus.
+ */
+@Entity(tableName = "parametres")
+data class Parametres(
+    @PrimaryKey val id: Int = UNIQUE,
+    val technicien: String = "",
+    val attestation: String = "",
+    val themeSombre: Boolean = true,
+    val modeGants: Boolean = false,
+    val chronoAuto: Boolean = false,
+    val tauxHoraire: Double = 0.0,
+    val tauxTva: Double = 20.0,
+    val derniereSauvegardeLe: Instant? = null,
+    val modifieLe: Instant = Instant.EPOCH,
+) {
+
+    /** Les initiales du technicien, telles que les affiche la pastille des Réglages. */
+    val initiales: String get() = if (technicien.isBlank()) "" else initialesDe(technicien)
+
+    companion object {
+
+        /** La ligne unique. */
+        const val UNIQUE = 1
+    }
+}

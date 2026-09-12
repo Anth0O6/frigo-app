@@ -3,6 +3,9 @@ package com.frigopro.app.ui
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -71,6 +74,10 @@ fun VisionneusePhoto(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
+                    // La visionneuse est une fenêtre à part : la marge posée
+                    // par la coquille ne l'atteint pas, et sans celle-ci les
+                    // deux boutons passeraient sous la barre d'état.
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(8.dp),
             ) {
                 IconButton(

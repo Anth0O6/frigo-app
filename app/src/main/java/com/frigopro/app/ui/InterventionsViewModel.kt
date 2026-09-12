@@ -12,6 +12,8 @@ import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.Technicien
+import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,12 +39,68 @@ class InterventionsViewModel(
     private val clientRepository: ClientRepository,
     private val typeRepository: TypeInterventionRepository,
     private val equipementRepository: EquipementRepository,
+    private val technicienRepository: TechnicienRepository,
 ) : ViewModel() {
 
     private val _jour = MutableStateFlow(LocalDate.now())
 
     /** Journée affichée. Changer sa valeur suffit à recharger la liste. */
     val jour: StateFlow<LocalDate> = _jour.asStateFlow()
+
+    private val _frise = MutableStateFlow(true)
+
+    /**
+     * La journée en frise horaire plutôt qu'en liste.
+     *
+     * Les deux vues répondent à deux questions différentes : la liste dit ce qui
+     * vient ensuite, la frise dit **où sont les trous** — et c'est dans les trous
+     * qu'on case le client qui vient d'appeler. La frise est retenue par défaut
+     * parce que la question de la journée en cours est aussi celle de la journée
+     * qu'on est en train de remplir.
+     */
+    val frise: StateFlow<Boolean> = _frise.asStateFlow()
+
+    fun onBasculerVue() {
+        _frise.value = !_frise.value
+    }
+
+    private val _semaineOuverte = MutableStateFlow(false)
+
+    /**
+     * La vue semaine, par-dessus la tournée.
+     *
+     * Même onglet et non une section de plus : la journée et la semaine
+     * répondent à deux questions du même métier — « et maintenant ? » et
+     * « où puis-je caser jeudi ? » — et passer de l'une à l'autre ne doit pas
+     * coûter un aller-retour par la barre du bas.
+     */
+    val semaineOuverte: StateFlow<Boolean> = _semaineOuverte.asStateFlow()
+
+    /** Les interventions de la semaine où tombe la journée affichée. */
+    val semaine: StateFlow<List<Intervention>> = _jour
+        .flatMapLatest { interventionRepository.observerSemaine(lundiDe(it)) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    fun onOuvrirSemaine() {
+        _semaineOuverte.value = true
+    }
+
+    fun onFermerSemaine() {
+        _semaineOuverte.value = false
+    }
+
+    /** Recule ou avance d'une semaine entière, en gardant le jour de la semaine. */
+    fun onSemainePrecedente() {
+        _jour.value = _jour.value.minusWeeks(1)
+    }
+
+    fun onSemaineSuivante() {
+        _jour.value = _jour.value.plusWeeks(1)
+    }
 
     /**
      * Carnet de clients : il fournit les suggestions du formulaire et les
@@ -100,6 +158,32 @@ class InterventionsViewModel(
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
             initialValue = emptyList(),
         )
+
+    /**
+     * Les techniciens, pour confier une tournée.
+     *
+     * La liste démarre vide, comme celle des types : l'application était celle
+     * d'un homme seul, et n'a pas à supposer une équipe. Le choix n'apparaît donc
+     * dans le formulaire que lorsqu'il y a quelqu'un à choisir.
+     */
+    val techniciens: StateFlow<List<Technicien>> = technicienRepository.techniciens
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    /** Inscrit un technicien au passage, comme le carnet inscrit un client. */
+    fun onNouveauTechnicien(nom: String) {
+        val etat = _formulaire.value ?: return
+        viewModelScope.launch {
+            val technicien = technicienRepository.trouverOuCreer(nom)
+            _formulaire.value = etat.copy(
+                technicienId = technicien.id,
+                technicienNom = technicien.nom,
+            )
+        }
+    }
 
     private val _formulaire = MutableStateFlow<EtatFormulaire?>(null)
 
@@ -264,6 +348,7 @@ class InterventionsViewModel(
                     conteneur.clients,
                     conteneur.typesIntervention,
                     conteneur.equipements,
+                    conteneur.techniciens,
                 )
             }
         }

@@ -15,6 +15,8 @@ import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.Photo
+import com.frigopro.app.data.Releve
+import com.frigopro.app.data.SuiviRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +51,7 @@ sealed interface DialogueEquipement {
 class EquipementsViewModel(
     private val equipements: EquipementRepository,
     private val interventions: InterventionRepository,
+    private val suivi: SuiviRepository,
 ) : ViewModel() {
 
     /** Tout le parc, trié par nom. L'écran en tire les machines de chaque client. */
@@ -85,6 +88,23 @@ class EquipementsViewModel(
     val historique: StateFlow<List<Intervention>> = _ouverte
         .flatMapLatest { id ->
             if (id == null) flowOf(emptyList()) else interventions.observerParEquipement(id)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    /**
+     * Les relevés déjà pris sur cette machine, toutes visites confondues.
+     *
+     * C'est ce qui trace la tendance de la fiche : une surchauffe qui monte
+     * visite après visite dit quelque chose qu'aucun relevé isolé ne dit.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val relevesMachine: StateFlow<List<Releve>> = _ouverte
+        .flatMapLatest { id ->
+            if (id == null) flowOf(emptyList()) else suivi.observerRelevesMachine(id)
         }
         .stateIn(
             scope = viewModelScope,
@@ -156,6 +176,16 @@ class EquipementsViewModel(
         viewModelScope.launch { equipements.supprimer(ouvert.equipement.id) }
     }
 
+    /**
+     * Enregistre la plaque signalétique et le fluide.
+     *
+     * Passe par le même chemin qu'un renommage : le nom peut avoir changé au
+     * passage, et il doit alors suivre les interventions passées.
+     */
+    fun onEnregistrerFiche(equipement: Equipement) {
+        viewModelScope.launch { equipements.enregistrer(equipement) }
+    }
+
     /** Le fichier que l'application d'appareil photo va remplir. */
     fun preparerCapture(): Capture = equipements.preparerCapture()
 
@@ -201,7 +231,11 @@ class EquipementsViewModel(
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                EquipementsViewModel(conteneur.equipements, conteneur.interventions)
+                EquipementsViewModel(
+                    conteneur.equipements,
+                    conteneur.interventions,
+                    conteneur.suivi,
+                )
             }
         }
     }

@@ -19,8 +19,23 @@ class SauvegardeRepositoryTest {
     private val daoClients = FauxClientDao()
     private val daoTypes = FauxTypeInterventionDao(daoInterventions)
     private val daoEquipements = FauxEquipementDao(daoInterventions)
+    private val daoSuivi = FauxSuiviDao(daoInterventions)
+    private val daoDevis = FauxDevisDao()
+    private val daoParametres = FauxParametresDao()
+    private val daoTechniciens = FauxTechnicienDao(daoInterventions)
+    private val daoPrestations = FauxPrestationDao()
     private val repository =
-        SauvegardeRepository(daoInterventions, daoClients, daoTypes, daoEquipements)
+        SauvegardeRepository(
+            daoInterventions,
+            daoClients,
+            daoTypes,
+            daoEquipements,
+            daoSuivi,
+            daoDevis,
+            daoParametres,
+            daoTechniciens,
+            daoPrestations,
+        )
 
     @Test
     fun `ce qui est exporte revient identique`() = runTest {
@@ -63,6 +78,11 @@ class SauvegardeRepositoryTest {
             autreClients,
             autreTypes,
             FauxEquipementDao(autreInterventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(autreInterventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())
@@ -87,6 +107,11 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             FauxTypeInterventionDao(autreInterventions),
             autreEquipements,
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(autreInterventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(EQUIPEMENT, autreEquipements.contenu.single())
@@ -125,6 +150,11 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             FauxTypeInterventionDao(interventions),
             equipements,
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(interventions),
+            FauxPrestationDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -192,6 +222,67 @@ class SauvegardeRepositoryTest {
         val restauree = daoInterventions.contenu.single()
         assertNull("le parc n'existait pas", restauree.equipementId)
         assertEquals("", restauree.equipementNom)
+        assertEquals(
+            "« à faire » est devenu « planifié » : le mot a changé, pas l'état",
+            StatutIntervention.PLANIFIEE,
+            restauree.statut,
+        )
+    }
+
+    /**
+     * Le piège que ce test garde fermé : un statut inconnu fait refuser le
+     * fichier entier, à dessein. Le jour où `A_FAIRE` est devenu `PLANIFIEE`,
+     * oublier la correspondance aurait rendu illisibles **toutes** les
+     * sauvegardes déjà faites — et on ne s'en apercevrait qu'au moment où
+     * quelqu'un essaie de restaurer, c'est-à-dire au pire moment.
+     */
+    @Test
+    fun `un statut retire depuis reste lisible`() = runTest {
+        val contenu = """
+            {
+              "format": 4,
+              "exporteeLe": "2026-09-09T08:00:00Z",
+              "interventions": [
+                {
+                  "id": "id-1", "date": "2026-09-10", "heure": "08:30",
+                  "client": "Boucherie Lemoine", "ville": "Rouen",
+                  "typeLibelle": "Fuite de fluide", "statut": "A_FAIRE"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val resultat = repository.restaurer(contenu)
+
+        assertTrue(
+            "une sauvegarde d'avant le renommage doit se restaurer, pas être refusée",
+            resultat is ResultatRestauration.Reussie,
+        )
+        assertEquals(StatutIntervention.PLANIFIEE, daoInterventions.contenu.single().statut)
+    }
+
+    /**
+     * Et l'inverse doit rester vrai : un statut qui n'a jamais existé trahit un
+     * fichier abîmé, et le refus est la bonne réponse.
+     */
+    @Test
+    fun `un statut qui n'a jamais existe fait refuser le fichier`() = runTest {
+        val contenu = """
+            {
+              "format": 4,
+              "exporteeLe": "2026-09-09T08:00:00Z",
+              "interventions": [
+                {
+                  "id": "id-1", "date": "2026-09-10", "heure": "08:30",
+                  "client": "Boucherie Lemoine", "ville": "Rouen",
+                  "typeLibelle": "Fuite de fluide", "statut": "PEUT_ETRE"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        assertEquals(ResultatRestauration.Illisible, repository.restaurer(contenu))
+        assertTrue("rien n'est écrit avant la validation", daoInterventions.contenu.isEmpty())
     }
 
     /** Restaurer deux fois la même sauvegarde ne doit pas tout dédoubler. */
@@ -252,9 +343,17 @@ class SauvegardeRepositoryTest {
         val viergeClients = FauxClientDao()
         val viergeTypes = FauxTypeInterventionDao(viergeInterventions)
         val viergeEquipements = FauxEquipementDao(viergeInterventions)
-        val resultat =
-            SauvegardeRepository(viergeInterventions, viergeClients, viergeTypes, viergeEquipements)
-                .restaurer(contenu)
+        val resultat = SauvegardeRepository(
+            viergeInterventions,
+            viergeClients,
+            viergeTypes,
+            viergeEquipements,
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(viergeInterventions),
+            FauxPrestationDao(),
+        ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
         assertTrue("rien ne doit être écrit avant la vérification", viergeClients.contenu.isEmpty())
@@ -297,6 +396,11 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             autreTypes,
             FauxEquipementDao(autreInterventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(autreInterventions),
+            FauxPrestationDao(),
         ).restaurer(export.contenu)
 
         assertEquals(2, export.types)
@@ -386,6 +490,11 @@ class SauvegardeRepositoryTest {
             FauxClientDao(),
             FauxTypeInterventionDao(interventions),
             FauxEquipementDao(interventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(interventions),
+            FauxPrestationDao(),
         )
     }
 

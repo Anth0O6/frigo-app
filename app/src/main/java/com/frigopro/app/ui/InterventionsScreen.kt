@@ -1,82 +1,130 @@
 package com.frigopro.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Pending
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.frigopro.app.data.Client
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
+import com.frigopro.app.data.enDuree
+import com.frigopro.app.ui.composants.BoutonCarre
+import com.frigopro.app.ui.composants.BoutonPlein
+import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.MargeEcran
+import com.frigopro.app.ui.composants.Puce
+import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.FrigoProTheme
+import com.frigopro.app.ui.theme.StyleChiffre
+import com.frigopro.app.ui.theme.StyleChiffrePetit
+import com.frigopro.app.ui.theme.StyleSection
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 
-/** Point d'entrée de l'écran, branché sur le [InterventionsViewModel]. */
+/**
+ * La tournée du jour, avec son état.
+ *
+ * Elle héberge aussi l'écran d'une intervention : ouvrir une intervention
+ * remplace la liste plutôt que de l'empiler, comme la fiche machine remplace
+ * le carnet. Une seule profondeur, et donc toujours pas de graphe de
+ * navigation.
+ */
 @Composable
 fun InterventionsRoute(
+    /** Chiffrer depuis une intervention : la coquille seule sait changer d'onglet. */
+    onAllerAuxDevis: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
+    detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
+    devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
 ) {
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val types by viewModel.types.collectAsStateWithLifecycle()
     val machines by viewModel.machines.collectAsStateWithLifecycle()
+    val techniciens by viewModel.techniciens.collectAsStateWithLifecycle()
     val formulaire by viewModel.formulaire.collectAsStateWithLifecycle()
+    val ouverte by detail.ouverte.collectAsStateWithLifecycle()
+    val semaineOuverte by viewModel.semaineOuverte.collectAsStateWithLifecycle()
+    val frise by viewModel.frise.collectAsStateWithLifecycle()
+    val semaine by viewModel.semaine.collectAsStateWithLifecycle()
+
+    if (ouverte != null) {
+        InterventionRoute(
+            viewModel = detail,
+            onCreerDevis = {
+                devis.onNouveau(detail.etat.value?.client)
+                onAllerAuxDevis()
+            },
+            modifier = modifier,
+        )
+        return
+    }
+
+    BackHandler(enabled = semaineOuverte) { viewModel.onFermerSemaine() }
+
+    if (semaineOuverte) {
+        EcranSemaine(
+            lundi = lundiDe(jour),
+            jourRetenu = jour,
+            interventions = semaine,
+            onJourRetenu = {
+                viewModel.onJourChoisi(it)
+                viewModel.onFermerSemaine()
+            },
+            onSemainePrecedente = viewModel::onSemainePrecedente,
+            onSemaineSuivante = viewModel::onSemaineSuivante,
+            onOuvrir = detail::onOuvrir,
+            modifier = modifier,
+        )
+        return
+    }
 
     InterventionsScreen(
         jour = jour,
@@ -85,8 +133,12 @@ fun InterventionsRoute(
         onJourSuivant = viewModel::onJourSuivant,
         onJourChoisi = viewModel::onJourChoisi,
         onNouvelleIntervention = viewModel::onNouvelleIntervention,
+        onOuvrirSemaine = viewModel::onOuvrirSemaine,
+        onOuvrirIntervention = detail::onOuvrir,
         onModifierIntervention = viewModel::onModifierIntervention,
         onChangerStatut = viewModel::onChangerStatut,
+        frise = frise,
+        onBasculerVue = viewModel::onBasculerVue,
         actions = { MenuSauvegarde() },
         modifier = modifier,
     )
@@ -99,12 +151,14 @@ fun InterventionsRoute(
             // Seules les machines du client choisi : celles des autres clients
             // n'ont rien à faire dans cette saisie.
             machines = machines.filter { it.clientId == etat.clientId },
+            techniciens = techniciens,
             onEtatChange = viewModel::onFormulaireChange,
             onClientChoisi = viewModel::onClientChoisi,
             onTypeChoisi = viewModel::onTypeChoisi,
             onNouveauType = viewModel::onNouveauType,
             onMachineChoisie = viewModel::onMachineChoisie,
             onNouvelleMachine = viewModel::onNouvelleMachine,
+            onNouveauTechnicien = viewModel::onNouveauTechnicien,
             onValider = viewModel::onValiderFormulaire,
             onSupprimer = viewModel::onSupprimerIntervention,
             onFermer = viewModel::onFermerFormulaire,
@@ -112,7 +166,14 @@ fun InterventionsRoute(
     }
 }
 
-/** Écran sans état : tournée d'une journée, navigable jour par jour. */
+/**
+ * La tournée d'une journée.
+ *
+ * Trois choses la structurent, dans cet ordre : où l'on en est (le bandeau de
+ * chiffres), ce qui vient maintenant (l'intervention en cours, dépliée), et ce
+ * qui suit (les autres, en une ligne chacune). Un technicien consulte cet
+ * écran vingt fois par jour et n'y cherche jamais qu'une chose : la suivante.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InterventionsScreen(
@@ -122,140 +183,418 @@ fun InterventionsScreen(
     onJourSuivant: () -> Unit,
     onJourChoisi: (LocalDate) -> Unit,
     onNouvelleIntervention: () -> Unit,
+    onOuvrirSemaine: () -> Unit,
+    onOuvrirIntervention: (Intervention) -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
+    /** La journée en frise horaire plutôt qu'en liste. */
+    frise: Boolean,
+    onBasculerVue: () -> Unit,
     modifier: Modifier = Modifier,
     /** Posé dans la barre du haut : la sauvegarde s'y branche sans que l'écran la connaisse. */
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    var calendrierOuvert by rememberSaveable { mutableStateOf(false) }
+    var selecteurOuvert by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        // La barre d'onglets, sous cet écran, pose déjà la marge du bas ;
-        // l'y ajouter ici la compterait deux fois.
+        // La barre d'onglets, sous cet écran, pose déjà la marge du bas.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            Column {
-                CenterAlignedTopAppBar(
-                    title = { Text(text = "Interventions") },
-                    actions = actions,
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                )
-                BarreJour(
-                    jour = jour,
-                    sousTitre = sousTitre(lignes),
-                    onPrecedent = onJourPrecedent,
-                    onSuivant = onJourSuivant,
-                    onOuvrirCalendrier = { calendrierOuvert = true },
-                )
-            }
-        },
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(onClick = onNouvelleIntervention) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Ajouter une intervention",
-                )
+            FloatingActionButton(
+                onClick = onNouvelleIntervention,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(imageVector = Icons.Filled.Add, contentDescription = "Ajouter une intervention")
             }
         },
-    ) { innerPadding ->
-        if (lignes.isEmpty()) {
-            JourneeVide(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+    ) { marges ->
+        Column(modifier = Modifier.padding(marges)) {
+            EnTeteTournee(
+                jour = jour,
+                onJourPrecedent = onJourPrecedent,
+                onJourSuivant = onJourSuivant,
+                onOuvrirSelecteur = { selecteurOuvert = true },
+                onOuvrirSemaine = onOuvrirSemaine,
+                actions = actions,
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(items = lignes, key = { it.intervention.id }) { ligne ->
-                    InterventionCard(
-                        ligne = ligne,
-                        onClick = { onModifierIntervention(ligne.intervention) },
-                        onChangerStatut = { onChangerStatut(ligne.intervention) },
-                    )
+            PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
+            BasculeVue(frise = frise, onBasculerVue = onBasculerVue)
+            BandeauJournee(lignes = lignes)
+            if (frise) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = MargeEcran),
+                ) {
+                    if (lignes.isEmpty()) {
+                        JourneeVide()
+                    } else {
+                        FriseHoraire(
+                            lignes = lignes,
+                            // Le trait de l'heure courante n'a de sens que sur
+                            // aujourd'hui : ailleurs il désignerait un instant
+                            // qui n'appartient pas à la journée affichée.
+                            maintenant = if (jour == LocalDate.now()) LocalTime.now() else null,
+                            onOuvrir = onOuvrirIntervention,
+                        )
+                    }
+                    // De quoi faire passer le dernier créneau au-dessus du bouton.
+                    EspaceVertical(96)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = MargeEcran,
+                        end = MargeEcran,
+                        top = 4.dp,
+                        // De quoi faire passer la dernière carte au-dessus du bouton.
+                        bottom = 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (lignes.isEmpty()) {
+                        item { JourneeVide() }
+                    }
+                    items(items = lignes, key = { it.intervention.id }) { ligne ->
+                        if (ligne.intervention.statut == StatutIntervention.EN_COURS) {
+                            CarteEnCours(
+                                ligne = ligne,
+                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                onChangerStatut = { onChangerStatut(ligne.intervention) },
+                            )
+                        } else {
+                            LigneCompacte(
+                                ligne = ligne,
+                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                onModifier = { onModifierIntervention(ligne.intervention) },
+                                onChangerStatut = { onChangerStatut(ligne.intervention) },
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
-    if (calendrierOuvert) {
+    if (selecteurOuvert) {
         SelecteurDate(
             date = jour,
             onDateChoisie = {
                 onJourChoisi(it)
-                calendrierOuvert = false
+                selecteurOuvert = false
             },
-            onFermer = { calendrierOuvert = false },
+            onFermer = { selecteurOuvert = false },
+        )
+    }
+}
+
+@Composable
+private fun EnTeteTournee(
+    jour: LocalDate,
+    onJourPrecedent: () -> Unit,
+    onJourSuivant: () -> Unit,
+    onOuvrirSelecteur: () -> Unit,
+    onOuvrirSemaine: () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = MargeEcran, end = MargeEcran, top = 8.dp, bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onOuvrirSelecteur),
+        ) {
+            Text(
+                text = libelleDate(jour).uppercase(),
+                style = StyleSection,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = titreJour(jour),
+                style = MaterialTheme.typography.displaySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        BoutonCarre(
+            icone = Icons.AutoMirrored.Filled.ArrowBack,
+            description = "Jour précédent",
+            onClick = onJourPrecedent,
+        )
+        BoutonCarre(
+            icone = Icons.AutoMirrored.Filled.ArrowForward,
+            description = "Jour suivant",
+            onClick = onJourSuivant,
+        )
+        BoutonCarre(
+            icone = Icons.Filled.CalendarMonth,
+            description = "Voir la semaine",
+            onClick = onOuvrirSemaine,
+        )
+        actions()
+    }
+}
+
+/**
+ * Les sept jours de la semaine, en pastilles.
+ *
+ * Elles remplacent deux appuis sur les flèches par un seul, et surtout elles
+ * **montrent la semaine** : on voit où l'on est avant de choisir, ce qu'un
+ * bouton « jour suivant » ne dit pas. Les flèches restent, pour franchir une
+ * semaine sans passer par le sélecteur.
+ */
+@Composable
+private fun PastillesSemaine(jour: LocalDate, onJourChoisi: (LocalDate) -> Unit) {
+    val lundi = lundiDe(jour)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MargeEcran)
+            .padding(bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        repeat(JOURS_SEMAINE) { rang ->
+            val date = lundi.plusDays(rang.toLong())
+            val retenu = date == jour
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = MaterialTheme.shapes.medium,
+                color = if (retenu) {
+                    MaterialTheme.colorScheme.onBackground
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                },
+                onClick = { onJourChoisi(date) },
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = jourSemaineCourt(date),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (retenu) {
+                            MaterialTheme.colorScheme.background
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = "${date.dayOfMonth}",
+                        style = StyleChiffrePetit,
+                        color = if (retenu) {
+                            MaterialTheme.colorScheme.background
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private const val JOURS_SEMAINE = 7
+
+/** La bascule frise / liste : deux mots, celui qui est actif en plein. */
+@Composable
+private fun BasculeVue(frise: Boolean, onBasculerVue: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = MargeEcran)
+            .padding(bottom = 14.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            OngletVue(texte = "Frise", actif = frise, onClick = { if (!frise) onBasculerVue() })
+            OngletVue(texte = "Liste", actif = !frise, onClick = { if (frise) onBasculerVue() })
+        }
+    }
+}
+
+@Composable
+private fun OngletVue(texte: String, actif: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = if (actif) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+        onClick = onClick,
+    ) {
+        Text(
+            text = texte,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (actif) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
         )
     }
 }
 
 /**
- * Navigation de journée : une flèche de chaque côté, et le libellé central
- * ouvre le calendrier pour sauter directement à une date lointaine.
+ * Le bandeau de chiffres : ce qui est fait, le temps saisi, les urgences.
+ *
+ * Le temps saisi est la somme des chronomètres de la journée. Il ne sert pas
+ * qu'à informer : c'est lui qui fait remarquer qu'on a oublié d'arrêter un
+ * chrono, ou qu'une journée à rallonge n'a été facturée qu'à moitié.
  */
 @Composable
-private fun BarreJour(
-    jour: LocalDate,
-    sousTitre: String,
-    onPrecedent: () -> Unit,
-    onSuivant: () -> Unit,
-    onOuvrirCalendrier: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun BandeauJournee(lignes: List<LigneTournee>) {
+    if (lignes.isEmpty()) return
+
+    val terminees = lignes.count { it.intervention.statut == StatutIntervention.TERMINEE }
+    val cumul = lignes.fold(Duration.ZERO) { total, ligne ->
+        total.plus(ligne.intervention.chrono.ecoulee(java.time.Instant.now()))
+    }
+    val urgences = lignes.count { it.intervention.urgente }
+
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MargeEcran)
+            .padding(bottom = 14.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onPrecedent) {
-                Icon(
-                    imageVector = Icons.Filled.ChevronLeft,
-                    contentDescription = "Jour précédent",
+            ChiffreJournee(
+                valeur = "$terminees/${lignes.size}",
+                libelle = "terminées",
+                couleur = MaterialTheme.colorScheme.primary,
+            )
+            SeparateurVertical()
+            ChiffreJournee(valeur = cumul.enDuree(), libelle = "temps saisi")
+            if (urgences > 0) {
+                SeparateurVertical()
+                ChiffreJournee(valeur = "$urgences", libelle = "urgence", couleur = AValider)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChiffreJournee(
+    valeur: String,
+    libelle: String,
+    couleur: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Column {
+        Text(text = valeur, style = StyleChiffre, color = couleur)
+        Text(
+            text = libelle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SeparateurVertical() {
+    Box(
+        modifier = Modifier
+            .size(width = 1.dp, height = 34.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
+
+/**
+ * L'intervention en cours, dépliée.
+ *
+ * C'est la seule carte de la liste qui porte des boutons : celle qu'on est en
+ * train de faire est la seule sur laquelle on agit sans réfléchir — terminer,
+ * appeler, y aller. Les autres se contentent d'attendre.
+ */
+@Composable
+private fun CarteEnCours(
+    ligne: LigneTournee,
+    onOuvrir: () -> Unit,
+    onChangerStatut: () -> Unit,
+) {
+    val contexte = LocalContext.current
+    val intervention = ligne.intervention
+    val ecoule = intervention.chrono.ecoulee(java.time.Instant.now())
+
+    Carte(relief = true, liseré = AValider, onClick = onOuvrir) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = intervention.heure.format(FORMAT_HEURE),
+                style = StyleChiffrePetit,
+                color = AValider,
+            )
+            Puce(
+                texte = if (intervention.chrono.vierge) {
+                    "EN COURS"
+                } else {
+                    "EN COURS · ${ecoule.enDuree()}"
+                },
+                couleur = AValider,
+                fond = AValider.copy(alpha = 0.16f),
+            )
+        }
+        Column {
+            Text(
+                text = intervention.client,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = sousTitre(intervention),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (intervention.typeLibelle.isNotBlank()) {
+                Puce(texte = intervention.typeLibelle, couleur = Planifie)
+            }
+            if (intervention.equipementNom.isNotBlank()) {
+                Puce(texte = intervention.equipementNom, couleur = Planifie)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BoutonPlein(
+                texte = "Terminer",
+                onClick = onChangerStatut,
+                modifier = Modifier.weight(1f),
+            )
+            if (ligne.appelable) {
+                BoutonCarre(
+                    icone = Icons.Filled.Call,
+                    description = "Appeler ${intervention.client}",
+                    onClick = { ligne.client?.telephone?.let(contexte::appeler) },
+                    fond = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(MaterialTheme.shapes.medium)
-                    .clickable(onClick = onOuvrirCalendrier)
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = titreJour(jour),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Filled.CalendarMonth,
-                        contentDescription = "Choisir une date",
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Text(text = sousTitre, style = MaterialTheme.typography.labelSmall)
-            }
-            IconButton(onClick = onSuivant) {
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = "Jour suivant",
+            if (ligne.localisable) {
+                BoutonCarre(
+                    icone = Icons.Filled.Directions,
+                    description = "Itinéraire vers ${intervention.client}",
+                    onClick = { ligne.client?.adresseComplete?.let(contexte::ouvrirItineraire) },
+                    fond = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
             }
         }
@@ -263,277 +602,162 @@ private fun BarreJour(
 }
 
 /**
- * Carte d'une intervention. Le corps ouvre le formulaire ; l'icône de droite
- * fait avancer le statut sans le rouvrir, pour marquer un passage terminé
- * d'un seul geste. Appeler et se rendre sur place s'ajoutent en bas de carte
- * dès que la fiche du client le permet : c'est depuis la tournée, pas depuis le
- * carnet, qu'on en a besoin.
+ * Une intervention qui attend, ou qui est faite.
+ *
+ * Une ligne, une heure, un nom : de quoi balayer la journée du pouce. La
+ * pastille de droite change le statut sans ouvrir quoi que ce soit — c'est le
+ * geste qu'on fait en remontant dans la camionnette.
  */
 @Composable
-fun InterventionCard(
+private fun LigneCompacte(
     ligne: LigneTournee,
-    onClick: () -> Unit,
+    onOuvrir: () -> Unit,
+    onModifier: () -> Unit,
     onChangerStatut: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val intervention = ligne.intervention
     val terminee = intervention.statut == StatutIntervention.TERMINEE
-    val actions = ligne.appelable || ligne.localisable
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (terminee) {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            },
-        ),
-    ) {
+    Carte(onClick = onOuvrir, onLongClick = onModifier) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onClick)
-                    .padding(
-                        start = 16.dp,
-                        top = 16.dp,
-                        bottom = if (actions) 8.dp else 16.dp,
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = intervention.heure.format(FORMAT_HEURE),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (terminee) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = intervention.client,
-                        style = MaterialTheme.typography.titleMedium,
-                        textDecoration = if (terminee) TextDecoration.LineThrough else null,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            // L'adresse de la fiche quand elle existe : en
-                            // tournée, « 12 rue des Carmes » vaut mieux que « Rouen ».
-                            text = ligne.client?.adresseComplete ?: intervention.ville,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    // Le type et la machine sur une seule ligne : deux
-                    // précisions courtes, et une carte de tournée doit rester
-                    // lisible d'un coup d'œil, téléphone à bout de bras.
-                    val precisions = listOfNotNull(
-                        intervention.typeLibelle.takeIf { it.isNotBlank() },
-                        intervention.equipementNom.takeIf { it.isNotBlank() },
-                    )
-                    if (precisions.isNotEmpty()) {
-                        Text(
-                            text = precisions.joinToString(" · "),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
-                    }
-                    if (intervention.notes.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = intervention.notes,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-            BoutonStatut(statut = intervention.statut, onClick = onChangerStatut)
-            Spacer(modifier = Modifier.width(4.dp))
-        }
-        if (actions) {
-            ActionsClient(ligne = ligne)
-        }
-    }
-}
-
-/** Appeler le client, ou ouvrir l'itinéraire : deux gestes de terrain. */
-@Composable
-private fun ActionsClient(
-    ligne: LigneTournee,
-    modifier: Modifier = Modifier,
-) {
-    val contexte = LocalContext.current
-    val client = ligne.client ?: return
-
-    Row(
-        modifier = modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        if (ligne.appelable) {
-            TextButton(onClick = { contexte.appeler(client.telephone) }) {
-                Icon(
-                    imageVector = Icons.Filled.Phone,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Appeler")
-            }
-        }
-        if (ligne.localisable) {
-            TextButton(onClick = { contexte.ouvrirItineraire(client.adresseComplete) }) {
-                Icon(
-                    imageVector = Icons.Filled.Directions,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Itinéraire")
-            }
-        }
-    }
-}
-
-/** Icône d'avancement, qui passe au statut suivant à chaque appui. */
-@Composable
-private fun BoutonStatut(
-    statut: StatutIntervention,
-    onClick: () -> Unit,
-) {
-    val icone = when (statut) {
-        StatutIntervention.A_FAIRE -> Icons.Filled.RadioButtonUnchecked
-        StatutIntervention.EN_COURS -> Icons.Filled.Pending
-        StatutIntervention.TERMINEE -> Icons.Filled.CheckCircle
-    }
-    val teinte: Color = when (statut) {
-        StatutIntervention.A_FAIRE -> MaterialTheme.colorScheme.onSurfaceVariant
-        StatutIntervention.EN_COURS -> MaterialTheme.colorScheme.tertiary
-        StatutIntervention.TERMINEE -> MaterialTheme.colorScheme.primary
-    }
-
-    IconButton(onClick = onClick) {
-        Icon(
-            imageVector = icone,
-            contentDescription = "${statut.libelle} — toucher pour changer de statut",
-            tint = teinte,
-        )
-    }
-}
-
-/** Affiché quand la journée consultée ne contient aucune intervention. */
-@Composable
-private fun JourneeVide(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(
-            text = "Aucune intervention ce jour-là.\nTouchez + pour en planifier une.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-/**
- * « rendez-vous » est invariable ; seul l'accord du participe change. Le
- * décompte des interventions terminées répond à la question qu'un technicien
- * se pose en cours de journée : ce qu'il lui reste.
- */
-private fun sousTitre(lignes: List<LigneTournee>): String {
-    if (lignes.isEmpty()) return "Aucun rendez-vous"
-
-    val total = lignes.size
-    val base = if (total == 1) "1 rendez-vous" else "$total rendez-vous"
-    val terminees = lignes.count { it.intervention.statut == StatutIntervention.TERMINEE }
-
-    return when {
-        terminees == 0 -> base
-        terminees == total -> "$base · tout est terminé"
-        terminees == 1 -> "$base · 1 terminée"
-        else -> "$base · $terminees terminées"
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun InterventionsScreenPreview() {
-    FrigoProTheme {
-        Surface {
-            InterventionsScreen(
-                jour = LocalDate.now(),
-                lignes = listOf(
-                    LigneTournee(
-                        intervention = Intervention(
-                            id = "1",
-                            date = LocalDate.now(),
-                            heure = LocalTime.of(8, 30),
-                            client = "Boucherie Lemoine",
-                            ville = "Rouen",
-                            typeLibelle = "Fuite de fluide",
-                            statut = StatutIntervention.TERMINEE,
-                        ),
-                        client = Client(
-                            nom = "Boucherie Lemoine",
-                            ville = "Rouen",
-                            adresse = "12 rue des Carmes",
-                            telephone = "02 35 00 00 00",
-                        ),
-                    ),
-                    LigneTournee(
-                        intervention = Intervention(
-                            id = "2",
-                            date = LocalDate.now(),
-                            heure = LocalTime.of(10, 0),
-                            client = "Supérette Val-Fleuri",
-                            ville = "Elbeuf",
-                            typeLibelle = "Compresseur",
-                            statut = StatutIntervention.EN_COURS,
-                            notes = "Compresseur bruyant, pièce commandée.",
-                        ),
-                        client = null,
-                    ),
-                    LigneTournee(
-                        intervention = Intervention(
-                            id = "3",
-                            date = LocalDate.now(),
-                            heure = LocalTime.of(14, 15),
-                            client = "Traiteur Delaunay",
-                            ville = "Barentin",
-                            typeLibelle = "Entretien annuel",
-                        ),
-                        client = Client(
-                            nom = "Traiteur Delaunay",
-                            ville = "Barentin",
-                            adresse = "5 place de la Gare",
-                        ),
-                    ),
-                ),
-                onJourPrecedent = {},
-                onJourSuivant = {},
-                onJourChoisi = {},
-                onNouvelleIntervention = {},
-                onModifierIntervention = {},
-                onChangerStatut = {},
+            Text(
+                text = intervention.heure.format(FORMAT_HEURE),
+                style = StyleChiffrePetit,
+                color = if (terminee) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.secondary
+                },
             )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = intervention.client,
+                    style = MaterialTheme.typography.titleMedium,
+                    textDecoration = if (terminee) TextDecoration.LineThrough else null,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = sousTitre(intervention),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (intervention.urgente && !terminee) {
+                Puce(texte = "URGENCE", couleur = AValider, fond = AValider.copy(alpha = 0.16f))
+            }
+            PastilleStatut(terminee = terminee, onClick = onChangerStatut)
         }
+    }
+}
+
+/** Le rond qu'on touche pour avancer : vide à faire, coché terminé. */
+@Composable
+private fun PastilleStatut(terminee: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.size(40.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = androidx.compose.ui.graphics.Color.Transparent,
+        onClick = onClick,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (terminee) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Rouvrir l'intervention",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.size(14.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = androidx.compose.ui.graphics.Color.Transparent,
+                    border = androidx.compose.foundation.BorderStroke(
+                        2.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                    ),
+                ) {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun JourneeVide() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = "Aucune intervention",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "Le bouton + en ajoute une.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** « Chambre froide positive · Vitry-sur-Seine », selon ce qui est connu. */
+private fun sousTitre(intervention: Intervention): String = listOf(
+    intervention.equipementNom.ifBlank { intervention.typeLibelle },
+    intervention.ville,
+).filter { it.isNotBlank() }.joinToString(" · ")
+
+@Preview
+@Composable
+private fun ApercuTournee() {
+    FrigoProTheme(sombre = true) {
+        InterventionsScreen(
+            jour = LocalDate.of(2026, 5, 14),
+            lignes = listOf(
+                LigneTournee(
+                    intervention = Intervention(
+                        id = "1",
+                        date = LocalDate.of(2026, 5, 14),
+                        heure = LocalTime.of(8, 0),
+                        client = "Boucherie Martel",
+                        ville = "Vitry-sur-Seine",
+                        typeLibelle = "Dépannage",
+                        equipementNom = "Chambre froide positive",
+                        statut = StatutIntervention.EN_COURS,
+                        urgente = true,
+                    ),
+                    client = null,
+                ),
+                LigneTournee(
+                    intervention = Intervention(
+                        id = "2",
+                        date = LocalDate.of(2026, 5, 14),
+                        heure = LocalTime.of(10, 30),
+                        client = "SCI Le Vallon",
+                        ville = "Ivry",
+                        typeLibelle = "Entretien PAC",
+                    ),
+                    client = null,
+                ),
+            ),
+            onJourPrecedent = {},
+            onJourSuivant = {},
+            onJourChoisi = {},
+            onNouvelleIntervention = {},
+            onOuvrirSemaine = {},
+            onOuvrirIntervention = {},
+            onModifierIntervention = {},
+            onChangerStatut = {},
+            frise = true,
+            onBasculerVue = {},
+        )
     }
 }
