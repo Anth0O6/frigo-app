@@ -60,6 +60,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Photo.kt
 │       │   │   ├── Chrono.kt              # le temps passé, et son arithmétique
 │       │   │   ├── Fluide.kt              # GWP, équivalent CO₂, périodicité 517/2014
+│       │   │   ├── CourbesSaturation.kt   # bulle et rosée, les dix-sept fluides
+│       │   │   ├── VerificationFluide.kt  # « j'ai contrôlé cette courbe »
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
 │       │   │   ├── Devis.kt               # devis, lignes et totaux
@@ -77,6 +79,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── EquipementRepository.kt
 │       │   │   ├── RangementPhotos.kt     # ce que le dépôt attend du stockage
 │       │   │   ├── StockagePhotos.kt      # les images, dans files/photos/
+│       │   │   ├── StockageDocuments.kt   # les PDF à envoyer, dans le cache
 │       │   │   ├── ReductionPhoto.kt      # arithmétique de la réduction
 │       │   │   ├── Sauvegarde.kt          # format du fichier de sauvegarde
 │       │   │   ├── SauvegardeRepository.kt
@@ -120,6 +123,11 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── CouleurStatut.kt     # deux dimensions réduites à une couleur
 │       │       ├── DevisScreen.kt
 │       │       ├── DevisViewModel.kt
+│       │       ├── DocumentDevis.kt     # ce que le devis imprimé dit
+│       │       ├── MiseEnPageDevis.kt   # l'arithmétique de la page A4
+│       │       ├── PdfDevis.kt          # le seul à connaître Canvas
+│       │       ├── EtatReglette.kt      # pression ↔ température, et le côté
+│       │       ├── FeuilleReglette.kt   # la réglette, curseur et avertissement
 │       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
 │       │       ├── SectionsReglages.kt  # technicien, thème, gants, tarifs
 │       │       ├── Nombres.kt           # virgule décimale à la saisie
@@ -129,6 +137,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── PhotoChargee.kt     # décodage d'une image à la demande
 │       │       ├── VisionneusePhoto.kt # une photo en plein écran
 │       │       ├── DialogueIntitule.kt # saisie d'un intitulé ou d'un nom
+│       │       ├── DialoguePrestation.kt # créer, retarifer, retirer
 │       │       ├── ReglagesScreen.kt
 │       │       ├── ReglagesViewModel.kt
 │       │       ├── MenuSauvegarde.kt
@@ -182,7 +191,20 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `equipementNom`, même couple lien / copie que pour le type et pour les mêmes
   raisons. `EquipementDao` touche trois tables par `@Transaction` : supprimer une
   machine doit effacer ses photos, détacher ses interventions et disparaître d'un
-  bloc.
+  bloc — et, depuis le multi-split, faire le même travail pour chacune de ses
+  unités.
+  Une machine peut porter des **unités intérieures** : un bi-split est un groupe
+  extérieur et deux unités, et non trois machines au même rang. Le lien est un
+  `parentId` sur la même table plutôt qu'une table à part : une unité est une
+  machine — elle se nomme, se photographie, porte un historique — et lui donner sa
+  propre table aurait doublé les quatre écrans qui la montrent. `GroupeMachines`
+  réunit un groupe et ses unités, et **le compte d'unités est dérivé, jamais
+  stocké** : un champ `nombreUnites` aurait dérivé à la première unité arrivée
+  autrement que par l'écran qui l'incrémente — une restauration de sauvegarde, par
+  exemple. La hiérarchie n'a **qu'un seul niveau**, et c'est une décision de l'UI
+  et non une limite du modèle : `parentId` autoriserait un arbre de profondeur
+  quelconque, qui demanderait un écran sachant le parcourir pour un besoin qui
+  n'existe pas — un split se branche sur un groupe, pas sur un autre split.
   Les images ne vont pas en base : SQLite n'est pas un entrepôt de fichiers, et
   une photo dans une colonne alourdirait chaque lecture de la ligne. Elles vivent
   dans `files/photos/`, la base ne portant que leur nom — un chemin absolu
@@ -214,11 +236,41 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   SQL** (`SQL_CATALOGUE_INITIAL`) : `MIGRATION_7_8` pour un téléphone déjà garni
   de tournées, le `onCreate` de Room pour une installation neuve. Les laisser
   diverger reviendrait à livrer deux applications différentes selon l'ancienneté
-  du téléphone.
+  du téléphone. Une prestation peut se compter **par unité intérieure** : poser un
+  bi-split double la main-d'œuvre sans doubler le forfait de déplacement, et les
+  deux cas cohabitent donc dans le catalogue. La case ne fait que **pré-remplir**
+  la quantité de la ligne de devis, qui reste modifiable : une deuxième unité au
+  même étage ne coûte pas le même temps qu'une deuxième trois étages plus haut, et
+  proposer est utile là où imposer serait faux. Son `@ColumnInfo(defaultValue)`
+  est le seul indispensable du projet — voir [Prestation] pour ce qu'il a coûté de
+  l'oublier.
   Le montant d'un devis n'est pas recopié sur sa ligne : il est la somme de ses
   lignes, et le recopier serait s'exposer à ce qu'il cesse d'être juste après une
   modification. `DevisDao.observerTotaux` les calcule tous en un `GROUP BY`,
-  d'où sortent `DevisChiffre` et les compteurs de l'accueil comme de l'onglet.
+  d'où sortent `DevisChiffre` et les compteurs de l'accueil comme de l'onglet — et
+  son `CASE WHEN offerte = 0` est ce qui en écarte les lignes offertes.
+  **Offrir la TVA est une remise commerciale égale à son montant, pas un taux
+  ramené à zéro.** La distinction n'est pas cosmétique : la taxe reste due, et un
+  document annonçant « TVA 0 % » alors qu'on y est assujetti serait faux — c'est
+  l'entreprise qui en répondrait. Le devis porte donc la TVA à son taux, puis la
+  remise en dessous. Une **ligne offerte garde son prix** pour la même raison,
+  barré à l'écran comme au PDF : une remise qu'on ne voit pas n'est pas un
+  argument de vente, et remettre le prix à zéro aurait interdit de reprendre le
+  geste sans ressaisir. `assujettiTva` est **recopié** sur chaque devis comme
+  `tauxTva`, et pour la même raison : franchir le seuil de la franchise en base ne
+  doit pas faire apparaître de la TVA sur un devis envoyé il y a six mois.
+  `Parametres.MENTION_FRANCHISE` est nommée plutôt que recopiée — elle paraît à
+  l'écran et sur le PDF, et les laisser diverger ferait partir chez un client une
+  formule qui n'est pas celle du code général des impôts.
+  `CourbesSaturation` porte les courbes bulle / rosée de dix-sept fluides, écrites
+  **en clair** dans un format relisible contre une réglette de poche : ces valeurs
+  doivent pouvoir être contrôlées par quelqu'un qui n'écrit pas de code. Elles
+  vivent dans le code comme les GWP — ce sont des constantes physiques — mais
+  **qui les a vérifiées est une donnée de l'utilisateur** et va en base
+  (`VerificationFluide`) : c'est lui qui engage sa responsabilité en réglant un
+  détendeur dessus. Rien n'est extrapolé hors de la plage saisie, et la courbe du
+  CO₂ s'arrête au point critique : au-delà il n'y a plus de saturation, et un
+  chiffre inventé serait le plus nuisible là précisément.
   `initialesDe` est partagée : quatre écrans la dérivaient chacun à sa façon, et
   elles divergeaient déjà — « L'Épicerie du coin » donnait « L » sur l'un et
   « LÉ » sur l'autre.
@@ -290,14 +342,40 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   tarifer ne sert à rien — et n'expose qu'un seul
   `StateFlow<DialogueReglages?>` plutôt que trois booléens : deux boîtes de
   dialogue ne peuvent pas être ouvertes en même temps, et le dire au type
-  supprime la question. `DialogueIntitule` est partagée par les types et
-  les machines : nommer, renommer et refuser un doublon se font de la même façon,
-  et des boîtes jumelles finiraient par diverger — seuls le vocabulaire et le
-  test du doublon sont des paramètres.
+  supprime la question. `DialogueIntitule` est partagée par les types, les
+  machines et les unités : nommer, renommer et refuser un doublon se font de la
+  même façon, et des boîtes jumelles finiraient par diverger — seuls le
+  vocabulaire et le test du doublon sont des paramètres. Ce dernier n'est pas le
+  même pour une unité : deux groupes homonymes chez un client sont une confusion,
+  deux unités « Salon » sous deux groupes différents ne le sont pas — c'est le cas
+  ordinaire d'un immeuble. `DialoguePrestation` suit le même motif et sert les deux
+  chemins par où le catalogue s'enrichit : les Réglages, et la feuille du devis.
+  Le second compte autant que le premier — une pièce qu'il faudrait aller déclarer
+  dans les Réglages finit saisie en ligne libre, et le catalogue ne grossit jamais.
+  `FeuilleReglette` et `EtatReglette` sont la réglette pression / température, et
+  `CoteCircuit` en est la pièce centrale : il **choisit la colonne**, rosée à
+  l'aspiration pour la surchauffe, bulle au refoulement pour le
+  sous-refroidissement. Les confondre sur un R-448A donne un écart faux de tout le
+  glissement — près de 5 K, dans le sens qui fait croire à une surchauffe
+  suffisante quand elle ne l'est pas, et c'est du liquide qui arrive au
+  compresseur. Les pressions sont en **bar relatifs**, comme sur un manomètre, et
+  l'unité est dite à l'écran plutôt que supposée : l'écart avec l'absolu fait
+  1,013 bar, soit environ 7 K sur un R-410A en basse pression. Le garde-fou est
+  `reportable` : **aucun écart calculé sur une courbe non vérifiée n'entre dans un
+  relevé**. La réglette peut l'afficher — l'avertissement est sous les yeux de
+  celui qui le lit — mais une fois dans le relevé le chiffre devient un fait, qui
+  part dans le compte-rendu signé et nourrit l'aide au dépannage sans que rien ne
+  dise plus d'où il venait. Reporter la *pression*, elle, ne demande rien : c'est
+  celle qu'on a lue au manomètre. La plage du curseur vient de la courbe et est
+  l'**intersection** des deux colonnes : sur un mélange la rosée descend plus bas
+  que la bulle et monte moins haut, si bien qu'une plage prise aux extrêmes
+  afficherait « hors plage » aux deux bouts.
   Appeler et ouvrir un itinéraire passent par des intentions Android
   (`ActionsExternes.kt`) : `ACTION_DIAL` plutôt que `ACTION_CALL`, pour n'avoir
   pas à demander la permission d'appeler, et le schéma `geo:` pour laisser
-  l'utilisateur choisir sa cartographie. Il détient aussi le formulaire ouvert
+  l'utilisateur choisir sa cartographie ; `envoyerDocument` ouvre un sélecteur
+  plutôt qu'une application désignée, un devis partant tantôt par courriel à un
+  syndic, tantôt par message à un restaurateur qui ne lit pas ses mails. Il détient aussi le formulaire ouvert
   (`StateFlow<EtatFormulaire?>`, `null` quand l'écran n'affiche que la liste).
   `EtatFormulaire` porte la saisie en cours ; son `id` vaut `null` en création
   et identifie la ligne éditée sinon, ce qui distingue « Ajouter » d'«
@@ -459,11 +537,17 @@ l'APK : un test rouge bloque la publication.
 | `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite |
 | `InitialesTest` | « KB », « LÉ » : deux lettres au plus, apostrophe comprise |
 | `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
+| `CourbesSaturationTest` | Cohérence interne des courbes : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
+| `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant que la courbe n'est pas vérifiée |
+| `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise |
+| `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
+| `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
-`FauxDevisDao`, `FauxParametresDao`, `FauxTechnicienDao`, `FauxPrestationDao` — qui reproduisent le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
+`FauxDevisDao`, `FauxParametresDao`, `FauxTechnicienDao`, `FauxPrestationDao`,
+`FauxVerificationFluideDao` — qui reproduisent le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
 fichiers qui tient lieu de stockage d'images. Seul `MigrationTest` a besoin d'un
 vrai SQLite, fourni par Robolectric. Rien ne décode d'image : ce qui se vérifie
 sans téléphone est isolé dans `ReductionPhoto`.
@@ -502,6 +586,16 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 6 ajoute les unités intérieures (`parentId`), la prestation comptée par
+unité, la ligne offerte et le régime de TVA du devis, l'en-tête d'entreprise avec
+son logo, et les vérifications de courbe. **Le logo part dans l'archive comme une
+photo** : un technicien qui restaure sur un téléphone neuf et retrouve ses clients
+mais plus son logo conclurait, à juste titre, que la restauration a échoué. Les
+vérifications y entrent aussi, et pour une raison plus sérieuse : sans elles, une
+restauration rendrait toutes les courbes « non vérifiées » et refermerait le
+report dans le relevé, si bien qu'on recocherait dix-sept fluides sans les avoir
+contrôlés à nouveau — exactement ce que le dispositif cherche à éviter.
 
 Le format 5 ajoute les techniciens, la durée d'une intervention, la checklist et
 le catalogue. Il traduit aussi `A_FAIRE` en `PLANIFIEE` à la lecture, par
@@ -615,15 +709,26 @@ dans le journal du build, où elle doit rester identique d'une build à l'autre.
 Dans l'ordre souhaité par l'utilisateur, « ce qui s'est vraiment passé sur
 place » venant en tête :
 
-- **Export PDF du compte-rendu et du devis, et leur envoi au client.** Les deux
-  écrans les annoncent ; aujourd'hui le document se lit dans l'application et
-  s'emporte par la sauvegarde, mais rien ne part encore chez le client.
+- **Export PDF du compte-rendu**, sur le modèle du devis : la mise en page et le
+  partage sont écrits (`MiseEnPageDevis`, `PdfDevis`, `Context.envoyerDocument`),
+  il reste à décrire le document — relevés, travaux, signature du client.
 - **Export du registre des fluides.** La table existe et se remplit à chaque
   mouvement ; il manque la sortie exigible lors d'un contrôle.
 - **Optimisation des trajets** depuis la vue semaine.
+- **Contrôler les courbes de saturation livrées**, fluide par fluide, contre une
+  table constructeur, puis cocher chacune dans la réglette. Tant que ce n'est pas
+  fait, elle affiche l'avertissement et refuse de reporter un écart dans un
+  relevé : c'est voulu, mais ce n'est pas un état d'arrivée.
+- **Facturation** : un devis accepté devient une facture. Le régime de TVA,
+  l'en-tête d'entreprise et la mise en page du PDF sont déjà là ; il manque la
+  numérotation séquentielle **sans trou**, qu'une facture exige et qu'un devis
+  n'exige pas — `Numerotation` repart au mois et tolère un numéro abandonné, ce
+  qui ne conviendra pas.
 - Détecteur de fuite fixe sur la fiche machine : il double les intervalles de
   contrôle, ce que `PeriodiciteControle` ne modélise pas encore — elle retient
   donc toujours la périodicité la plus exigeante.
+- Plus d'un niveau de machines, si un jour un cas l'exige : `parentId` le
+  permettrait, l'écran s'y refuse délibérément (voir « Architecture »).
 - Plusieurs relevés horodatés par intervention : la table les accepte déjà
   (`releveLe`), l'écran n'en montre qu'un.
 - Suppression d'un client, qui devra décider du sort du `clientId` des

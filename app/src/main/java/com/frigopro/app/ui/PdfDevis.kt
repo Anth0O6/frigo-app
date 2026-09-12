@@ -7,10 +7,50 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import android.net.Uri
+import com.frigopro.app.data.StockageDocuments
+import com.frigopro.app.data.StockagePhotos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+
+/**
+ * Produire le PDF d'un devis, et rendre l'URI à partager.
+ *
+ * Une interface, et pour la même raison que [RangementPhotos] : tout ce qui suit
+ * est irréductiblement Android — `PdfDocument`, `Canvas`, `Bitmap`, un
+ * `FileProvider` — et un ViewModel qui en dépendrait directement ne se
+ * construirait plus dans un test JVM. Ce qui **se** vérifie sans téléphone est
+ * ailleurs : [MiseEnPageDevis] pour la pagination, [DocumentDevis] pour ce que le
+ * document dit, et ce sont les deux endroits où une erreur coûterait cher.
+ *
+ * Rend `null` quand l'écriture échoue — place manquante, le plus souvent — ce que
+ * l'écran dit en clair plutôt que de laisser un bouton sans effet.
+ */
+fun interface ProducteurPdf {
+
+    suspend fun produire(document: DocumentDevis): Uri?
+}
+
+/**
+ * L'implémentation réelle : écrit le PDF dans le cache, et l'ouvre au partage.
+ *
+ * Le logo est décodé à quatre fois son côté imprimé : un PDF se regarde aussi à
+ * l'écran, où l'on zoome, et une image décodée pile à sa taille d'impression y
+ * serait floue.
+ */
+class ProducteurPdfAndroid(
+    private val documents: StockageDocuments,
+    private val photos: StockagePhotos,
+) : ProducteurPdf {
+
+    override suspend fun produire(document: DocumentDevis): Uri? {
+        val logo = document.logoFichier?.let { photos.charger(it, MiseEnPageDevis.COTE_LOGO * 4) }
+        val cible = documents.fichier(document.nomFichier)
+        return if (PdfDevis.ecrire(document, logo, cible)) documents.uri(cible) else null
+    }
+}
 
 /**
  * Le devis dessiné en PDF.

@@ -228,6 +228,10 @@ class DevisViewModelTest {
             ParametresRepository(daoParametres, stockage),
             PrestationRepository(daoPrestations),
             EquipementRepository(daoEquipements, stockage),
+            // Le PDF ne se dessine pas sans Android : le producteur rend `null`, ce
+            // qui est le chemin d'échec. Ce que le document dit et où tombent ses
+            // lignes est vérifié par [DocumentDevisTest] et [MiseEnPageDevisTest].
+            ProducteurPdf { null },
         )
         listOf(
             viewModel.liste,

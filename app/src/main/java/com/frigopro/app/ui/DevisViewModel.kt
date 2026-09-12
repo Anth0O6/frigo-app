@@ -21,8 +21,6 @@ import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.StatutDevis
-import com.frigopro.app.data.StockageDocuments
-import com.frigopro.app.data.StockagePhotos
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -76,12 +74,11 @@ class DevisViewModel(
     private val prestations: PrestationRepository,
     private val equipements: EquipementRepository,
     /**
-     * Où écrire le PDF, et où lire l'image du logo. Les deux seules dépendances
-     * Android de ce ViewModel : le reste du document s'assemble dans
-     * [DocumentDevis] et se dessine dans [PdfDevis].
+     * Ce qui produit le PDF. Une interface, parce que le dessin est
+     * irréductiblement Android et qu'un ViewModel qui en dépendrait directement ne
+     * se construirait plus dans un test JVM — voir [ProducteurPdf].
      */
-    private val documents: StockageDocuments,
-    private val photos: StockagePhotos,
+    private val pdf: ProducteurPdf,
 ) : ViewModel() {
 
     /**
@@ -288,16 +285,8 @@ class DevisViewModel(
                 parametres = reglages.value,
                 client = carnet.value.firstOrNull { it.id == ouvert.devis.clientId },
             )
-            // Le logo est décodé à quatre fois son côté imprimé : un PDF se regarde
-            // aussi à l'écran, où l'on zoome, et une image décodée pile à sa taille
-            // d'impression y serait floue.
-            val logo = document.logoFichier?.let { photos.charger(it, MiseEnPageDevis.COTE_LOGO * 4) }
-            val cible = documents.fichier(document.nomFichier)
-            if (PdfDevis.ecrire(document, logo, cible)) {
-                _documentPret.value = documents.uri(cible)
-            } else {
-                _echecExport.value = true
-            }
+            val produit = pdf.produire(document)
+            if (produit != null) _documentPret.value = produit else _echecExport.value = true
         }
     }
 
@@ -334,8 +323,7 @@ class DevisViewModel(
                     conteneur.parametres,
                     conteneur.prestations,
                     conteneur.equipements,
-                    conteneur.documents,
-                    conteneur.photos,
+                    ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                 )
             }
         }
