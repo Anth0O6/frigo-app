@@ -77,10 +77,27 @@ class ReglagesViewModel(
     val prestations: StateFlow<List<Prestation>> = prestationRepository.prestations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
 
-    fun onPrixPrestation(prestation: Prestation, prix: Double, unite: String) {
-        viewModelScope.launch {
-            prestationRepository.enregistrer(prestation.copy(prixUnitaire = prix, unite = unite))
-        }
+    /**
+     * Pose ou corrige une prestation du catalogue.
+     *
+     * Un seul point d'entrée pour la création et la correction, parce que le dépôt
+     * ne fait pas la différence : il remplace la ligne de même identifiant, et une
+     * prestation neuve en porte un qui n'existe pas encore. C'est lui qui refuse un
+     * prix négatif et un intitulé vide — une remise se saisit en réduisant le prix,
+     * pas en inversant son signe.
+     */
+    fun onEnregistrerPrestation(prestation: Prestation) {
+        viewModelScope.launch { prestationRepository.enregistrer(prestation) }
+    }
+
+    /**
+     * Retire une prestation du catalogue.
+     *
+     * Sans effet sur les devis : une ligne de devis recopie l'intitulé et le prix
+     * (voir [PrestationDao]), donc un devis déjà envoyé garde ce qu'il disait.
+     */
+    fun onSupprimerPrestation(prestation: Prestation) {
+        viewModelScope.launch { prestationRepository.supprimer(prestation.id) }
     }
 
     private fun modifier(transformation: (Parametres) -> Parametres) {

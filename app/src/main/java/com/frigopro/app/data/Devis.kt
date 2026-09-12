@@ -156,10 +156,6 @@ data class DevisComplet(
         get() = (lignes.filter { it.offerte }.sumOf { it.montantAvantGeste.auCentime() } + remiseTva)
             .auCentime()
 
-    /** Montant de la TVA. */
-    @Deprecated("Remplacé par tvaDue, qui tient compte de la franchise en base.")
-    val tva: Double get() = tvaDue
-
     /** Total toutes taxes comprises. */
     val totalTtc: Double get() = (totalHt + tvaDue - remiseTva).auCentime()
 }

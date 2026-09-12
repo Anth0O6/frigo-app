@@ -67,7 +67,8 @@ fun ReglagesRoute(
         onTauxHoraire = viewModel::onTauxHoraire,
         onTauxTva = viewModel::onTauxTva,
         prestations = prestations,
-        onPrixPrestation = viewModel::onPrixPrestation,
+        onEnregistrerPrestation = viewModel::onEnregistrerPrestation,
+        onSupprimerPrestation = viewModel::onSupprimerPrestation,
         modifier = modifier,
     )
 
@@ -126,7 +127,8 @@ fun ReglagesScreen(
     onTauxHoraire: (Double) -> Unit,
     onTauxTva: (Double) -> Unit,
     prestations: List<Prestation>,
-    onPrixPrestation: (Prestation, Double, String) -> Unit,
+    onEnregistrerPrestation: (Prestation) -> Unit,
+    onSupprimerPrestation: (Prestation) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -178,7 +180,11 @@ fun ReglagesScreen(
                 )
             }
             item {
-                SectionCatalogue(prestations = prestations, onPrix = onPrixPrestation)
+                SectionCatalogue(
+                    prestations = prestations,
+                    onEnregistrer = onEnregistrerPrestation,
+                    onSupprimer = onSupprimerPrestation,
+                )
             }
             item {
                 Column {
@@ -304,7 +310,8 @@ private fun ReglagesScreenPreview() {
                 onTauxHoraire = {},
                 onTauxTva = {},
                 prestations = emptyList(),
-                onPrixPrestation = { _, _, _ -> },
+                onEnregistrerPrestation = {},
+                onSupprimerPrestation = {},
             )
         }
     }

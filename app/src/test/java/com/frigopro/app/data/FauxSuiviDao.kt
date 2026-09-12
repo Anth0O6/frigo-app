@@ -203,11 +203,20 @@ class FauxDevisDao : DevisDao() {
 
     override suspend fun toutesLesLignes(): List<LigneDevis> = lignes.value
 
-    /** Le `GROUP BY` du vrai DAO : un devis sans ligne n'apparaît pas. */
+    /**
+     * Le `GROUP BY` du vrai DAO : un devis sans ligne n'apparaît pas, et une ligne
+     * offerte compte pour zéro. Le `CASE WHEN offerte = 0` est recopié ici plutôt
+     * que délégué à `LigneDevis.montant` : c'est le contrat SQL qu'on reproduit, et
+     * un faux qui emprunterait la règle au domaine ne vérifierait plus que les deux
+     * disent la même chose.
+     */
     override fun observerTotaux(): Flow<List<TotalDevis>> = lignes.map { liste ->
         liste.groupBy { it.devisId }
             .map { (devisId, lignesDuDevis) ->
-                TotalDevis(devisId, lignesDuDevis.sumOf { it.quantite * it.prixUnitaire })
+                TotalDevis(
+                    devisId,
+                    lignesDuDevis.sumOf { if (it.offerte) 0.0 else it.quantite * it.prixUnitaire },
+                )
             }
     }
 

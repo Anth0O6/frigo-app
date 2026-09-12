@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
+import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.IntituleSection
@@ -280,10 +281,12 @@ private fun LigneInterrupteur(
 @Composable
 fun SectionCatalogue(
     prestations: List<Prestation>,
-    onPrix: (Prestation, Double, String) -> Unit,
+    onEnregistrer: (Prestation) -> Unit,
+    onSupprimer: (Prestation) -> Unit,
 ) {
     var dépliée by remember { mutableStateOf(false) }
     var enEdition by remember { mutableStateOf<Prestation?>(null) }
+    var creationOuverte by remember { mutableStateOf(false) }
     val àTarifer = prestations.count { !it.tarifee }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -333,17 +336,42 @@ fun SectionCatalogue(
                         onModifier = { enEdition = prestation },
                     )
                 }
+            // Le catalogue livré couvre le métier, pas une entreprise : une pièce
+            // qu'on repose trois fois par mois et qui n'y figure pas finirait
+            // saisie en ligne libre à chaque devis, et le catalogue ne grossirait
+            // jamais. La même boîte s'ouvre depuis la feuille des devis.
+            BoutonContour(
+                texte = "+ Nouvelle prestation",
+                onClick = { creationOuverte = true },
+                modifier = Modifier.fillMaxWidth(),
+                couleur = MaterialTheme.colorScheme.secondary,
+            )
         }
     }
 
+    if (creationOuverte) {
+        DialoguePrestation(
+            prestation = null,
+            onValider = {
+                onEnregistrer(it)
+                creationOuverte = false
+            },
+            onFermer = { creationOuverte = false },
+        )
+    }
+
     enEdition?.let { prestation ->
-        DialoguePrixPrestation(
+        DialoguePrestation(
             prestation = prestation,
-            onValider = { prix, unite ->
-                onPrix(prestation, prix, unite)
+            onValider = {
+                onEnregistrer(it)
                 enEdition = null
             },
             onFermer = { enEdition = null },
+            onSupprimer = {
+                onSupprimer(prestation)
+                enEdition = null
+            },
         )
     }
 }
@@ -385,50 +413,4 @@ private fun LignePrestationReglages(prestation: Prestation, onModifier: () -> Un
             )
         }
     }
-}
-
-/**
- * Le prix d'une prestation, et son unité.
- *
- * L'unité est modifiable avec le prix parce que les deux vont ensemble : un
- * tarif de 38 € ne veut rien dire sans « par kilo », et c'est le genre de chose
- * qu'on corrige au moment où l'on tape le chiffre.
- */
-@Composable
-private fun DialoguePrixPrestation(
-    prestation: Prestation,
-    onValider: (Double, String) -> Unit,
-    onFermer: () -> Unit,
-) {
-    var prix by remember { mutableStateOf(if (prestation.tarifee) Nombres.enTexte(prestation.prixUnitaire) else "") }
-    var unite by remember { mutableStateOf(prestation.unite) }
-
-    AlertDialog(
-        onDismissRequest = onFermer,
-        title = { Text(text = prestation.designation) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ChampTexte(
-                    libelle = "Prix unitaire (€)",
-                    valeur = prix,
-                    onValeur = { prix = it },
-                    clavier = KeyboardType.Decimal,
-                )
-                ChampTexte(libelle = "Unité", valeur = unite, onValeur = { unite = it })
-                Text(
-                    text = "Le prix est recopié sur la ligne du devis : le changer ici ne " +
-                        "touche pas aux devis déjà établis.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onValider(Nombres.versDecimal(prix) ?: 0.0, unite) }) {
-                Text(text = "Enregistrer")
-            }
-        },
-        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-    )
 }

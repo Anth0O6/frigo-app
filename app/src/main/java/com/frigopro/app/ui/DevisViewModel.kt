@@ -145,7 +145,11 @@ class DevisViewModel(
      */
     fun onNouveau(client: Client?) {
         viewModelScope.launch {
-            val cree = devis.creer(client = client, tauxTva = reglages.value.tauxTva)
+            val cree = devis.creer(
+                client = client,
+                tauxTva = reglages.value.tauxTva,
+                assujettiTva = reglages.value.assujettiTva,
+            )
             _ouvert.value = cree.id
         }
     }
@@ -174,6 +178,44 @@ class DevisViewModel(
 
     fun onModifierLigne(ligne: LigneDevis) {
         viewModelScope.launch { devis.enregistrerLigne(ligne) }
+    }
+
+    /**
+     * Offre une ligne, ou reprend le geste.
+     *
+     * C'est l'appui **simple** sur une ligne, là où l'appui long supprime. Avant,
+     * l'appui simple supprimait : un contact involontaire faisait disparaître une
+     * ligne sans un mot, et c'est exactement le genre de geste qu'on fait gants
+     * aux mains. L'action fréquente prend l'appui simple, la destructrice l'appui
+     * long — la convention du projet (voir `Carte`).
+     */
+    fun onOffrirLigne(ligne: LigneDevis) {
+        viewModelScope.launch { devis.offrirLigne(ligne, !ligne.offerte) }
+    }
+
+    /** Offre la TVA, ou reprend le geste. Sans objet en franchise en base. */
+    fun onOffrirTva() {
+        val courant = complet.value?.devis ?: return
+        viewModelScope.launch { devis.offrirTva(courant, !courant.tvaOfferte) }
+    }
+
+    /**
+     * Inscrit une prestation au catalogue depuis le devis.
+     *
+     * Ajouter au catalogue sans quitter le chiffrage, c'est ce qui fait qu'on
+     * l'enrichit vraiment : une pièce qu'il faut aller déclarer dans les Réglages
+     * finit saisie en ligne libre, et le catalogue ne grossit jamais. La
+     * prestation est posée **et** ajoutée au devis en cours, puisque c'est bien
+     * pour lui qu'on la saisit.
+     */
+    fun onCreerPrestation(prestation: Prestation) {
+        viewModelScope.launch {
+            // La prestation enregistrée, et non celle reçue : le dépôt a nettoyé
+            // l'intitulé et posé le rang, et c'est cette version-là que la ligne
+            // du devis doit recopier.
+            val creee = prestations.enregistrer(prestation) ?: return@launch
+            if (_ouvert.value != null) onAjouterPrestation(creee)
+        }
     }
 
     fun onSupprimerLigne(id: String) {

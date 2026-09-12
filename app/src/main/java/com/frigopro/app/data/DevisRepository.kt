@@ -57,6 +57,14 @@ class DevisRepository(private val dao: DevisDao) {
         equipement: Equipement? = null,
         objet: String = "",
         tauxTva: Double = 20.0,
+        /**
+         * Le régime de l'entreprise, **recopié** sur le document.
+         *
+         * Comme le taux : un devis établi en franchise en base ne doit pas se
+         * mettre à afficher de la TVA le jour où l'entreprise franchit le seuil.
+         * C'est le document d'alors qui fait foi.
+         */
+        assujettiTva: Boolean = true,
         aujourdhui: LocalDate = LocalDate.now(),
     ): Devis {
         val numeros = dao.tous().map { it.numero }
@@ -69,6 +77,7 @@ class DevisRepository(private val dao: DevisDao) {
             objet = objet.trim(),
             statut = StatutDevis.BROUILLON,
             tauxTva = tauxTva,
+            assujettiTva = assujettiTva,
             creeLe = aujourdhui,
             // Un mois de validité : la durée usuelle, et celle au-delà de
             // laquelle un prix de pièce n'engage plus personne.
@@ -125,6 +134,35 @@ class DevisRepository(private val dao: DevisDao) {
     }
 
     suspend fun supprimerLigne(id: String) = dao.effacerLigne(id)
+
+    /**
+     * Offre une ligne, ou reprend le geste.
+     *
+     * La ligne **garde son prix** : c'est le devis qui affichera le montant barré
+     * et « offert ». Remettre le prix à zéro aurait été plus court et aurait
+     * effacé l'argument de vente — un geste commercial qu'on ne voit pas n'en est
+     * pas un. C'est aussi ce qui permet de reprendre le geste sans ressaisir.
+     */
+    suspend fun offrirLigne(ligne: LigneDevis, offerte: Boolean): LigneDevis {
+        val basculee = ligne.copy(offerte = offerte)
+        dao.enregistrerLigne(basculee)
+        return basculee
+    }
+
+    /**
+     * Offre la TVA, ou reprend le geste.
+     *
+     * Sans effet en franchise en base : il n'y a alors pas de TVA à offrir, et
+     * laisser le geste disponible ferait croire à une remise qui ne s'appliquerait
+     * à rien. L'écran masque d'ailleurs le bouton, mais le dépôt ne s'en remet pas
+     * à l'écran pour garantir une règle de ce genre.
+     */
+    suspend fun offrirTva(devis: Devis, offerte: Boolean): Devis {
+        if (!devis.assujettiTva) return devis
+        val basculee = devis.copy(tvaOfferte = offerte, modifieLe = Instant.now())
+        dao.enregistrer(basculee)
+        return basculee
+    }
 
     suspend fun supprimer(id: String) = dao.supprimer(id)
 }

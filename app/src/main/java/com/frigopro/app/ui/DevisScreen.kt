@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,7 +88,10 @@ fun DevisRoute(
             onStatut = viewModel::onStatut,
             onAjouterLigne = viewModel::onAjouterLigne,
             onAjouterPrestation = viewModel::onAjouterPrestation,
+            onCreerPrestation = viewModel::onCreerPrestation,
             catalogue = catalogue,
+            onOffrirLigne = viewModel::onOffrirLigne,
+            onOffrirTva = viewModel::onOffrirTva,
             onSupprimerLigne = viewModel::onSupprimerLigne,
             onSupprimer = viewModel::onSupprimer,
             onFermer = viewModel::onFermer,
@@ -264,7 +268,10 @@ fun EcranDevis(
     onStatut: (StatutDevis) -> Unit,
     onAjouterLigne: (String, Double, String, Double) -> Unit,
     onAjouterPrestation: (Prestation) -> Unit,
+    onCreerPrestation: (Prestation) -> Unit,
     catalogue: Map<CategoriePrestation, List<Prestation>>,
+    onOffrirLigne: (LigneDevis) -> Unit,
+    onOffrirTva: () -> Unit,
     onSupprimerLigne: (String) -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
@@ -332,7 +339,19 @@ fun EcranDevis(
             }
 
             devis.lignes.forEach { ligne ->
-                LigneDuDevis(ligne = ligne, onSupprimer = { onSupprimerLigne(ligne.id) })
+                LigneDuDevis(
+                    ligne = ligne,
+                    onOffrir = { onOffrirLigne(ligne) },
+                    onSupprimer = { onSupprimerLigne(ligne.id) },
+                )
+            }
+            if (devis.lignes.isNotEmpty()) {
+                Text(
+                    text = "Appui sur une ligne : l'offrir ou reprendre le geste. " +
+                        "Appui long : la supprimer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             // Le catalogue d'abord, la saisie libre ensuite : c'est l'ordre des
@@ -351,7 +370,7 @@ fun EcranDevis(
                 couleur = MaterialTheme.colorScheme.secondary,
             )
 
-            CarteTotaux(devis = devis)
+            CarteTotaux(devis = devis, onOffrirTva = onOffrirTva)
 
             RangeePastilles(
                 options = StatutDevis.entries,
@@ -386,6 +405,7 @@ fun EcranDevis(
             catalogue = catalogue,
             dejaAuDevis = devis.lignes.map { it.designation }.toSet(),
             onChoisir = onAjouterPrestation,
+            onCreer = onCreerPrestation,
             onFermer = { catalogueOuvert = false },
         )
     }
@@ -402,9 +422,26 @@ fun EcranDevis(
     }
 }
 
+/**
+ * Une ligne du devis.
+ *
+ * **Appui simple : offrir ou reprendre. Appui long : supprimer.** C'était
+ * l'inverse — l'appui simple supprimait — et un contact involontaire faisait
+ * disparaître une ligne sans un mot. Gants aux mains, sur un capot, c'est le
+ * geste le plus facile à faire par erreur ; il porte donc l'action fréquente, et
+ * la destruction demande une intention.
+ *
+ * Une ligne offerte garde son prix, barré, et annonce « offert ». Le client doit
+ * lire ce qu'on lui a donné : une remise invisible n'est pas un argument.
+ */
 @Composable
-private fun LigneDuDevis(ligne: LigneDevis, onSupprimer: () -> Unit) {
-    Carte(contour = true, onClick = onSupprimer) {
+private fun LigneDuDevis(
+    ligne: LigneDevis,
+    onOffrir: () -> Unit,
+    onSupprimer: () -> Unit,
+) {
+    val vert = LocalStatuts.current.termine
+    Carte(contour = true, onClick = onOffrir, onLongClick = onSupprimer) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -418,16 +455,50 @@ private fun LigneDuDevis(ligne: LigneDevis, onSupprimer: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(text = Nombres.enEuros(ligne.montant), style = StyleChiffrePetit)
+            if (ligne.offerte) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = Nombres.enEuros(ligne.montantAvantGeste),
+                        style = StyleChiffrePetit,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textDecoration = TextDecoration.LineThrough,
+                    )
+                    Puce(texte = "OFFERT", couleur = vert, fond = vert.copy(alpha = 0.18f))
+                }
+            } else {
+                Text(text = Nombres.enEuros(ligne.montant), style = StyleChiffrePetit)
+            }
         }
     }
 }
 
 @Composable
-private fun CarteTotaux(devis: DevisComplet) {
+private fun CarteTotaux(devis: DevisComplet, onOffrirTva: () -> Unit) {
+    val statuts = LocalStatuts.current
     Carte(relief = true) {
         LigneTotal("Total HT", Nombres.enEuros(devis.totalHt))
-        LigneTotal("TVA ${Nombres.enTexte(devis.devis.tauxTva)} %", Nombres.enEuros(devis.tva))
+
+        if (devis.devis.assujettiTva) {
+            LigneTotal("TVA ${Nombres.enTexte(devis.devis.tauxTva)} %", Nombres.enEuros(devis.tvaDue))
+            // La remise apparaît sous la TVA et non à sa place : le document doit
+            // montrer que la taxe est due et qu'elle a été prise en charge. Une
+            // TVA escamotée serait un document faux.
+            if (devis.devis.tvaOfferte) {
+                LigneTotal(
+                    intitule = "Remise commerciale — TVA offerte",
+                    valeur = "− ${Nombres.enEuros(devis.remiseTva)}",
+                    couleur = statuts.termine,
+                )
+            }
+        } else {
+            // Franchise en base : pas de TVA, et la mention est obligatoire.
+            Text(
+                text = "TVA non applicable, art. 293 B du CGI",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -441,11 +512,41 @@ private fun CarteTotaux(devis: DevisComplet) {
                 color = MaterialTheme.colorScheme.primary,
             )
         }
+
+        // Ce que le geste a coûté, pour le technicien et non pour le client :
+        // c'est le chiffre qui se regarde avant d'envoyer, pas après.
+        if (devis.gestesCommerciaux > 0) {
+            Text(
+                text = "Gestes commerciaux : ${Nombres.enEuros(devis.gestesCommerciaux)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = statuts.termine,
+            )
+        }
+
+        // Le geste n'est proposé qu'à une entreprise assujettie : en franchise en
+        // base il n'y a pas de TVA à offrir, et un bouton qui n'agirait sur rien
+        // ferait croire à une remise accordée.
+        if (devis.devis.assujettiTva) {
+            BoutonContour(
+                texte = if (devis.devis.tvaOfferte) "Reprendre la TVA offerte" else "Offrir la TVA",
+                onClick = onOffrirTva,
+                modifier = Modifier.fillMaxWidth(),
+                couleur = if (devis.devis.tvaOfferte) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    statuts.termine
+                },
+            )
+        }
     }
 }
 
 @Composable
-private fun LigneTotal(intitule: String, valeur: String) {
+private fun LigneTotal(
+    intitule: String,
+    valeur: String,
+    couleur: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -455,11 +556,7 @@ private fun LigneTotal(intitule: String, valeur: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            text = valeur,
-            style = StyleChiffrePetit,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(text = valeur, style = StyleChiffrePetit, color = couleur)
     }
 }
 
@@ -569,11 +666,13 @@ private fun FeuilleCatalogue(
     catalogue: Map<CategoriePrestation, List<Prestation>>,
     dejaAuDevis: Set<String>,
     onChoisir: (Prestation) -> Unit,
+    onCreer: (Prestation) -> Unit,
     onFermer: () -> Unit,
 ) {
     // `null` vaut « toutes les familles » : c'est ce qu'on veut en ouvrant,
     // quand on ne sait pas encore sous quel rayon ranger ce qu'on cherche.
     var famille by remember { mutableStateOf<CategoriePrestation?>(null) }
+    var creationOuverte by remember { mutableStateOf(false) }
     val statuts = LocalStatuts.current
 
     ModalBottomSheet(onDismissRequest = onFermer) {
@@ -634,7 +733,30 @@ private fun FeuilleCatalogue(
                 }
                 EspaceVertical(24)
             }
+
+            // Créer la prestation **ici**, sans quitter le chiffrage : une pièce
+            // qu'il faudrait aller déclarer dans les Réglages finit saisie en ligne
+            // libre, et le catalogue ne grossit jamais. Elle y entre et rejoint le
+            // devis du même geste, puisque c'est bien pour lui qu'on la saisit.
+            BoutonContour(
+                texte = "+ Nouvelle prestation au catalogue",
+                onClick = { creationOuverte = true },
+                modifier = Modifier.fillMaxWidth(),
+                couleur = MaterialTheme.colorScheme.secondary,
+            )
+            EspaceVertical(16)
         }
+    }
+
+    if (creationOuverte) {
+        DialoguePrestation(
+            prestation = null,
+            onValider = {
+                onCreer(it)
+                creationOuverte = false
+            },
+            onFermer = { creationOuverte = false },
+        )
     }
 }
 
