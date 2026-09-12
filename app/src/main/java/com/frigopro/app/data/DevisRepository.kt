@@ -1,5 +1,6 @@
 package com.frigopro.app.data
 
+import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -175,7 +176,16 @@ class DevisRepository(private val dao: DevisDao) {
  * l'oublierait — les valeurs par défaut de [Parametres] font office. Un écran
  * n'a donc jamais à traiter le cas « pas encore de réglages ».
  */
-class ParametresRepository(private val dao: ParametresDao) {
+class ParametresRepository(
+    private val dao: ParametresDao,
+    /**
+     * Où vit le logo. Le dépôt est le seul endroit où les réglages et un fichier
+     * avancent ensemble, comme [EquipementRepository] pour les machines ; passer par
+     * l'interface et non par `StockagePhotos` permet d'éprouver cette coordination
+     * sans Android.
+     */
+    private val stockage: RangementPhotos,
+) {
 
     val parametres: Flow<Parametres> = dao.observer().map { it ?: Parametres() }
 
@@ -188,5 +198,38 @@ class ParametresRepository(private val dao: ParametresDao) {
     /** Applique une modification à la ligne courante, sans que l'appelant ait à la lire. */
     suspend fun modifier(transformation: (Parametres) -> Parametres) {
         enregistrer(transformation(lire()))
+    }
+
+    /**
+     * Pose le logo de l'entreprise, et efface celui qu'il remplace.
+     *
+     * Les réglages et un fichier avancent ici ensemble, comme la base et les images
+     * dans [EquipementRepository], et dans le même ordre que partout : **le
+     * fichier d'abord, la ligne ensuite**, puis l'ancien fichier. L'ordre inverse —
+     * effacer avant d'avoir réussi à écrire — laisserait un logo manquant si
+     * l'import échouait, et l'échec est précisément le cas où l'on veut que rien ne
+     * change.
+     *
+     * Le logo est rangé avec les photos et non ailleurs : c'est une image, il est
+     * réduit comme les autres, et il part dans l'archive de sauvegarde par le même
+     * chemin — un technicien qui restaure sur un téléphone neuf et retrouve ses
+     * clients mais plus son logo conclurait que la restauration a échoué.
+     */
+    suspend fun poserLogo(source: Uri): String? {
+        val nouveau = stockage.importer(source) ?: return null
+        val ancien = lire().logoFichier
+        modifier { it.copy(logoFichier = nouveau) }
+        if (ancien != null && ancien != nouveau) stockage.supprimer(ancien)
+        return nouveau
+    }
+
+    /** Décode une image du stockage : le logo, pour son aperçu dans les Réglages. */
+    suspend fun charger(nom: String, coteMax: Int) = stockage.charger(nom, coteMax)
+
+    /** Retire le logo, et son fichier avec : rien ne le référencera plus. */
+    suspend fun retirerLogo() {
+        val ancien = lire().logoFichier ?: return
+        modifier { it.copy(logoFichier = null) }
+        stockage.supprimer(ancien)
     }
 }

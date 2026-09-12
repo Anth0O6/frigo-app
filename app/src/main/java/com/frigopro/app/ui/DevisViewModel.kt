@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -20,6 +21,8 @@ import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.StatutDevis
+import com.frigopro.app.data.StockageDocuments
+import com.frigopro.app.data.StockagePhotos
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -72,6 +75,13 @@ class DevisViewModel(
     private val parametres: ParametresRepository,
     private val prestations: PrestationRepository,
     private val equipements: EquipementRepository,
+    /**
+     * Où écrire le PDF, et où lire l'image du logo. Les deux seules dépendances
+     * Android de ce ViewModel : le reste du document s'assemble dans
+     * [DocumentDevis] et se dessine dans [PdfDevis].
+     */
+    private val documents: StockageDocuments,
+    private val photos: StockagePhotos,
 ) : ViewModel() {
 
     /**
@@ -245,6 +255,61 @@ class DevisViewModel(
         }
     }
 
+    private val _documentPret = MutableStateFlow<Uri?>(null)
+
+    /**
+     * Le PDF qui vient d'être écrit, prêt à partir.
+     *
+     * Un `StateFlow` que l'écran remet à `null` après avoir ouvert le partage,
+     * plutôt qu'un événement jeté : un événement perdu pendant une rotation aurait
+     * produit un export sans rien envoyer, et l'utilisateur en aurait conclu que le
+     * bouton ne marche pas.
+     */
+    val documentPret: StateFlow<Uri?> = _documentPret.asStateFlow()
+
+    private val _echecExport = MutableStateFlow(false)
+
+    /** L'export a échoué : dit en clair, plutôt qu'un bouton qui ne fait rien. */
+    val echecExport: StateFlow<Boolean> = _echecExport.asStateFlow()
+
+    /**
+     * Écrit le devis ouvert en PDF, et annonce le fichier.
+     *
+     * Le statut n'est **pas** passé à « Envoyé » au passage : exporter n'est pas
+     * envoyer, et le faire annoncerait un devis parti chez le client alors qu'il
+     * attend dans une feuille de partage. C'est l'utilisateur qui change le statut,
+     * quand il sait qu'il l'a envoyé.
+     */
+    fun onExporterPdf() {
+        val ouvert = complet.value ?: return
+        viewModelScope.launch {
+            val document = DocumentDevis.de(
+                devis = ouvert,
+                parametres = reglages.value,
+                client = carnet.value.firstOrNull { it.id == ouvert.devis.clientId },
+            )
+            // Le logo est décodé à quatre fois son côté imprimé : un PDF se regarde
+            // aussi à l'écran, où l'on zoome, et une image décodée pile à sa taille
+            // d'impression y serait floue.
+            val logo = document.logoFichier?.let { photos.charger(it, MiseEnPageDevis.COTE_LOGO * 4) }
+            val cible = documents.fichier(document.nomFichier)
+            if (PdfDevis.ecrire(document, logo, cible)) {
+                _documentPret.value = documents.uri(cible)
+            } else {
+                _echecExport.value = true
+            }
+        }
+    }
+
+    /** L'écran a ouvert le partage : le document n'a plus à être annoncé. */
+    fun onDocumentPartage() {
+        _documentPret.value = null
+    }
+
+    fun onEchecVu() {
+        _echecExport.value = false
+    }
+
     fun onSupprimerLigne(id: String) {
         viewModelScope.launch { devis.supprimerLigne(id) }
     }
@@ -269,6 +334,8 @@ class DevisViewModel(
                     conteneur.parametres,
                     conteneur.prestations,
                     conteneur.equipements,
+                    conteneur.documents,
+                    conteneur.photos,
                 )
             }
         }

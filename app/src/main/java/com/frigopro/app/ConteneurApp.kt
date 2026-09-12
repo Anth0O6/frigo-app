@@ -11,6 +11,7 @@ import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.SauvegardeRepository
+import com.frigopro.app.data.StockageDocuments
 import com.frigopro.app.data.StockagePhotos
 import com.frigopro.app.data.SuiviRepository
 import com.frigopro.app.data.TypeInterventionRepository
@@ -46,7 +47,7 @@ class ConteneurApp(private val contexte: Context) {
 
     val devis: DevisRepository by lazy { DevisRepository(base.devisDao()) }
 
-    val parametres: ParametresRepository by lazy { ParametresRepository(base.parametresDao()) }
+    val parametres: ParametresRepository by lazy { ParametresRepository(base.parametresDao(), stockagePhotos) }
 
     val techniciens: TechnicienRepository by lazy { TechnicienRepository(base.technicienDao()) }
 
@@ -78,6 +79,9 @@ class ConteneurApp(private val contexte: Context) {
      * embarque des fichiers, que le dépôt ne connaît que par leur nom.
      */
     val photos: StockagePhotos get() = stockagePhotos
+
+    /** Les PDF produits pour être envoyés, dans le cache : ils sont dérivés. */
+    val documents: StockageDocuments by lazy { StockageDocuments(contexte.applicationContext) }
 
     val fichiers: FichiersExternes by lazy {
         FichiersExternes(contexte.applicationContext.contentResolver)

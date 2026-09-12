@@ -225,7 +225,7 @@ class DevisViewModelTest {
         val viewModel = DevisViewModel(
             DevisRepository(daoDevis),
             ClientRepository(daoClients),
-            ParametresRepository(daoParametres),
+            ParametresRepository(daoParametres, stockage),
             PrestationRepository(daoPrestations),
             EquipementRepository(daoEquipements, stockage),
         )

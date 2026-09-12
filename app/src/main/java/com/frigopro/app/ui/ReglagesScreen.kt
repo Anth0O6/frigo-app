@@ -1,5 +1,9 @@
 package com.frigopro.app.ui
 
+import android.graphics.Bitmap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,6 +57,13 @@ fun ReglagesRoute(
     val parametres by viewModel.parametres.collectAsStateWithLifecycle()
     val prestations by viewModel.prestations.collectAsStateWithLifecycle()
 
+    // Le logo vient de la galerie : aucune permission, le sélecteur du système
+    // ne nous donne accès qu'à l'image désignée. Même chemin que les photos de
+    // machines.
+    val galerie = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { source -> source?.let(viewModel::onLogoChoisi) }
+
     ReglagesScreen(
         types = types,
         parametres = parametres,
@@ -66,6 +77,17 @@ fun ReglagesRoute(
         onAttestation = viewModel::onAttestation,
         onTauxHoraire = viewModel::onTauxHoraire,
         onTauxTva = viewModel::onTauxTva,
+        onEntreprise = viewModel::onEntreprise,
+        onEntrepriseAdresse = viewModel::onEntrepriseAdresse,
+        onEntrepriseTelephone = viewModel::onEntrepriseTelephone,
+        onEntrepriseEmail = viewModel::onEntrepriseEmail,
+        onEntrepriseSiret = viewModel::onEntrepriseSiret,
+        onAssujettiTva = viewModel::onAssujettiTva,
+        onChoisirLogo = {
+            galerie.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        },
+        onRetirerLogo = viewModel::onRetirerLogo,
+        chargerPhoto = viewModel::charger,
         prestations = prestations,
         onEnregistrerPrestation = viewModel::onEnregistrerPrestation,
         onSupprimerPrestation = viewModel::onSupprimerPrestation,
@@ -126,6 +148,15 @@ fun ReglagesScreen(
     onAttestation: (String) -> Unit,
     onTauxHoraire: (Double) -> Unit,
     onTauxTva: (Double) -> Unit,
+    onEntreprise: (String) -> Unit,
+    onEntrepriseAdresse: (String) -> Unit,
+    onEntrepriseTelephone: (String) -> Unit,
+    onEntrepriseEmail: (String) -> Unit,
+    onEntrepriseSiret: (String) -> Unit,
+    onAssujettiTva: (Boolean) -> Unit,
+    onChoisirLogo: () -> Unit,
+    onRetirerLogo: () -> Unit,
+    chargerPhoto: suspend (String, Int) -> Bitmap?,
     prestations: List<Prestation>,
     onEnregistrerPrestation: (Prestation) -> Unit,
     onSupprimerPrestation: (Prestation) -> Unit,
@@ -177,6 +208,20 @@ fun ReglagesScreen(
                     onChronoAuto = onChronoAuto,
                     onTauxHoraire = onTauxHoraire,
                     onTauxTva = onTauxTva,
+                )
+            }
+            item {
+                SectionEntreprise(
+                    parametres = parametres,
+                    chargerPhoto = chargerPhoto,
+                    onEntreprise = onEntreprise,
+                    onAdresse = onEntrepriseAdresse,
+                    onTelephone = onEntrepriseTelephone,
+                    onEmail = onEntrepriseEmail,
+                    onSiret = onEntrepriseSiret,
+                    onAssujettiTva = onAssujettiTva,
+                    onChoisirLogo = onChoisirLogo,
+                    onRetirerLogo = onRetirerLogo,
                 )
             }
             item {
@@ -312,6 +357,15 @@ private fun ReglagesScreenPreview() {
                 prestations = emptyList(),
                 onEnregistrerPrestation = {},
                 onSupprimerPrestation = {},
+                onEntreprise = {},
+                onEntrepriseAdresse = {},
+                onEntrepriseTelephone = {},
+                onEntrepriseEmail = {},
+                onEntrepriseSiret = {},
+                onAssujettiTva = {},
+                onChoisirLogo = {},
+                onRetirerLogo = {},
+                chargerPhoto = { _, _ -> null },
             )
         }
     }

@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Le seul dossier que le FileProvider expose : `files/photos/`, là où
-    StockagePhotos range les images. Rien d'autre du stockage de l'application
-    n'est atteignable par un URI, en particulier pas la base de données.
+    Les deux seuls dossiers que le FileProvider expose : `files/photos/`, là où
+    StockagePhotos range les images, et `cache/documents/`, où StockageDocuments
+    écrit les PDF à envoyer. Rien d'autre du stockage de l'application n'est
+    atteignable par un URI, en particulier pas la base de données.
 -->
 <paths>
     <files-path
         name="photos"
         path="photos/" />
+
+    <!--
+        Les devis en PDF, produits pour être envoyés. Dans le cache et non dans
+        `files/` : un PDF est dérivé du devis, se reconstruit à l'identique, et n'a
+        donc rien à faire dans l'archive de sauvegarde.
+    -->
+    <cache-path
+        name="documents"
+        path="documents/" />
 </paths>

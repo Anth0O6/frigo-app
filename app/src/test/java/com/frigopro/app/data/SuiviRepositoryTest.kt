@@ -474,7 +474,7 @@ class DevisRepositoryTest {
 class ParametresRepositoryTest {
 
     private val dao = FauxParametresDao()
-    private val repository = ParametresRepository(dao)
+    private val repository = ParametresRepository(dao, FauxRangementPhotos())
 
     @Test
     fun `une base sans ligne rend les valeurs par defaut`() = runTest {

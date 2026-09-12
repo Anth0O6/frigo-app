@@ -360,7 +360,7 @@ class InterventionViewModelTest {
             SuiviRepository(daoSuivi, stockage),
             EquipementRepository(daoEquipements, stockage),
             ClientRepository(daoClients),
-            ParametresRepository(daoParametres),
+            ParametresRepository(daoParametres, stockage),
             VerificationFluideRepository(daoVerifications),
         )
         backgroundScope.launch(ordonnanceur) { viewModel.etat.collect { } }

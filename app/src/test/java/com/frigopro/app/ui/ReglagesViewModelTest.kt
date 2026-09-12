@@ -6,6 +6,7 @@ import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.FauxParametresDao
+import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
@@ -157,7 +158,7 @@ class ReglagesViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         return ReglagesViewModel(
             TypeInterventionRepository(daoTypes),
-            ParametresRepository(FauxParametresDao()),
+            ParametresRepository(FauxParametresDao(), FauxRangementPhotos()),
             PrestationRepository(daoPrestations),
         )
     }

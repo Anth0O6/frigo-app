@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -227,6 +229,181 @@ fun SectionGeneral(
         )
     }
 }
+
+/**
+ * L'identité de l'entreprise : ce qui s'imprime en haut d'un devis.
+ *
+ * Elle est dans les Réglages et non sur chaque devis parce qu'elle ne change
+ * pas : une raison sociale, une adresse, un SIRET se saisissent une fois. Le
+ * document reste produisible sans — mieux vaut un devis sans en-tête que pas de
+ * devis — mais l'écran du devis le signale, parce qu'un devis sans raison sociale
+ * ni SIRET n'est pas un devis qu'on envoie.
+ *
+ * Le régime de TVA est ici, à côté, et pas dans la section des tarifs : il change
+ * ce que le document **dit** — une TVA, ou la mention de l'article 293 B — et pas
+ * seulement ce qu'il calcule.
+ */
+@Composable
+fun SectionEntreprise(
+    parametres: Parametres,
+    /** Décode le logo à la demande, comme les photos de machines. */
+    chargerPhoto: suspend (String, Int) -> Bitmap?,
+    onEntreprise: (String) -> Unit,
+    onAdresse: (String) -> Unit,
+    onTelephone: (String) -> Unit,
+    onEmail: (String) -> Unit,
+    onSiret: (String) -> Unit,
+    onAssujettiTva: (Boolean) -> Unit,
+    onChoisirLogo: () -> Unit,
+    onRetirerLogo: () -> Unit,
+) {
+    var dépliée by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        IntituleSection(texte = "Entreprise et documents")
+        Carte(relief = true, onClick = { dépliée = !dépliée }) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = parametres.entreprise.ifBlank { "Entreprise non renseignée" },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        // Ce qui manque est dit en clair : c'est la seule chose qui
+                        // doit faire ouvrir cette section.
+                        text = when {
+                            !parametres.entreprisePresentable -> "Les devis partiront sans en-tête"
+                            parametres.entrepriseSiret.isBlank() -> "SIRET à renseigner"
+                            else -> parametres.mentionTva.ifBlank { "TVA ${Nombres.enTexte(parametres.tauxTva)} %" }
+                        },
+                        style = StyleChiffrePetit,
+                        color = if (parametres.entreprisePresentable && parametres.entrepriseSiret.isNotBlank()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                }
+                Text(
+                    text = if (dépliée) "▾" else "›",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (dépliée) {
+            Carte {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Le logo est montré tel qu'il partira : une image trop sombre
+                    // ou de travers se voit ici, pas après l'envoi.
+                    val fichier = parametres.logoFichier
+                    if (fichier == null) {
+                        Box(
+                            modifier = Modifier.size(COTE_LOGO),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Aucun logo",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        // `Fit` et non `Crop` : un logo rogné n'est plus le logo, et
+                        // c'est lui qui partira en haut du devis.
+                        PhotoChargee(
+                            fichier = fichier,
+                            coteMax = COTE_LOGO_PX,
+                            charger = chargerPhoto,
+                            modifier = Modifier.size(COTE_LOGO),
+                            contentDescription = "Logo de l'entreprise",
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        BoutonContour(
+                            texte = if (fichier == null) "Choisir un logo" else "Remplacer",
+                            onClick = onChoisirLogo,
+                            modifier = Modifier.fillMaxWidth(),
+                            couleur = MaterialTheme.colorScheme.primary,
+                        )
+                        if (fichier != null) {
+                            BoutonContour(
+                                texte = "Retirer",
+                                onClick = onRetirerLogo,
+                                modifier = Modifier.fillMaxWidth(),
+                                couleur = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            }
+
+            ChampTexte(
+                libelle = "Raison sociale",
+                valeur = parametres.entreprise,
+                onValeur = onEntreprise,
+            )
+            ChampTexte(
+                libelle = "Adresse",
+                valeur = parametres.entrepriseAdresse,
+                onValeur = onAdresse,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ChampTexte(
+                    libelle = "Téléphone",
+                    valeur = parametres.entrepriseTelephone,
+                    onValeur = onTelephone,
+                    clavier = KeyboardType.Phone,
+                    modifier = Modifier.weight(1f),
+                )
+                ChampTexte(
+                    libelle = "SIRET",
+                    valeur = parametres.entrepriseSiret,
+                    onValeur = onSiret,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            ChampTexte(
+                libelle = "Courriel",
+                valeur = parametres.entrepriseEmail,
+                onValeur = onEmail,
+                clavier = KeyboardType.Email,
+            )
+            LigneInterrupteur(
+                intitule = "Assujetti à la TVA",
+                actif = parametres.assujettiTva,
+                onChange = onAssujettiTva,
+                detail = if (parametres.assujettiTva) {
+                    "Les devis portent la TVA, et la TVA peut être offerte en remise."
+                } else {
+                    "Franchise en base : les devis portent « ${Parametres.MENTION_FRANCHISE} »."
+                },
+            )
+            Text(
+                text = "Le régime est recopié sur chaque devis à sa création : le changer " +
+                    "ici ne touche pas aux devis déjà établis.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Le logo dans les Réglages : assez grand pour juger de sa lisibilité. */
+private val COTE_LOGO = 72.dp
+
+/** Décodé un peu plus grand que son cadre, pour ne pas le voir pixelisé. */
+private const val COTE_LOGO_PX = 256
 
 @Composable
 private fun LigneInterrupteur(

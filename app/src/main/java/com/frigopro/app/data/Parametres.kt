@@ -89,12 +89,21 @@ data class Parametres(
     val entreprisePresentable: Boolean get() = entreprise.isNotBlank()
 
     /** La mention qui remplace la TVA en franchise en base. */
-    val mentionTva: String
-        get() = if (assujettiTva) "" else "TVA non applicable, art. 293 B du CGI"
+    val mentionTva: String get() = if (assujettiTva) "" else MENTION_FRANCHISE
 
     companion object {
 
         /** La ligne unique. */
         const val UNIQUE = 1
+
+        /**
+         * La mention obligatoire en franchise en base de TVA.
+         *
+         * Nommée plutôt que recopiée, parce qu'elle paraît à deux endroits —
+         * l'écran du devis et le PDF — et que les laisser diverger ferait partir
+         * chez un client une formule qui n'est pas celle du code général des
+         * impôts. L'omettre est un manquement ; l'écrire autrement aussi.
+         */
+        const val MENTION_FRANCHISE = "TVA non applicable, art. 293 B du CGI"
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +78,41 @@ fun DevisRoute(
     val compteurs by viewModel.compteurs.collectAsStateWithLifecycle()
     val catalogue by viewModel.catalogue.collectAsStateWithLifecycle()
     val unitesVisees by viewModel.unitesVisees.collectAsStateWithLifecycle()
+    val reglages by viewModel.reglages.collectAsStateWithLifecycle()
+    val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
+    val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
+    val contexte = LocalContext.current
+
+    // Le partage s'ouvre dès que le PDF est écrit, puis le ViewModel oublie le
+    // document : sans cet oubli, revenir sur l'onglet rouvrirait le sélecteur.
+    LaunchedEffect(documentPret) {
+        val fichier = documentPret ?: return@LaunchedEffect
+        val ouvert = complet
+        contexte.envoyerDocument(
+            document = fichier,
+            objet = listOf("Devis", ouvert?.devis?.numero.orEmpty())
+                .filter { it.isNotBlank() }
+                .joinToString(" "),
+            corps = corpsDuMessage(ouvert),
+        )
+        viewModel.onDocumentPartage()
+    }
+
+    if (echecExport) {
+        AlertDialog(
+            onDismissRequest = viewModel::onEchecVu,
+            title = { Text(text = "Export impossible") },
+            text = {
+                Text(
+                    text = "Le PDF n'a pas pu être écrit. Il manque peut-être de la place " +
+                        "sur le téléphone : le document se reconstruit à l'identique, " +
+                        "rien n'est perdu.",
+                )
+            },
+            confirmButton = { TextButton(onClick = viewModel::onEchecVu) { Text(text = "Fermer") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
 
     BackHandler(enabled = complet != null) { viewModel.onFermer() }
 
@@ -94,6 +131,8 @@ fun DevisRoute(
             unitesVisees = unitesVisees,
             onOffrirLigne = viewModel::onOffrirLigne,
             onOffrirTva = viewModel::onOffrirTva,
+            onExporterPdf = viewModel::onExporterPdf,
+            enTete = reglages.entreprisePresentable,
             onSupprimerLigne = viewModel::onSupprimerLigne,
             onSupprimer = viewModel::onSupprimer,
             onFermer = viewModel::onFermer,
@@ -276,6 +315,9 @@ fun EcranDevis(
     unitesVisees: Int,
     onOffrirLigne: (LigneDevis) -> Unit,
     onOffrirTva: () -> Unit,
+    onExporterPdf: () -> Unit,
+    /** L'entreprise est renseignée : le PDF portera un en-tête. */
+    enTete: Boolean,
     onSupprimerLigne: (String) -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
@@ -383,6 +425,22 @@ fun EcranDevis(
                 onChoisir = onStatut,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // Exporter, et non « envoyer » : le devis part par le sélecteur du
+            // système, et le statut reste celui que l'utilisateur posera lui-même
+            // quand il saura que le client l'a reçu.
+            BoutonPlein(
+                texte = "Exporter en PDF et envoyer",
+                onClick = onExporterPdf,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!enTete) {
+                Encart(
+                    texte = "Le document partira sans en-tête : la raison sociale, " +
+                        "les coordonnées, le SIRET et le logo se renseignent dans " +
+                        "les Réglages.",
+                )
+            }
 
             BoutonContour(
                 texte = "Supprimer ce devis",
@@ -872,5 +930,24 @@ private fun LignePrestation(
                 },
             )
         }
+    }
+}
+
+/**
+ * Le corps du courriel qui porte le devis.
+ *
+ * Court et neutre : il est relu dans la messagerie avant d'être envoyé, et une
+ * formule trop longue se fait effacer. Il nomme le devis, parce qu'un courriel
+ * avec une pièce jointe et aucun texte finit parfois en indésirable.
+ */
+private fun corpsDuMessage(devis: DevisComplet?): String {
+    val numero = devis?.devis?.numero.orEmpty()
+    val objet = devis?.devis?.objet.orEmpty()
+    return buildString {
+        append("Bonjour,\n\n")
+        append("Veuillez trouver ci-joint notre devis")
+        if (numero.isNotBlank()) append(" $numero")
+        if (objet.isNotBlank()) append(" concernant $objet")
+        append(".\n\nCordialement,")
     }
 }
