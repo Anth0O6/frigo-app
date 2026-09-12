@@ -62,6 +62,30 @@ object Fluides {
     fun normaliser(saisie: String): String =
         saisie.trim().uppercase().replace("-", "").replace(" ", "")
 
+    /**
+     * Forme lisible d'un nom canonique : « R410A » → « R-410A ».
+     *
+     * Le tiret est celui de la désignation normalisée, telle qu'elle est imprimée
+     * sur une bouteille comme dans une table constructeur. Le stockage, lui, reste
+     * sans tiret : [normaliser] est ce qui permet de comparer deux saisies, et les
+     * deux fonctions ne doivent pas se confondre — comparer des formes d'affichage
+     * ferait rater un doublon.
+     *
+     * Les hydrocarbures (6xx) et les oléfines (1xxx) portent un suffixe d'isomère
+     * en minuscule — « R-600a », « R-1234yf » —, le seul endroit de la
+     * nomenclature où la casse dit quelque chose.
+     */
+    fun afficher(fluide: String): String {
+        val nom = normaliser(fluide)
+        if (!nom.startsWith("R") || nom.length < 2) return nom
+        val reste = nom.drop(1)
+        if (!reste.first().isDigit()) return nom
+        val chiffres = reste.takeWhile { it.isDigit() }
+        val suffixe = reste.drop(chiffres.length)
+        val isomere = chiffres.firstOrNull() == '6' || chiffres.length == 4
+        return "R-" + chiffres + if (isomere) suffixe.lowercase() else suffixe
+    }
+
     /** GWP du fluide, ou `null` s'il n'est pas au catalogue. */
     fun gwp(fluide: String): Int? = GWP[normaliser(fluide)]
 

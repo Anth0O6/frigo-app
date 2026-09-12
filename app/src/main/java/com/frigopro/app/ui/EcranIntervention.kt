@@ -56,6 +56,8 @@ data class ActionsIntervention(
     val onSurchauffe: (Double?) -> Unit = {},
     val onSousRefroidissement: (Double?) -> Unit = {},
     val onOuvrirDepannage: () -> Unit = {},
+    /** Marque la courbe d'un fluide vérifiée, ou retire la marque. */
+    val onVerifierFluide: (String, Boolean) -> Unit = { _, _ -> },
     val onMouvement: (SensFluide, Double, String) -> Unit = { _, _, _ -> },
     val onSupprimerMouvement: (String) -> Unit = {},
     val onAjouterPiece: (String, String, Double) -> Unit = { _, _, _ -> },
@@ -86,6 +88,8 @@ fun EcranIntervention(
     onglet: OngletIntervention,
     actions: ActionsIntervention,
     chargerPhoto: suspend (String, Int) -> Bitmap?,
+    /** Les fluides dont la courbe de saturation a été contrôlée. */
+    fluidesVerifies: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -109,7 +113,12 @@ fun EcranIntervention(
             Box(modifier = Modifier.weight(1f)) {
                 when (onglet) {
                     OngletIntervention.FICHE -> OngletFiche(etat = etat, actions = actions)
-                    OngletIntervention.RELEVES -> OngletReleves(etat = etat, ecoule = ecoule, actions = actions)
+                    OngletIntervention.RELEVES -> OngletReleves(
+                        etat = etat,
+                        ecoule = ecoule,
+                        actions = actions,
+                        fluidesVerifies = fluidesVerifies,
+                    )
                     OngletIntervention.PIECES -> OngletPieces(etat = etat, actions = actions)
                     OngletIntervention.PHOTOS -> OngletPhotos(
                         etat = etat,
