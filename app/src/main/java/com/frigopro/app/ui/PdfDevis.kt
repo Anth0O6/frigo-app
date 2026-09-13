@@ -22,7 +22,7 @@ import java.io.IOException
  * est irréductiblement Android — `PdfDocument`, `Canvas`, `Bitmap`, un
  * `FileProvider` — et un ViewModel qui en dépendrait directement ne se
  * construirait plus dans un test JVM. Ce qui **se** vérifie sans téléphone est
- * ailleurs : [MiseEnPageDevis] pour la pagination, [DocumentDevis] pour ce que le
+ * ailleurs : [MiseEnPageDevis] pour la pagination, [DocumentImprime] pour ce que le
  * document dit, et ce sont les deux endroits où une erreur coûterait cher.
  *
  * Rend `null` quand l'écriture échoue — place manquante, le plus souvent — ce que
@@ -30,7 +30,7 @@ import java.io.IOException
  */
 fun interface ProducteurPdf {
 
-    suspend fun produire(document: DocumentDevis): Uri?
+    suspend fun produire(document: DocumentImprime): Uri?
 }
 
 /**
@@ -45,7 +45,7 @@ class ProducteurPdfAndroid(
     private val photos: StockagePhotos,
 ) : ProducteurPdf {
 
-    override suspend fun produire(document: DocumentDevis): Uri? {
+    override suspend fun produire(document: DocumentImprime): Uri? {
         val logo = document.logoFichier?.let { photos.charger(it, MiseEnPageDevis.COTE_LOGO * 4) }
         val cible = documents.fichier(document.nomFichier)
         return if (PdfDevis.ecrire(document, logo, cible)) documents.uri(cible) else null
@@ -78,7 +78,7 @@ object PdfDevis {
      * une erreur chez le client, ce qui est pire que pas de pièce jointe.
      */
     suspend fun ecrire(
-        document: DocumentDevis,
+        document: DocumentImprime,
         logo: Bitmap?,
         cible: File,
     ): Boolean = withContext(Dispatchers.IO) {
@@ -103,7 +103,7 @@ object PdfDevis {
 
     private fun dessiner(
         pdf: PdfDocument,
-        document: DocumentDevis,
+        document: DocumentImprime,
         logo: Bitmap?,
         page: PageDevis,
     ) {
@@ -136,7 +136,7 @@ object PdfDevis {
      * Le logo est **contenu** dans un carré et non étiré : une image déformée sur
      * un devis dit quelque chose de l'entreprise qui l'envoie.
      */
-    private fun enTete(toile: Canvas, document: DocumentDevis, logo: Bitmap?) {
+    private fun enTete(toile: Canvas, document: DocumentImprime, logo: Bitmap?) {
         val gauche = MiseEnPageDevis.MARGE.toFloat()
         val droite = (MiseEnPageDevis.LARGEUR_PAGE - MiseEnPageDevis.MARGE).toFloat()
         var y = MiseEnPageDevis.MARGE + 12f
@@ -257,7 +257,7 @@ object PdfDevis {
         }
     }
 
-    private fun pied(toile: Canvas, document: DocumentDevis, page: PageDevis) {
+    private fun pied(toile: Canvas, document: DocumentImprime, page: PageDevis) {
         val y = MiseEnPageDevis.hautDuPied + 18f
         val droite = (MiseEnPageDevis.LARGEUR_PAGE - MiseEnPageDevis.MARGE).toFloat()
         toile.drawLine(MiseEnPageDevis.MARGE.toFloat(), y - 14f, droite, y - 14f, FILET_LEGER)

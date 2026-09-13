@@ -2,7 +2,6 @@ package com.frigopro.app.data
 
 import android.content.Context
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,12 +66,20 @@ class SchemaCommitteTest {
         )
 
         val empreinteCommittee = EMPREINTE.find(fichier!!.readText())?.groupValues?.get(1)
-        assertEquals(
-            "L'empreinte du schéma committé ne correspond pas à celle que Room " +
-                "compile depuis les entités. Corrigez `identityHash` et la ligne " +
-                "`room_master_table` de ${fichier.name}.",
-            empreinteReelle,
-            empreinteCommittee,
+
+        // `assertTrue` et non `assertEquals`, et ce n'est pas un détail de style :
+        // `assertEquals` lève une `ComparisonFailure`, dont l'intégration continue
+        // n'imprime que le nom — les deux valeurs comparées restent dans le rapport
+        // HTML, c'est-à-dire dans un artefact qu'il faut télécharger. Or c'est
+        // précisément l'empreinte réelle qu'on vient chercher ici : le seul moyen de
+        // la connaître est de faire échouer ce test. Elle doit donc tenir dans le
+        // message, que `AssertionError` porte jusqu'au journal.
+        assertTrue(
+            "L'empreinte du schéma committé ne correspond pas à celle que Room compile " +
+                "depuis les entités. Inscrivez `$empreinteReelle` dans `identityHash` et " +
+                "dans la ligne `room_master_table` de ${fichier.name} " +
+                "(le fichier porte `$empreinteCommittee`).",
+            empreinteReelle == empreinteCommittee,
         )
     }
 
