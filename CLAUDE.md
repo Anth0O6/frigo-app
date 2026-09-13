@@ -70,7 +70,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Devis.kt               # devis, lignes et totaux
 │       │   │   ├── Deplacement.kt         # tarif, trajet, et ce qu'il facture
 │       │   │   ├── ServiceItineraire.kt   # le contrat, et la lecture de la réponse
-│       │   │   ├── ItineraireGoogle.kt    # la seule classe qui ouvre une connexion
+│       │   │   ├── ItineraireRelais.kt    # la seule classe qui ouvre une connexion
 │       │   │   ├── Parametres.kt          # les réglages, en une seule ligne
 │       │   │   ├── Prestation.kt          # technicien, checklist, catalogue
 │       │   │   ├── CatalogueDao.kt
@@ -157,6 +157,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │                                   # chemins du FileProvider (xml/)
 ├── design/                         # le logo source et le script qui en tire
 │                                   # les icônes (voir « Icône »)
+├── relais/                         # le relais d'itinéraire : il tient la clé
+│                                   # pour que l'utilisateur n'ait rien à faire
 ├── gradle/libs.versions.toml       # versions centralisées
 ├── gradle/wrapper/                 # wrapper committé (jar inclus)
 ├── .github/workflows/build.yml     # CI : tests, APK et Release (sur main)
@@ -585,6 +587,21 @@ Le schéma est produit à la compilation. Chaque build en publie une copie en
 artefact `room-schemas`, d'où il se récupère sans construire le projet
 localement.
 
+**`SchemaCommitteTest` vérifie que le schéma committé est le bon**, et il a fallu
+s'y reprendre : le même contrôle écrit en intégration continue était *incapable
+d'échouer*. Le schéma n'est réécrit que si KSP retraite réellement les sources ;
+or Gradle croit la tâche à jour — `app/schemas` n'est pas déclaré parmi ses
+sorties — et même forcée par `--rerun-tasks`, KSP garde son propre état
+incrémental et conclut en neuf secondes qu'il n'a rien à faire. Le contrôle
+comparait donc le fichier committé **à lui-même**, et il est passé au vert sur un
+schéma dont l'empreinte d'identité était le texte « à remplacer ».
+
+Le test, lui, ne dépend d'aucun cache : il crée une vraie base par Robolectric et
+compare l'empreinte que Room y inscrit — celle qu'il a compilée depuis les
+entités — à celle du fichier. L'empreinte est la seule valeur d'un schéma qui ne
+se déduise pas du précédent, et c'est elle dont `MigrationTest` a besoin : fausse,
+elle ne se serait vue qu'en écrivant la migration *suivante*.
+
 Une colonne qui **disparaît** impose de reconstruire la table : `DROP COLUMN`
 n'existe dans SQLite que depuis la version 3.35, absente des appareils couverts
 par `minSdk 26`. C'est le cas de `MIGRATION_4_5`, qui en profite pour traduire
@@ -620,6 +637,13 @@ un tarif kilométrique inventé partirait chez un vrai client sans que personne 
 l'ait relu — et `refacturerPeages` à `1`, parce que qui a avancé un péage
 s'attend à le récupérer et que l'oubli coûte de l'argent là où l'inverse se
 remarque à la lecture du devis.
+
+`MIGRATION_10_11` retire la clé d'itinéraire des réglages : elle n'a plus d'objet
+depuis que le calcul passe par le relais. C'est une colonne qui **disparaît**,
+donc une table reconstruite — peu coûteux ici, `parametres` n'ayant qu'une ligne.
+La laisser en place aurait laissé en base un champ de *credential* que plus rien
+ne lit ni n'efface, et une clé oubliée dans une colonne morte est une clé qui
+traîne.
 
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
@@ -698,7 +722,8 @@ l'APK : un test rouge bloque la publication.
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
-| `AnalyseItineraireGoogleTest` | La lecture d'une réponse : entier en texte, durée suffixée, prix en deux morceaux, un 200 sans route qui n'est pas un trajet nul, une devise étrangère qui ne s'ajoute pas |
+| `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
+| `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
@@ -754,13 +779,10 @@ raison : « calculé le 12 mars » et « saisi à la main » ne se valent pas de
 quelqu'un qui discute la note, et une origine inconnue fait refuser le fichier au
 même titre qu'un statut.
 
-**La clé du service d'itinéraire n'y est pas**, et c'est le seul réglage
-volontairement laissé de côté. Une sauvegarde protège ce qui ne se retrouve pas ;
-une clé d'API se recopie en trente secondes depuis la console qui l'a émise, et
-elle est facturée à l'usage — une archive déposée sur un espace partagé se serait
-mise à faire payer son propriétaire. La contrepartie est traitée plutôt
-qu'ignorée : une restauration **ne l'efface pas** non plus, sinon restaurer
-par-dessus une installation en service aurait coupé le calcul sans rien dire.
+**Aucune sauvegarde ne transporte de secret**, et un test le vérifie. Le format 7
+avait d'abord exclu une clé d'API des réglages exportés ; depuis que la clé vit
+dans le relais, il n'y en a plus du tout à exclure. Le test reste, pour que la
+propriété ne se reperde pas le jour où un champ de ce genre reviendrait.
 
 Le format 6 avait ajouté les unités intérieures (`parentId`), la prestation comptée par
 unité, la ligne offerte et le régime de TVA du devis, l'en-tête d'entreprise avec
@@ -829,48 +851,58 @@ dossier `files/photos/` et rien d'autre, ou par le sélecteur d'images du systè
 Aucune permission dans les deux cas : ni caméra — l'application ne photographie
 pas elle-même, elle délègue —, ni stockage.
 
-## Le réseau, et pourquoi il n'y en a qu'un
+## Le réseau, et le relais
 
 L'application a longtemps revendiqué de fonctionner entièrement hors ligne, et
 cela reste vrai de tout sauf d'une chose : le **calcul d'itinéraire**. Aucune API
-Android ne calcule une route hors ligne, et les prix de péage ne viennent que
-d'un service distant. D'où la première — et unique — permission de l'application,
-`INTERNET`, qui est une permission dite *normale* : elle se déclare et ne se
-demande pas à l'utilisateur.
+Android ne calcule une route hors ligne. D'où la première — et unique —
+permission de l'application, `INTERNET`, qui est une permission dite *normale* :
+elle se déclare et ne se demande pas à l'utilisateur.
 
-Trois règles encadrent cette ouverture :
+### Pourquoi un relais, et pas une clé
 
-- **Une seule classe ouvre une connexion**, `ItineraireGoogle`, et c'est là qu'on
-  vérifie ce qui sort du téléphone : deux adresses et une clé, vers un seul hôte.
-  Pas de bibliothèque HTTP — un appel, un POST, un JSON : `HttpURLConnection`
-  suffit là où Retrofit aurait ajouté une dépendance et son transitif.
+La première version demandait sa clé d'API à l'utilisateur. C'était une erreur de
+conception, et elle vaut d'être écrite ici pour ne pas être refaite :
+
+1. **Personne ne l'aurait fait.** Un technicien frigoriste ne crée pas un compte
+   sur une console d'API pour saisir un kilométrage. La fonctionnalité existait et
+   n'aurait jamais été activée — ce qui revient à faire porter le coût de
+   l'infrastructure à celui qui n'a rien demandé.
+2. **Embarquer la clé dans l'APK n'était pas une option non plus.** Elle s'en
+   extrait, et l'API Routes de Google ne sait pas restreindre une clé à une
+   application Android : seule l'adresse IP d'un serveur peut l'être. Un relais
+   est donc littéralement la restriction que Google propose.
+
+La clé vit donc dans `relais/` (un Worker Cloudflare), et l'application ne parle
+qu'à lui. **Le contrat est volontairement étroit** — deux adresses entrent, une
+distance et une durée sortent — et c'est ce qui en fait plus qu'un tour de passe-
+passe : le fournisseur de cartographie devient interchangeable, et corriger la
+lecture d'une réponse se fait en redéployant un fichier, sans publier de version
+ni attendre que quiconque mette à jour son téléphone. Cela a servi immédiatement :
+le relais a été écrit sans pouvoir interroger le service, il accepte donc les deux
+formes de réponse connues et s'éprouve contre un faux service
+(`relais/worker.test.mjs`).
+
+Derrière le relais, OpenRouteService : gratuit, sans carte bancaire. La
+contrepartie est nette et dite à l'écran — **il ne chiffre pas les péages**, qui
+restent à saisir. Le relais répond alors « je ne sais pas » plutôt que zéro, parce
+que les deux ne valent pas la même chose sur un devis.
+
+### Trois règles
+
+- **Une seule classe ouvre une connexion**, `ItineraireRelais`, et c'est là qu'on
+  vérifie ce qui sort du téléphone : deux adresses, vers un seul hôte. Pas de
+  bibliothèque HTTP — un appel, un POST, un JSON.
 - **La saisie à la main reste le chemin de secours**, et non un mode dégradé : un
   technicien au fond d'une chambre froide n'a pas de réseau, et un devis doit se
-  chiffrer quand même. Sans clé, le calcul est simplement indisponible et l'écran
-  le dit.
-- **La lecture de la réponse est séparée du transport** (`AnalyseItineraireGoogle`)
-  parce que c'est la moitié éprouvable : le protocole HTTP ne s'éprouve pas sur la
-  JVM sans monter un serveur, l'analyse d'une réponse s'éprouve avec une chaîne de
-  caractères. Et c'est là que sont les pièges, tous réels — un entier de 64 bits
-  arrive **en texte** dans le JSON de protobuf, la durée porte son unité
-  (`"1320s"`), un prix de péage se lit en unités *et* en milliardièmes, un code 200
-  avec `routes` vide n'est **pas** un trajet de zéro kilomètre mais une adresse
-  introuvable, et un péage rendu en francs suisses ne s'ajoute pas à un devis en
-  euros — il est déclaré inconnu.
+  chiffrer quand même. Aucun message d'échec ne renvoie l'utilisateur vers une
+  configuration, et un test le vérifie.
+- **Les adresses des clients traversent le relais.** Il ne les journalise pas, et
+  c'est une propriété à préserver si on le réécrit.
 
 `RaisonEchec` porte un message par situation plutôt qu'un seul, parce que la
-suite n'est pas la même : une clé se corrige dans les Réglages, une adresse se
-réécrit, une absence de réseau se contourne en tapant ses kilomètres.
-
-`TRAFFIC_UNAWARE` est un choix assumé : la durée est celle d'une route libre,
-sans le trafic du moment. C'est ce qu'il faut pour un devis, qui doit annoncer le
-même prix si on le rouvre à 18 h un vendredi — et cela évite au passage la tranche
-tarifaire la plus chère du service.
-
-**La clé ne peut pas vivre dans le dépôt**, qui est public. Même raison que la
-clé de signature, à ceci près que celle-ci est facturée à l'usage : une clé
-publiée se fait consommer par des inconnus aux frais de son propriétaire. Elle se
-saisit donc dans les Réglages, vit en base, et ne part pas dans les sauvegardes.
+suite n'est pas la même : une adresse se réécrit, une absence de réseau se
+contourne en tapant ses kilomètres.
 
 ## Icône
 
@@ -962,11 +994,16 @@ place » venant en tête :
   désormais là (`ServiceItineraire`) ; il manque l'ordonnancement d'une journée,
   qui est un problème d'un autre ordre — et la question de ce qu'il coûte en appels
   au service, puisqu'ils sont facturés.
-- **Éprouver le calcul d'itinéraire contre le vrai service.** La lecture de la
-  réponse est couverte par des charges utiles de la forme documentée, mais aucun
-  appel réel n'a été passé : le premier a lieu sur le téléphone, clé en main. Un
-  écart de forme se verrait alors en `REPONSE_ILLISIBLE` plutôt qu'en chiffre faux,
-  ce qui est le bon sens de l'échec, mais ce n'est pas une vérification.
+- **Déployer le relais, et l'éprouver contre le vrai service.** Tant qu'aucun
+  relais n'est déployé, `Itineraire.RELAIS` est vide et le calcul automatique est
+  simplement absent de l'écran — la saisie à la main reste le chemin normal. Le
+  relais lui-même est éprouvé contre un faux service, mais aucun appel réel n'a
+  encore été passé : un écart de forme se verrait alors en échec franc plutôt
+  qu'en chiffre faux, ce qui est le bon sens de l'échec, mais ce n'est pas une
+  vérification.
+- **Les péages automatiques**, le jour où ils compteront plus que l'absence de
+  carte bancaire. C'est le relais qui changerait, pas l'application : elle sait
+  déjà lire un péage chiffré et le dire connu.
 - **Contrôler les courbes de saturation livrées**, fluide par fluide, contre une
   table constructeur, puis cocher chacune dans la réglette. Tant que ce n'est pas
   fait, elle affiche l'avertissement et refuse de reporter un écart dans un
