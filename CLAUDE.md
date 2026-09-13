@@ -100,6 +100,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
 │       │       ├── FrigoProApp.kt      # coquille : les six onglets
+│       │       ├── EcranDemarrage.kt  # le logo et le nom, le temps que ce soit prêt
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
 │       │       ├── LigneTournee.kt     # intervention + fiche de son client
@@ -688,6 +689,7 @@ l'APK : un test rouge bloque la publication.
 
 | Cible | Ce qui est couvert |
 | --- | --- |
+| `DemarrageTest` | Le minutage du démarrage : pas de clignotement, et pas d'attente ajoutée |
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature |
@@ -929,6 +931,61 @@ derrière l'emblème, une fois l'icône sur un fond clair.
 Le flocon vectoriel d'origine reste sous le nom `ic_launcher_monochrome.xml` : il
 sert de **silhouette** aux icônes thématisées d'Android 13, qui demandent une
 forme d'une seule couleur là où le logo en a cinq.
+
+Le même script produit `drawable-*/logo_demarrage.png`, qui est l'emblème **sans
+la marge du lanceur** : l'écran de démarrage n'est masqué par personne, et lui
+livrer les 34 % de vide qu'une icône adaptative exige l'aurait affiché tout petit
+au milieu d'un grand fond. Il est fabriqué à 192 dp, qui est à la fois la zone
+garantie visible d'une icône de démarrage Android et la plus grande taille à
+laquelle l'emblème sorte de la source sans être agrandi.
+
+## L'écran de démarrage
+
+Il y en a **deux, et ils montrent la même image** : celui du système, qu'Android
+12 impose qu'on le configure ou non, et celui de l'application. Les faire
+coïncider est tout le travail — sinon on voit deux écrans de démarrage se
+succéder au lieu d'un.
+
+Celui du système est réglé dans `values-v31/themes.xml` : sans ces deux lignes il
+affiche l'icône de lanceur, c'est-à-dire l'emblème **sur son disque bleu**, quand
+celui de l'application montre l'emblème seul sur le fond nuit. C'est pour cela
+que `drawable/ic_demarrage.xml` existe — le logo de démarrage rentré dans la
+toile de 288 dp qu'Android lui donne, dont seuls les 192 dp centraux sont
+garantis visibles.
+
+Celui de l'application, `EcranDemarrage`, ajoute ce que le système ne sait pas
+faire : **le nom**. Un écran de démarrage système n'accepte qu'une icône, jamais
+de texte, et c'est la seule raison pour laquelle il y a une deuxième couche.
+
+**Aucune bibliothèque pour cela**, et surtout pas
+`androidx.core:core-splashscreen` : elle n'apporterait que le rétroportage sur
+Android 8 à 11 — où `windowBackground` en nuit fait déjà l'affaire — et
+`setKeepOnScreenCondition`, dont l'écran Compose tient le rôle, en mieux :
+lui sait *ce qu'il attend*.
+
+Car il attend vraiment quelque chose, et c'est ce qui le distingue d'une
+animation de complaisance. Le thème dépend d'une lecture en base — `themeSombre`
+et `modeGants` sont des réglages —, si bien que `MainActivity` collecte les
+réglages avec `initial = null` et non avec une valeur par défaut : supposer le
+thème revenait à ouvrir l'application en sombre puis à la repeindre en clair sous
+les yeux du technicien qui avait choisi l'inverse. L'écran couvre exactement cet
+intervalle, et le thème définitif n'est appliqué qu'au **début** de son fondu —
+qui le découvre alors, au lieu de le précéder. Ses couleurs à lui sont fixes et
+non prises au thème, pour la même raison : un nom qui virerait au noir en
+sortant serait précisément ce qu'il est chargé de masquer.
+
+`Demarrage.attenteRestante` est la règle de minutage, et elle tient en une
+phrase : rien à programmer tant que ce n'est pas prêt, et une fois prêt, ce qui
+manque au minimum — jamais plus. Les deux erreurs possibles sont symétriques et
+ce sont les deux seules : un écran effacé si vite qu'il clignote, ou de l'attente
+ajoutée à quelqu'un qui ouvre l'application vingt fois par jour dans une
+camionnette. `DemarrageTest` tient les deux bouts.
+
+Le numéro de version s'affiche en bas, discrètement. Ce n'est pas de la
+décoration : les APK de test se succèdent, et savoir laquelle est installée sans
+aller la chercher dans les paramètres du téléphone évite d'éprouver la
+précédente. C'est ce qui a demandé d'activer `buildConfig` — AGP 8 ne génère plus
+`BuildConfig` sans qu'on le demande.
 
 ## Signature et mises à jour
 

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        L'écran de démarrage **du système**, celui qu'Android 12 impose qu'on le
+        configure ou non : sans ces trois lignes, il affiche l'icône de lanceur —
+        l'emblème sur son disque bleu — là où l'écran de démarrage de
+        l'application montre l'emblème seul sur le même fond nuit. On verrait
+        alors deux écrans de démarrage se succéder au lieu d'un.
+
+        C'est le seul rôle de ce fichier : faire coïncider les deux images pour
+        que le passage de l'un à l'autre ne se voie pas. Le nom de l'application,
+        lui, ne peut pas y figurer — l'écran de démarrage du système n'accepte
+        qu'une icône —, et c'est pour cela que celui de l'application existe
+        (voir `EcranDemarrage`).
+
+        Aucune bibliothèque pour cela : `androidx.core:core-splashscreen`
+        n'apporterait ici que le rétroportage sur Android 8 à 11, où le fond
+        `windowBackground` fait déjà l'affaire, et `setKeepOnScreenCondition`,
+        dont l'écran Compose tient le rôle — et mieux, puisqu'il sait ce qu'il
+        attend.
+    -->
+    <style name="Theme.FrigoPro" parent="SocleFrigoPro">
+        <item name="android:windowSplashScreenBackground">@color/nuit</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_demarrage</item>
+    </style>
+</resources>

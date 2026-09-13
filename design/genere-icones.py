@@ -20,6 +20,11 @@ encore à 48 dp.
 
 Le logo complet reste dans `design/`, d'où il ressort pour une fiche de magasin ou
 un en-tête de document.
+
+Il produit enfin le logo de l'**écran de démarrage**, qui est le même emblème mais
+détouré au plus juste : l'écran de démarrage n'est masqué par personne, et lui
+livrer la marge de 34 % que le lanceur exige l'aurait affiché tout petit au milieu
+d'un grand vide.
 """
 
 from PIL import Image
@@ -48,6 +53,13 @@ CENTRE, RAYON = (450, 452), 455
 PART_EMBLEME = 0.66
 
 DENSITES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
+
+# Le logo de l'écran de démarrage, en dp. C'est la zone garantie visible d'une
+# icône de démarrage Android (192 dp sur les 288 dp de la toile), et c'est aussi
+# la plus grande taille à laquelle l'emblème soit rendu sans être agrandi : la
+# source n'en contient que 900 px de large, soit 768 px une fois réduite au
+# quatre pixels par dp d'un écran xxxhdpi.
+COTE_DEMARRAGE = 192
 
 # Le dégradé du fond, relevé sur le logo : un bleu vif vers le haut, qui s'assombrit
 # vers les bords. Il est aussi décrit en vectoriel dans `ic_launcher_background.xml` —
@@ -139,7 +151,20 @@ def main() -> None:
         heritee.alpha_composite(avant)
         heritee.convert("RGB").save(dossier / "ic_launcher.png")
         rond(heritee).save(dossier / "ic_launcher_round.png")
-        print(f"  mipmap-{nom:8} avant {round(108 * facteur):3} px, héritée {cote:3} px")
+
+        # Le logo de l'écran de démarrage : le même emblème, sans la marge que le
+        # lanceur impose. Il va dans `drawable-*` et non `mipmap-*`, qui est
+        # réservé aux icônes de lanceur — celles qu'Android conserve quelle que
+        # soit la densité de l'appareil.
+        demarrage = RES / f"drawable-{nom}"
+        demarrage.mkdir(parents=True, exist_ok=True)
+        large = round(COTE_DEMARRAGE * facteur)
+        source.resize((large, large), Image.LANCZOS).save(demarrage / "logo_demarrage.png")
+
+        print(
+            f"  {nom:8} lanceur {round(108 * facteur):3} px, héritée {cote:3} px, "
+            f"démarrage {large:4} px"
+        )
 
 
 if __name__ == "__main__":

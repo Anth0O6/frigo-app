@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Le logo de démarrage, rentré dans la toile qu'Android lui donne.
+
+    Une icône d'écran de démarrage se dessine sur 288 dp dont seuls les 192 dp
+    centraux sont garantis visibles — même règle qu'une icône adaptative, à une
+    autre échelle. `logo_demarrage.png` fait justement 192 dp : les 48 dp de
+    marge de chaque côté le posent exactement dans cette zone.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/logo_demarrage"
+    android:inset="48dp" />

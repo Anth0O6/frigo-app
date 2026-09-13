@@ -4,10 +4,18 @@
         Thème XML de lancement, visible le temps que Compose prenne la main.
         Sombre, comme l'application : un parent clair produisait un éclair
         blanc à chaque démarrage, désagréable de nuit en chambre froide.
+
+        Il est coupé en deux — un socle et le thème lui-même — pour que
+        `values-v31` puisse ajouter les attributs de l'écran de démarrage
+        d'Android 12 sans recopier les trois autres. Le socle porte un nom sans
+        point : `Theme.FrigoPro.Socle` hériterait implicitement de
+        `Theme.FrigoPro`, dont il est justement le parent.
     -->
-    <style name="Theme.FrigoPro" parent="android:Theme.Material.NoActionBar">
+    <style name="SocleFrigoPro" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/nuit</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <style name="Theme.FrigoPro" parent="SocleFrigoPro" />
 </resources>

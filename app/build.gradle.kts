@@ -77,6 +77,11 @@ android {
 
     buildFeatures {
         compose = true
+
+        // Pour `BuildConfig.VERSION_NAME`, que l'écran de démarrage affiche :
+        // une APK de test s'identifie ainsi sans aller la chercher dans les
+        // paramètres du téléphone. AGP 8 ne le génère plus sans le demander.
+        buildConfig = true
     }
 
     testOptions {
