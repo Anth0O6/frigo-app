@@ -100,7 +100,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
 │       │       ├── FrigoProApp.kt      # coquille : les six onglets
-│       │       ├── EcranDemarrage.kt  # le logo et le nom, le temps que ce soit prêt
+│       │       ├── EcranDemarrage.kt  # logo, anneau et nom, le temps que ce soit prêt
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
 │       │       ├── LigneTournee.kt     # intervention + fiche de son client
@@ -689,7 +689,7 @@ l'APK : un test rouge bloque la publication.
 
 | Cible | Ce qui est couvert |
 | --- | --- |
-| `DemarrageTest` | Le minutage du démarrage : pas de clignotement, et pas d'attente ajoutée |
+| `DemarrageTest` | Le minutage du démarrage : pas de clignotement, pas d'attente ajoutée, et une chorégraphie qui tient dans le temps affiché |
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature |
@@ -976,10 +976,42 @@ sortant serait précisément ce qu'il est chargé de masquer.
 
 `Demarrage.attenteRestante` est la règle de minutage, et elle tient en une
 phrase : rien à programmer tant que ce n'est pas prêt, et une fois prêt, ce qui
-manque au minimum — jamais plus. Les deux erreurs possibles sont symétriques et
-ce sont les deux seules : un écran effacé si vite qu'il clignote, ou de l'attente
-ajoutée à quelqu'un qui ouvre l'application vingt fois par jour dans une
-camionnette. `DemarrageTest` tient les deux bouts.
+manque au minimum — jamais plus. C'est un **plancher, pas un délai** : un
+démarrage lent a déjà consommé son temps et n'attend rien de plus.
+
+Le minimum a valu 550 ms — ce qu'il fallait pour qu'un téléphone rapide ne fasse
+pas *clignoter* le logo, et rien de plus. Il vaut **2 550 ms** depuis qu'il y a
+une animation à dérouler : l'anneau met à lui seul près de deux secondes à faire
+le tour, et une animation coupée en son milieu est pire que pas d'animation. Le
+coût est réel et assumé — deux secondes et demie à chaque démarrage **à froid**,
+c'est-à-dire au premier lancement de la journée et chaque fois qu'Android a repris
+la mémoire de l'application ; revenir sur une application restée en arrière-plan
+ne recrée pas l'activité et ne rejoue donc rien.
+
+**L'animation est une chorégraphie lue par une seule horloge** : une animation de
+0 à 1 sur le minimum, dont chaque élément découpe sa fenêtre (`Demarrage.Phase`,
+`avancement`). Quatre animations indépendantes auraient dérivé les unes des
+autres sur un téléphone qui saute des images ; ici elles ne peuvent pas, elles
+lisent le même temps. Et ce temps n'est lu que dans des lambdas de dessin
+(`graphicsLayer`, `Canvas`) : l'arbre n'est pas recomposé soixante fois par
+seconde, il est seulement redessiné.
+
+L'**anneau** est dessiné et non embarqué en image : un dégradé tracé au pixel
+près reste net à toutes les densités, et ses deux teintes sont relevées sur
+l'emblème lui-même — le bleu du flocon, l'orange de la flamme. Il part du bas et
+tourne dans le sens des aiguilles, ce qui le fait passer par la gauche, le froid,
+avant d'arriver à droite, sur le chaud : c'est le sens de lecture de la jauge du
+logo, et c'est aussi le métier. Son dégradé est **horizontal** et non circulaire,
+si bien que chaque côté de l'anneau porte la couleur du côté du logo qu'il longe,
+et qu'aucune couture n'apparaît là où le tour se referme.
+
+`DemarrageTest` tient les trois erreurs possibles, dont la troisième n'existe que
+depuis l'animation : un écran effacé si vite qu'il clignote, de l'attente ajoutée
+à quelqu'un qui ouvre l'application vingt fois par jour dans une camionnette, et
+une **chorégraphie plus longue que le temps affiché** — qui ferait partir l'écran
+en plein mouvement. C'est ce dernier invariant qu'il faut garder en tête en
+retouchant une phase : allonger un mouvement sans allonger le minimum casse
+l'écran, et le test le dit.
 
 Le numéro de version s'affiche en bas, discrètement. Ce n'est pas de la
 décoration : les APK de test se succèdent, et savoir laquelle est installée sans
