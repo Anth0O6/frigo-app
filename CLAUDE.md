@@ -15,11 +15,14 @@ propose des pistes — jamais un verdict — et le contrôle qui tranche chacune
 
 Un onglet Clients tient le carnet — adresse et téléphone compris — ainsi que le
 parc de machines de chaque client : plaque signalétique, fluide et charge,
-photos, échéance du contrôle d'étanchéité et historique. Un onglet Devis permet
-de chiffrer sur place, **déplacement compris** : temps de trajet, kilomètres et
-péages, au km, à l'heure ou les deux, avec un plancher et le choix de l'offrir. Depuis la tournée, appeler un client ou ouvrir
-l'itinéraire tient en un geste. Les données sont persistées localement, et
-exportables dans une archive de sauvegarde.
+photos, échéance du contrôle d'étanchéité et historique. Un onglet Facturation
+permet de chiffrer sur place, **déplacement compris** : temps de trajet,
+kilomètres et péages, au km, à l'heure ou les deux, avec un plancher et le choix
+de l'offrir. Il porte aussi les **factures** : une intervention terminée ou un
+devis accepté en devient une, elle s'envoie par courriel ou par message, se
+pointe payée, et se relance quand l'échéance est passée. Depuis la tournée,
+appeler un client ou ouvrir l'itinéraire tient en un geste. Les données sont
+persistées localement, et exportables dans une archive de sauvegarde.
 
 ## Stack
 
@@ -28,6 +31,7 @@ exportables dans une archive de sauvegarde.
 | Langage | Kotlin |
 | UI | Jetpack Compose + Material 3 |
 | Persistance | Room (SQLite local), KSP pour la génération |
+| Travail différé | WorkManager, pour le seul rappel des factures échues |
 | Polices | Barlow et IBM Plex Mono, **embarquées** (`res/font`) |
 | minSdk / targetSdk / compileSdk | 26 / 36 / 36 |
 | Build | Gradle (wrapper committé), AGP, catalogue de versions `gradle/libs.versions.toml` |
@@ -67,7 +71,11 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── VerificationFluide.kt  # « j'ai contrôlé cette courbe »
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
-│       │   │   ├── Devis.kt               # devis, lignes et totaux
+│       │   │   ├── Devis.kt               # devis, lignes, et les totaux partagés
+│       │   │   ├── Facture.kt             # facture, lignes, échéance et relance
+│       │   │   ├── FactureDao.kt
+│       │   │   ├── FactureRepository.kt    # numérote, fige, et refuse d'effacer
+│       │   │   ├── RappelsFactures.kt      # le rappel du matin, et rien d'autre
 │       │   │   ├── Deplacement.kt         # tarif, trajet, et ce qu'il facture
 │       │   │   ├── ServiceItineraire.kt   # le contrat, et la lecture de la réponse
 │       │   │   ├── ItineraireRelais.kt    # la seule classe qui ouvre une connexion
@@ -131,7 +139,11 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── DevisScreen.kt
 │       │       ├── SectionDeplacement.kt  # le déplacement dans un devis
 │       │       ├── DevisViewModel.kt
+│       │       ├── DocumentImprime.kt   # un document imprimable, quel qu'il soit
 │       │       ├── DocumentDevis.kt     # ce que le devis imprimé dit
+│       │       ├── DocumentFacture.kt   # ce que la facture imprimée dit
+│       │       ├── EcranFactures.kt     # la liste, la facture, et ses gestes
+│       │       ├── FacturesViewModel.kt
 │       │       ├── MiseEnPageDevis.kt   # l'arithmétique de la page A4
 │       │       ├── PdfDevis.kt          # le seul à connaître Canvas
 │       │       ├── EtatReglette.kt      # pression ↔ température, et le côté
@@ -646,6 +658,23 @@ La laisser en place aurait laissé en base un champ de *credential* que plus rie
 ne lit ni n'efface, et une clé oubliée dans une colonne morte est une clé qui
 traîne.
 
+`MIGRATION_11_12` apporte la facturation : deux tables et deux colonnes sur les
+réglages, que des ajouts. Ses défauts disent quelque chose, comme ceux de
+`MIGRATION_9_10`. `delaiPaiementJours` arrive à **30**, et c'est le seul défaut
+du projet qui soit une valeur réglementaire plutôt qu'un choix : c'est le délai
+supplétif du code de commerce, celui qui s'applique quand rien n'a été convenu.
+`tauxPenalitesRetard` arrive à **zéro**, qui veut dire « non fixé » et non « pas
+de pénalités » — faute de taux convenu, c'est le taux légal qui s'applique de
+plein droit, et le document le mentionne ainsi. Y mettre un chiffre inventé
+l'aurait fait partir chez un vrai client sans que personne ne l'ait relu.
+
+Aucune des deux colonnes ne porte de `@ColumnInfo(defaultValue)` sur l'entité,
+alors que l'`ALTER TABLE` en pose un — SQLite l'exige pour une colonne `NOT
+NULL`. Ce n'est pas une incohérence : Room ne compare un défaut que lorsqu'il
+vient de l'entité, si bien qu'un défaut côté base qu'aucune entité ne déclare est
+ignoré à la validation. C'est déjà le cas des colonnes de tarif de
+`MIGRATION_9_10`.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -723,6 +752,9 @@ l'APK : un test rouge bloque la publication.
 | `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
+| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent |
+| `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture |
+| `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
@@ -770,6 +802,20 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 8 ajoute les factures et leurs lignes, ainsi que le délai de paiement
+et le taux de pénalités des réglages. Une facture est sauvegardée pour une raison
+que les autres lignes n'ont pas : c'est un **document comptable**, que
+l'entreprise doit pouvoir représenter pendant dix ans. Perdre un devis coûte un
+chiffrage à refaire ; perdre une facture émise coûte une pièce que
+l'administration réclamera.
+
+Le numéro part avec, et c'est aussi ce qui protège la **continuité de la
+séquence** : sans lui, une restauration sur un téléphone neuf ferait repartir la
+numérotation à `0001` alors que des factures sont déjà chez des clients — deux
+documents porteraient le même numéro. `clientAdresse`, `tauxTva`, `assujettiTva`
+et `tauxPenalites` partent aussi, parce que ce sont les mentions **du document
+envoyé** et non l'état actuel du carnet ni des réglages.
 
 Le format 7 ajoute la facturation du déplacement : le trajet de chaque devis, le
 marqueur des lignes qu'il a produites, et le tarif kilométrique. Un trajet est
@@ -857,9 +903,14 @@ pas elle-même, elle délègue —, ni stockage.
 
 L'application a longtemps revendiqué de fonctionner entièrement hors ligne, et
 cela reste vrai de tout sauf d'une chose : le **calcul d'itinéraire**. Aucune API
-Android ne calcule une route hors ligne. D'où la première — et unique —
-permission de l'application, `INTERNET`, qui est une permission dite *normale* :
-elle se déclare et ne se demande pas à l'utilisateur.
+Android ne calcule une route hors ligne. D'où la première permission de
+l'application, `INTERNET`, qui est une permission dite *normale* : elle se
+déclare et ne se demande pas à l'utilisateur.
+
+La seconde, `POST_NOTIFICATIONS`, est arrivée avec les factures et c'est la
+**première que l'utilisateur voit** — voir « Les factures ». Elle ne sert qu'au
+rappel du matin, l'application marche entièrement sans, et elle n'est demandée
+qu'au moment où l'écran des factures propose le rappel.
 
 ### Pourquoi un relais, et pas une clé
 
@@ -905,6 +956,108 @@ que les deux ne valent pas la même chose sur un devis.
 `RaisonEchec` porte un message par situation plutôt qu'un seul, parce que la
 suite n'est pas la même : une adresse se réécrit, une absence de réseau se
 contourne en tapant ses kilomètres.
+
+## Les factures
+
+**Une facture n'est pas un devis qui change d'état**, et tout le reste de cette
+section en découle. Un devis se retouche, se refuse, s'abandonne ; une facture
+émise fait foi — pour le client, pour l'administration, pour la comptabilité —
+et sa numérotation doit être chronologique et **continue**. Un trou dans la
+séquence est ce qu'un contrôle cherche en premier.
+
+Trois règles, portées par `FactureRepository` plutôt que par le SQL, parce que
+c'est là qu'elles se lisent et s'éprouvent :
+
+1. **Le numéro n'est attribué qu'à l'émission**, jamais à la création. C'est ce
+   qui rend la continuité tenable sans registre séparé : un brouillon abandonné
+   n'a consommé aucun rang, et le `max + 1` de `Numerotation.suivantAnnuel`
+   suffit alors — il ne suffirait pas si un brouillon avait déjà pris un numéro.
+2. **Une facture numérotée ne se supprime pas.** Elle s'annule en gardant son
+   numéro ; l'effacer creuserait le trou. `supprimer` rend `false`.
+3. **Passé l'émission, plus rien ne bouge** : ni les lignes, ni l'objet, ni les
+   montants. Les écritures rendent `null` sur une facture figée, et l'écran ne
+   propose pas les gestes — les deux gardes valent mieux qu'une, celle du dépôt
+   étant la seule qui survive à une refonte de l'écran.
+
+La numérotation est **annuelle** (`FAC-2026-0042`) là où le devis et le
+compte-rendu sont mensuels : douze séquences par an feraient douze continuités à
+justifier là où une seule suffit.
+
+`LigneChiffree` et `TotauxDocument` sont partagés avec le devis, et c'est
+volontaire. La règle d'arrondi — **au centime ligne à ligne, puis sommé** — est
+le point le plus subtil du chiffrage ; deux copies auraient fini par diverger
+d'un centime sur l'un des deux documents sans qu'on sache lequel avait raison.
+C'est aussi ce qui garantit qu'un devis transformé en facture retombe exactement
+sur le montant que le client avait accepté. Les **tables**, elles, restent
+distinctes : les deux documents ne vivent pas la même vie, et les réunir aurait
+demandé un `devisId` **et** un `factureId` nullables sur chaque ligne, plus une
+règle pour dire lequel des deux est vrai.
+
+Une facture vient de deux endroits, et aucun ne demande de ressaisir quoi que ce
+soit. D'une **intervention terminée**, dont `LignesFacture` tire le temps passé,
+les pièces posées et le fluide ajouté — c'est le dépannage imprévu, celui qui n'a
+pas été devisé. Et d'un **devis accepté**, dont elle reprend les lignes à
+l'identique — c'est le chantier annoncé. Les quantités y sont **arrondies avant
+de servir**, comme pour le déplacement et pour la même raison : 1 h 47 s'imprime
+« 1,78 h » et doit valoir 1,78 × le taux, sinon la ligne se contredit toute
+seule. Le fluide **récupéré** ne produit aucune ligne : c'est une reprise, et la
+facturer reviendrait à facturer au client le fluide qu'on lui a retiré.
+
+Tout ce qui vient d'ailleurs est **recopié** — le nom et l'adresse du client, le
+taux de TVA, le régime d'assujettissement, le taux de pénalités. Même raison que
+pour le devis, en plus forte : une facture est un document daté qui a quitté
+l'entreprise. Qu'un client déménage ou que l'entreprise franchisse le seuil de la
+franchise en base ne doit rien changer à ce qui est parti en mars.
+
+`DocumentFacture` porte les **mentions obligatoires**, et c'est là que la facture
+se sépare vraiment du devis : sur un devis une mention oubliée est un manque de
+soin, sur une facture c'est un manquement dont l'entreprise répond. Échéance,
+pénalités de retard, indemnité forfaitaire de quarante euros (art. D. 441-5),
+absence d'escompte. Faute de taux de pénalités convenu, le document renvoie au
+taux légal plutôt que d'imprimer « 0 % », qui serait faux **et** vaudrait
+renonciation au recours.
+
+### Les relances
+
+Deux endroits, et le premier est le principal.
+
+Les factures échues paraissent sur **l'accueil**, à côté des échéances F-Gas et
+pour la même raison : l'écran répond à « et maintenant ? », et une facture de six
+semaines est une réponse à cette question. Rien n'est stocké — « en retard » se
+déduit de l'échéance et du jour, et un booléen en base serait faux le lendemain.
+Toucher la ligne ouvre la facture, d'où elle se renvoie ; l'envoi d'une facture
+échue **vaut relance** et le note, sans quoi elle remonterait le lendemain dans
+la liste alors qu'on vient de s'en occuper.
+
+`RappelsFactures` ajoute une **notification le matin**, et c'est la seule chose
+de l'application qui se manifeste sans qu'on l'ait ouverte. Cela demande d'être
+justifié : un impayé est le seul événement du métier qui se produise pendant
+qu'on ne regarde pas — une intervention, un contrôle, un devis attendent qu'on
+ouvre l'application ; une facture devient exigible toute seule un matin. Trois
+précautions : **l'application marche entièrement sans** (les impayés sont sur
+l'accueil de toute façon), **une notification par jour au plus** pour toutes les
+factures — un rappel par impayé serait la meilleure façon de faire couper les
+notifications pour de bon —, et rien n'est stocké.
+
+Le travail est programmé en `KEEP` et non `UPDATE`. Reprogrammer à chaque
+démarrage remettrait le délai initial à zéro, et l'application ouverte tous les
+matins à 7 h 30 n'aurait **jamais** notifié : le rappel serait toujours reporté
+au lendemain. C'est un défaut qui ne se voit qu'en attendant plusieurs matins, et
+`RappelsFacturesTest` tient le calcul du délai.
+
+### Là où elles vivent
+
+L'onglet `Devis` est devenu **`Facturation`** et porte les deux documents,
+séparés par une bascule. Une bascule plutôt qu'un septième onglet, et ce n'est
+pas un pis-aller : la barre en porte déjà six, un de plus que ce que Material
+recommande, et un septième aurait réduit chaque cible à ce qu'un pouce ganté ne
+trouve plus. Les deux documents se suivent d'ailleurs dans le temps.
+
+Créer une facture depuis une intervention ou depuis un devis **bascule l'onglet
+tout seul**, sans que la coquille ait à transporter un identifiant : `viewModel()`
+rend une seule instance par classe, si bien que la facture créée ailleurs est
+déjà celle que l'onglet montre. C'est le même mécanisme que le formulaire
+d'intervention partagé entre l'accueil et le planning.
 
 ## Icône
 
@@ -1097,11 +1250,12 @@ place » venant en tête :
   table constructeur, puis cocher chacune dans la réglette. Tant que ce n'est pas
   fait, elle affiche l'avertissement et refuse de reporter un écart dans un
   relevé : c'est voulu, mais ce n'est pas un état d'arrivée.
-- **Facturation** : un devis accepté devient une facture. Le régime de TVA,
-  l'en-tête d'entreprise et la mise en page du PDF sont déjà là ; il manque la
-  numérotation séquentielle **sans trou**, qu'une facture exige et qu'un devis
-  n'exige pas — `Numerotation` repart au mois et tolère un numéro abandonné, ce
-  qui ne conviendra pas.
+- **L'avoir**, qui manque encore à la facturation. Une facture erronée s'annule
+  aujourd'hui en gardant son numéro, ce qui est correct et suffit tant qu'elle
+  n'est pas partie ; une facture déjà envoyée et payée demanderait, elle, un
+  document de sens inverse. Le modèle s'y prête — un montant négatif et un lien
+  vers la facture d'origine — mais la numérotation des avoirs est une séquence de
+  plus à tenir.
 - **Détecteur de fuite fixe sur la fiche machine.** `PeriodiciteControle` sait
   désormais doubler les intervalles, et l'outil F-Gas pose la question ; il reste à
   porter le champ sur `Equipement` — par une migration — pour que l'accueil et la

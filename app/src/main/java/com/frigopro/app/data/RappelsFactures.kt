@@ -21,6 +21,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -58,6 +59,17 @@ object RappelsFactures {
     private val HEURE_DU_RAPPEL: LocalTime = LocalTime.of(8, 0)
 
     /**
+     * Le montant du rappel, en français.
+     *
+     * La locale est **dite** et non laissée au système, comme dans `Nombres` :
+     * un `%.2f` sans locale suit celle de la machine, et le même code écrit
+     * « 600,00 » sur un téléphone français et « 600.00 » ailleurs. Le rappel est
+     * lu par quelqu'un qui vient de facturer en euros.
+     */
+    private const val MONTANT = "%,.2f €"
+
+
+    /**
      * Crée le canal de notification.
      *
      * Posé au démarrage et non au premier rappel : un canal absent fait ignorer
@@ -66,6 +78,12 @@ object RappelsFactures {
      */
     fun poserLeCanal(contexte: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // Même prudence qu'à côté : rien de tout ceci ne doit faire échouer un
+        // démarrage.
+        runCatching { poserLeCanalOuEchouer(contexte) }
+    }
+
+    private fun poserLeCanalOuEchouer(contexte: Context) {
         val canal = NotificationChannel(
             CANAL,
             "Factures échues",
@@ -85,14 +103,23 @@ object RappelsFactures {
      * n'aurait jamais notifié — le travail serait toujours reporté au lendemain.
      */
     fun planifier(contexte: Context) {
-        val travail = PeriodicWorkRequestBuilder<RappelFacturesWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(delaiJusquAuRappel().toMinutes(), TimeUnit.MINUTES)
-            .build()
-        WorkManager.getInstance(contexte).enqueueUniquePeriodicWork(
-            TRAVAIL,
-            ExistingPeriodicWorkPolicy.KEEP,
-            travail,
-        )
+        // Enveloppé, et ce n'est pas de la superstition : `WorkManager.getInstance`
+        // lève quand l'initialisation n'a pas eu lieu, ce qui arrive hors d'un
+        // vrai téléphone — sous Robolectric, par exemple, où la classe
+        // `Application` est instanciée comme ailleurs. Or ceci s'exécute dans
+        // `onCreate` : une exception y empêcherait l'application de démarrer, et
+        // le rappel du matin ne vaut pas ce prix. Il est facultatif par
+        // construction, il l'est donc aussi quand il échoue.
+        runCatching {
+            val travail = PeriodicWorkRequestBuilder<RappelFacturesWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(delaiJusquAuRappel().toMinutes(), TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(contexte).enqueueUniquePeriodicWork(
+                TRAVAIL,
+                ExistingPeriodicWorkPolicy.KEEP,
+                travail,
+            )
+        }
     }
 
     /** Le temps qui reste jusqu'au prochain [HEURE_DU_RAPPEL]. */
@@ -114,6 +141,7 @@ object RappelsFactures {
      */
     internal fun texte(echues: List<FactureChiffree>): Pair<String, String> {
         val montant = echues.sumOf { it.totalTtc }.auCentime()
+        fun format(valeur: Double) = String.format(Locale.FRANCE, MONTANT, valeur)
         val titre = if (echues.size == 1) {
             "1 facture échue"
         } else {
@@ -127,7 +155,7 @@ object RappelsFactures {
         } else {
             ""
         }
-        val corps = listOf(detail, "%.2f € à encaisser".format(montant))
+        val corps = listOf(detail, format(montant) + " à encaisser")
             .filter { it.isNotBlank() }
             .joinToString(" — ")
         return titre to corps

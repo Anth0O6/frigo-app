@@ -39,9 +39,15 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew testDebugUnitTest 2>&1 | tee "$RUNNER_TEMP/tests.log" || CODE=$?
-          # Le nom du test, et la comparaison qui a échoué juste après : sans
-          # elle, le résumé dit qu'un test est rouge sans dire pourquoi.
-          grep -E '^e: |^[A-Za-z].*FAILED$|AssertionError|^\s+(expected|actual):' \
+          # Le nom du test, et ce qui a échoué juste après : sans cela, le
+          # résumé dit qu'un test est rouge sans dire pourquoi.
+          #
+          # Le motif attrape toute ligne indentée qui nomme une exception, et pas
+          # seulement `AssertionError`. La version précédente ne voyait que les
+          # assertions : un test tombé sur une `IllegalStateException` — une
+          # dépendance mal initialisée sous Robolectric, par exemple — n'affichait
+          # que « FAILED », et il fallait un cycle de plus pour savoir pourquoi.
+          grep -E '^e: |^[A-Za-z].*FAILED$|^\s+[a-z.]+\.[A-Za-z]*(Exception|Error|Failure)|^\s+(expected|actual):' \
             "$RUNNER_TEMP/tests.log" | head -60 > "$RUNNER_TEMP/erreurs.txt" || true
           if [ -s "$RUNNER_TEMP/erreurs.txt" ]; then
             echo "::group::Erreurs"
