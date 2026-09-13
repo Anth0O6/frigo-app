@@ -115,8 +115,6 @@ class ReglagesViewModel(
     fun onRefacturerPeages(refacturer: Boolean) =
         modifier { it.copy(refacturerPeages = refacturer) }
 
-    /** La clé est nettoyée : un copier-coller traîne souvent un espace ou un saut. */
-    fun onCleItineraire(cle: String) = modifier { it.copy(cleItineraire = cle.trim()) }
 
     /**
      * Pose le logo choisi dans la galerie.

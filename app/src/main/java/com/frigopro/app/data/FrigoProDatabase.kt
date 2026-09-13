@@ -33,7 +33,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         VerificationFluide::class,
         Trajet::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -97,6 +97,7 @@ abstract class FrigoProDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
                 )
                 .addCallback(CATALOGUE_AU_PREMIER_LANCEMENT)
                 .build()

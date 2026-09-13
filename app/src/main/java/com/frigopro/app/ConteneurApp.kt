@@ -7,7 +7,7 @@ import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
-import com.frigopro.app.data.ItineraireGoogle
+import com.frigopro.app.data.ItineraireRelais
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.TechnicienRepository
@@ -59,15 +59,12 @@ class ConteneurApp(private val contexte: Context) {
     /**
      * Le calcul d'itinéraire, pour la facturation du déplacement.
      *
-     * La clé est lue dans les réglages **à chaque appel** — d'où la lambda plutôt
-     * qu'une valeur : elle se saisit dans l'onglet Réglages, et un service qui
-     * garderait l'ancienne obligerait à redémarrer l'application après l'avoir
-     * corrigée. Sans clé, le service répond `PAS_DE_CLE` et l'écran renvoie à la
-     * saisie à la main ; c'est la seule dépendance réseau de l'application.
+     * Il passe par le **relais** du projet, qui tient la clé du service de
+     * cartographie : l'utilisateur n'a donc rien à installer ni à saisir. C'est
+     * la seule dépendance réseau de l'application, et le relais est le seul hôte
+     * qu'elle contacte.
      */
-    val itineraires: ServiceItineraire by lazy {
-        ItineraireGoogle(cle = { parametres.lire().cleItineraire })
-    }
+    val itineraires: ServiceItineraire by lazy { ItineraireRelais() }
 
     /** Les fluides dont l'utilisateur a contrôlé la courbe de saturation. */
     val verificationsFluide: VerificationFluideRepository by lazy {

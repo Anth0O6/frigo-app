@@ -1,0 +1,10 @@
+# Le relais d'itinéraire de FrigoPro, sur Cloudflare Workers.
+#
+# `name` donne l'adresse : https://<name>.<votre-sous-domaine>.workers.dev
+# C'est cette adresse qui va dans `Itineraire.RELAIS` côté application.
+name = "frigopro-itineraire"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# La clé OpenRouteService n'est PAS ici : elle se pose en secret, hors du dépôt,
+# par `npx wrangler secret put CLE_ORS`. Voir le README.

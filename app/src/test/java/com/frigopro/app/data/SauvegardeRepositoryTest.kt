@@ -516,7 +516,7 @@ class SauvegardeRepositoryTest {
      * restauration couperait le calcul d'itinéraire sans rien dire.
      */
     @Test
-    fun `le tarif revient et la cle du telephone survit`() = runTest {
+    fun `le tarif de deplacement revient entier`() = runTest {
         daoParametres.enregistrer(
             Parametres(
                 modeDeplacement = ModeDeplacement.KM_ET_HEURE,
@@ -524,18 +524,11 @@ class SauvegardeRepositoryTest {
                 prixHeureTrajet = 35.0,
                 minimumDeplacement = 25.0,
                 adresseDepart = "12 rue des Lilas, Lyon",
-                cleItineraire = "cle-de-celui-qui-exporte",
             ),
         )
 
         val export = repository.exporter()
-        assertTrue(
-            "la clé ne doit pas figurer dans le fichier",
-            !export.contenu.contains("cle-de-celui-qui-exporte"),
-        )
-
         val cible = Cible()
-        cible.parametres.enregistrer(Parametres(cleItineraire = "cle-du-telephone-cible"))
         cible.depot.restaurer(export.contenu)
 
         val reglages = cible.parametres.contenu!!
@@ -544,11 +537,26 @@ class SauvegardeRepositoryTest {
         assertEquals(35.0, reglages.prixHeureTrajet, 0.001)
         assertEquals(25.0, reglages.minimumDeplacement, 0.001)
         assertEquals("12 rue des Lilas, Lyon", reglages.adresseDepart)
-        assertEquals(
-            "la clé du téléphone qui restaure reste en place",
-            "cle-du-telephone-cible",
-            reglages.cleItineraire,
-        )
+    }
+
+    /**
+     * Plus aucune sauvegarde ne transporte de secret. La version précédente
+     * excluait une clé d'API du fichier ; celle-ci n'en a plus du tout, la clé
+     * vivant dans le relais. Le test reste, pour que la propriété ne se reperde
+     * pas le jour où un champ de ce genre reviendrait.
+     */
+    @Test
+    fun `le fichier ne transporte aucun secret`() = runTest {
+        daoParametres.enregistrer(Parametres(technicien = "Anthony Ouvrard", prixKm = 0.45))
+
+        val contenu = repository.exporter().contenu
+
+        listOf("cle", "clé", "apiKey", "api_key", "token", "secret").forEach { suspect ->
+            assertTrue(
+                "le fichier ne devrait pas contenir « $suspect »",
+                !contenu.contains(suspect, ignoreCase = true),
+            )
+        }
     }
 
     /** Un mode de facturation inconnu fait refuser le fichier entier. */

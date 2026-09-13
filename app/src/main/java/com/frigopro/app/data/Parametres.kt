@@ -93,16 +93,6 @@ data class Parametres(
     val prixHeureTrajet: Double = 0.0,
     val minimumDeplacement: Double = 0.0,
     val refacturerPeages: Boolean = true,
-    /**
-     * La clé du service de routage, saisie ici et nulle part ailleurs.
-     *
-     * Elle ne peut pas vivre dans le dépôt, qui est public — même raison que la
-     * clé de signature, à ceci près que celle-ci est facturée à l'usage : une
-     * clé publiée se fait consommer par des inconnus aux frais de son
-     * propriétaire. Vide, le calcul automatique est simplement indisponible et
-     * la saisie à la main reste le chemin normal.
-     */
-    val cleItineraire: String = "",
     val derniereSauvegardeLe: Instant? = null,
     val modifieLe: Instant = Instant.EPOCH,
 ) {
@@ -137,8 +127,15 @@ data class Parametres(
             refacturerPeages = refacturerPeages,
         )
 
-    /** Le calcul automatique est possible : une clé a été saisie. */
-    val itineraireDisponible: Boolean get() = cleItineraire.isNotBlank()
+    /**
+     * Le calcul automatique est possible.
+     *
+     * Ce n'est **plus un réglage** : la clé du service vit dans le relais et non
+     * sur le téléphone, si bien que l'utilisateur n'a rien à saisir pour en
+     * disposer. La propriété reste ici parce que l'écran a besoin de savoir quoi
+     * proposer, mais elle ne dépend que de l'application elle-même.
+     */
+    val itineraireDisponible: Boolean get() = Itineraire.configure
 
     companion object {
 

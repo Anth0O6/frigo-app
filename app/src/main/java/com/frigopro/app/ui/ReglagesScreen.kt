@@ -98,7 +98,6 @@ fun ReglagesRoute(
             onPrixHeure = viewModel::onPrixHeureTrajet,
             onMinimum = viewModel::onMinimumDeplacement,
             onRefacturerPeages = viewModel::onRefacturerPeages,
-            onCle = viewModel::onCleItineraire,
         ),
         modifier = modifier,
     )

@@ -520,3 +520,60 @@ val MIGRATION_9_10: Migration = object : Migration(9, 10) {
         db.execSQL("ALTER TABLE `parametres` ADD COLUMN `cleItineraire` TEXT NOT NULL DEFAULT ''")
     }
 }
+
+/**
+ * Version 11 : la clé d'itinéraire quitte les réglages.
+ *
+ * Elle n'a plus de raison d'être : le calcul passe désormais par un relais qui
+ * tient la clé (voir `relais/`), et l'utilisateur n'a rien à saisir. La lui
+ * demander était la première version de cette fonctionnalité, et c'était une
+ * erreur de conception — personne n'ouvre un compte sur une console d'API pour
+ * saisir un kilométrage, si bien que le calcul automatique n'aurait jamais servi.
+ *
+ * **Une colonne qui disparaît impose de reconstruire la table** : `DROP COLUMN`
+ * n'existe dans SQLite que depuis la version 3.35, absente des appareils
+ * couverts par `minSdk 26`. C'est peu coûteux ici — `parametres` n'a qu'une
+ * ligne — mais l'ordre compte : créer la nouvelle table, recopier, détruire
+ * l'ancienne, renommer.
+ *
+ * Ne pas la supprimer aurait laissé en base un champ de **credential** que plus
+ * rien ne lit ni n'efface. Une clé oubliée dans une colonne morte est une clé
+ * qui traîne.
+ */
+val MIGRATION_10_11: Migration = object : Migration(10, 11) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `parametres_neuf` (" +
+                "`id` INTEGER NOT NULL, `technicien` TEXT NOT NULL, " +
+                "`attestation` TEXT NOT NULL, `themeSombre` INTEGER NOT NULL, " +
+                "`modeGants` INTEGER NOT NULL, `chronoAuto` INTEGER NOT NULL, " +
+                "`tauxHoraire` REAL NOT NULL, `tauxTva` REAL NOT NULL, " +
+                "`assujettiTva` INTEGER NOT NULL, `entreprise` TEXT NOT NULL, " +
+                "`entrepriseAdresse` TEXT NOT NULL, `entrepriseTelephone` TEXT NOT NULL, " +
+                "`entrepriseEmail` TEXT NOT NULL, `entrepriseSiret` TEXT NOT NULL, " +
+                "`logoFichier` TEXT, `adresseDepart` TEXT NOT NULL, " +
+                "`modeDeplacement` TEXT NOT NULL, `prixKm` REAL NOT NULL, " +
+                "`prixHeureTrajet` REAL NOT NULL, `minimumDeplacement` REAL NOT NULL, " +
+                "`refacturerPeages` INTEGER NOT NULL, `derniereSauvegardeLe` INTEGER, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "INSERT INTO `parametres_neuf` (" +
+                "`id`, `technicien`, `attestation`, `themeSombre`, `modeGants`, " +
+                "`chronoAuto`, `tauxHoraire`, `tauxTva`, `assujettiTva`, `entreprise`, " +
+                "`entrepriseAdresse`, `entrepriseTelephone`, `entrepriseEmail`, " +
+                "`entrepriseSiret`, `logoFichier`, `adresseDepart`, `modeDeplacement`, " +
+                "`prixKm`, `prixHeureTrajet`, `minimumDeplacement`, `refacturerPeages`, " +
+                "`derniereSauvegardeLe`, `modifieLe`) " +
+                "SELECT `id`, `technicien`, `attestation`, `themeSombre`, `modeGants`, " +
+                "`chronoAuto`, `tauxHoraire`, `tauxTva`, `assujettiTva`, `entreprise`, " +
+                "`entrepriseAdresse`, `entrepriseTelephone`, `entrepriseEmail`, " +
+                "`entrepriseSiret`, `logoFichier`, `adresseDepart`, `modeDeplacement`, " +
+                "`prixKm`, `prixHeureTrajet`, `minimumDeplacement`, `refacturerPeages`, " +
+                "`derniereSauvegardeLe`, `modifieLe` FROM `parametres`",
+        )
+        db.execSQL("DROP TABLE `parametres`")
+        db.execSQL("ALTER TABLE `parametres_neuf` RENAME TO `parametres`")
+    }
+}

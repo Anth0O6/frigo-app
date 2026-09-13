@@ -741,19 +741,11 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     prixHeureTrajet = prixHeureTrajet,
     minimumDeplacement = minimumDeplacement,
     refacturerPeages = refacturerPeages,
-    // `cleItineraire` n'est volontairement pas exportée : voir [FORMAT_COURANT].
     modifieLe = modifieLe.toEpochMilli(),
 )
 
-/**
- * Les réglages du fichier, ou `null` si l'un d'eux nomme une valeur inconnue.
- *
- * @param cleActuelle la clé d'itinéraire déjà présente sur ce téléphone. Le
- *   fichier ne la transporte pas (voir [FORMAT_COURANT]), et la restauration ne
- *   doit pas l'effacer : restaurer une sauvegarde par-dessus une installation en
- *   service aurait sinon coupé le calcul d'itinéraire sans rien dire.
- */
-internal fun ParametresSauvegarde.versParametres(cleActuelle: String = ""): Parametres? {
+/** Les réglages du fichier, ou `null` si l'un d'eux nomme une valeur inconnue. */
+internal fun ParametresSauvegarde.versParametres(): Parametres? {
     // Un mode inconnu **fait refuser le fichier**, au même titre qu'un statut :
     // c'est une valeur fixe de l'application, pas un intitulé libre. Le ramener à
     // `KM` par défaut aurait facturé au kilomètre un artisan qui facture à
@@ -783,7 +775,6 @@ internal fun ParametresSauvegarde.versParametres(cleActuelle: String = ""): Para
         prixHeureTrajet = prixHeureTrajet,
         minimumDeplacement = minimumDeplacement,
         refacturerPeages = refacturerPeages,
-        cleItineraire = cleActuelle,
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }

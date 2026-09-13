@@ -57,7 +57,7 @@ class DevisViewModelTest {
 
     /** Ce que le faux service d'itinéraire répondra. */
     private var itineraire: ResultatItineraire =
-        ResultatItineraire.Echec(RaisonEchec.PAS_DE_CLE)
+        ResultatItineraire.Echec(RaisonEchec.SERVICE_INDISPONIBLE)
 
     @After
     fun nettoyer() {

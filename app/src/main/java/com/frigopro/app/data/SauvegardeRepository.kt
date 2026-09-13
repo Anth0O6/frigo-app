@@ -160,11 +160,7 @@ class SauvegardeRepository(
         val trajets = sauvegarde.trajets.map { it.versTrajet() }
         if (trajets.any { it == null }) return ResultatRestauration.Illisible
 
-        // La clé d'itinéraire ne voyage pas dans le fichier : on relit celle du
-        // téléphone pour la reposer telle quelle, sans quoi restaurer par-dessus
-        // une installation en service couperait le calcul sans rien dire.
-        val cleActuelle = parametresDao.lire()?.cleItineraire ?: ""
-        val reglages = sauvegarde.parametres?.versParametres(cleActuelle)
+        val reglages = sauvegarde.parametres?.versParametres()
         if (sauvegarde.parametres != null && reglages == null) {
             return ResultatRestauration.Illisible
         }

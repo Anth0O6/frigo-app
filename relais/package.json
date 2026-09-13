@@ -1,0 +1,10 @@
+{
+  "name": "frigopro-relais-itineraire",
+  "private": true,
+  "type": "module",
+  "description": "Relais d'itineraire de FrigoPro : il tient la cle pour que l'utilisateur n'ait rien a installer.",
+  "scripts": {
+    "test": "node --test worker.test.mjs",
+    "deploy": "wrangler deploy"
+  }
+}

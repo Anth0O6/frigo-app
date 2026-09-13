@@ -615,7 +615,6 @@ data class ActionsTarifDeplacement(
     val onPrixHeure: (Double?) -> Unit = {},
     val onMinimum: (Double?) -> Unit = {},
     val onRefacturerPeages: (Boolean) -> Unit = {},
-    val onCle: (String) -> Unit = {},
 )
 
 @Composable
@@ -743,19 +742,21 @@ fun SectionDeplacementReglages(
                 )
 
                 EspaceVertical(4)
-                ChampTexte(
-                    libelle = "Clé d'itinéraire",
-                    valeur = parametres.cleItineraire,
-                    onValeur = actions.onCle,
-                )
                 Text(
-                    text = "Facultative. Avec elle, le temps de trajet, les kilomètres " +
-                        "et les péages se calculent tout seuls depuis les deux " +
-                        "adresses ; sans elle, ils se saisissent à la main — ce qui " +
-                        "marche aussi sans réseau. La clé vient de la console Google " +
-                        "Cloud, avec l'API Routes activée ; elle est facturée à " +
-                        "l'usage, reste sur ce téléphone, et ne part pas dans les " +
-                        "sauvegardes.",
+                    // Il n'y a **rien à configurer** ici, et le dire vaut mieux que
+                    // de laisser chercher : la version précédente demandait une clé
+                    // d'API, ce qu'aucun technicien n'allait faire.
+                    text = if (parametres.itineraireDisponible) {
+                        "Le temps de trajet et les kilomètres se calculent tout seuls " +
+                            "depuis les deux adresses d'un devis : il n'y a rien à " +
+                            "installer ni à renseigner. Sans réseau, ils se saisissent " +
+                            "à la main, et le devis se chiffre quand même. Les péages, " +
+                            "eux, restent à saisir."
+                    } else {
+                        "Le calcul automatique n'est pas disponible dans cette version : " +
+                            "les kilomètres, la durée et les péages se saisissent à la " +
+                            "main sur chaque devis."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
