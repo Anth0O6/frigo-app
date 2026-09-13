@@ -79,14 +79,27 @@ jobs:
       - name: Vérifier que le schéma committé est à jour
         if: always()
         run: |
-          if [ -n "$(git status --porcelain app/schemas/)" ]; then
-            echo "::error::Le schéma Room committé ne correspond pas à celui que la"
-            echo "::error::compilation produit. Récupérez l'artefact room-schemas et"
-            echo "::error::committez-le. Écarts :"
-            git --no-pager diff -- app/schemas/
-            exit 1
+          if [ -z "$(git status --porcelain app/schemas/)" ]; then
+            echo "Schéma committé conforme."
+            exit 0
           fi
-          echo "Schéma committé conforme."
+          echo "::error::Le schéma Room committé ne correspond pas à celui que la"
+          echo "::error::compilation produit. Committez ce qui suit."
+
+          # Un schéma *modifié* se lit en diff.
+          git --no-pager diff -- app/schemas/
+
+          # Un schéma *nouveau* n'apparaît dans aucun diff, et c'est pourtant le
+          # cas le plus courant : une migration ajoute une version. Le fichier
+          # fait une quarantaine de kilo-octets — il se récupère dans l'artefact
+          # `room-schemas` — mais son empreinte d'identité est imprimée ici,
+          # parce que c'est elle que `MigrationTest` doit connaître et la seule
+          # valeur qui ne se déduise pas du schéma précédent.
+          git ls-files --others --exclude-standard -- app/schemas/ | while read -r f; do
+            echo "::error::Schéma absent du dépôt : $f"
+            echo "    empreinte : $(grep -o '\"identityHash\": \"[a-f0-9]*\"' "$f" | head -1)"
+          done
+          exit 1
 
       - name: Publish test report on failure
         if: failure()
