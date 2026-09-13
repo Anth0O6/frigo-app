@@ -64,6 +64,31 @@ data class Chrono(
     /** Bascule marche/pause : ce que fait le bouton unique de l'écran. */
     fun basculer(maintenant: Instant): Chrono =
         if (enMarche) arreter(maintenant) else demarrer(maintenant)
+
+    /**
+     * Pose le temps total à la main.
+     *
+     * Le chronomètre suppose qu'on y pense en arrivant, et on n'y pense pas
+     * toujours : on entre chez un client, on ouvre un carter, et le téléphone
+     * reste dans la camionnette. Le temps se saisit donc aussi après coup, et
+     * c'est un chemin normal — pas un rattrapage.
+     *
+     * Deux choses qu'elle ne fait **pas**, et c'est délibéré :
+     *
+     * - Elle **n'invente pas l'heure d'arrivée**. On pourrait la déduire —
+     *   « il est 16 h, vous dites une heure et demie, vous êtes donc arrivé à
+     *   14 h 30 » — mais le temps se saisit parfois le lendemain matin, et le
+     *   chiffre déduit partirait alors sur un compte-rendu signé. [arriveeLe]
+     *   reste ce qu'il était, quitte à rester inconnu : l'écran sait le dire.
+     * - Elle **ne touche pas au statut**. Combien de temps a duré le travail et
+     *   où il en est sont deux questions différentes ; clore une intervention
+     *   reste un geste explicite.
+     *
+     * Un segment en cours est refermé : poser un total pendant que le chrono
+     * tourne doit donner ce total, pas ce total plus ce qui court.
+     */
+    fun poser(duree: Duration): Chrono =
+        copy(demarreLe = null, cumuleS = if (duree.isNegative) 0L else duree.seconds)
 }
 
 /**

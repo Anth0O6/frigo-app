@@ -208,4 +208,41 @@ class FluideTest {
         assertFalse("un A1 ne demande pas les précautions d'un A2L", ClasseSecurite.A1.inflammable)
         assertTrue(ClasseSecurite.B2L.toxique)
     }
+
+    /**
+     * L'eau et l'air ont bien une désignation frigorigène — un groupe à eau et
+     * une machine à cycle d'air en sont —, et ce sont surtout les deux
+     * caloporteurs qu'on relève tous les jours. Leur GWP nul les met hors de
+     * toute obligation de contrôle d'étanchéité, ce qui est exact.
+     */
+    @Test
+    fun `l'eau et l'air sont au catalogue, sans obligation de controle`() {
+        assertEquals(0, Fluides.gwp("R718"))
+        assertEquals(0, Fluides.gwp("R729"))
+        assertEquals("Eau", Fluides.nomUsuel("R718"))
+        assertEquals("Air", Fluides.nomUsuel("R729"))
+        assertEquals(ClasseSecurite.A1, Fluides.classeSecurite("R718"))
+        assertEquals(
+            "un GWP nul ne soumet à rien, quelle que soit la charge",
+            PeriodiciteControle.AUCUNE,
+            PeriodiciteControle.pour(Fluides.tonnesEquivalentCo2("R718", 500.0)!!),
+        )
+        assertNull("un mélange n'a pas de nom courant, et on ne lui en invente pas", Fluides.nomUsuel("R449A"))
+    }
+
+    /**
+     * La recherche de la liste de sélection porte sur les trois façons de
+     * désigner un fluide, parce que les trois se tapent.
+     */
+    @Test
+    fun `un fluide se cherche par son code comme par son nom`() {
+        assertTrue("le code stocké", Fluides.rechercher("449").contains("R449A"))
+        assertTrue("le code imprimé sur la bouteille", Fluides.rechercher("R-410").contains("R410A"))
+        assertTrue("le nom courant", Fluides.rechercher("eau").contains("R718"))
+        assertTrue(Fluides.rechercher("AIR").contains("R729"))
+        assertTrue("l'indice se lit mais ne se tape pas", Fluides.rechercher("co2").contains("R744"))
+        assertTrue(Fluides.rechercher("ammoniac").contains("R717"))
+        assertEquals("une recherche vide rend tout le catalogue", Fluides.connus, Fluides.rechercher("  "))
+        assertTrue(Fluides.rechercher("zzz").isEmpty())
+    }
 }

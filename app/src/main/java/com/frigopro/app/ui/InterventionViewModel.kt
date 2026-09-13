@@ -252,6 +252,12 @@ class InterventionViewModel(
         viewModelScope.launch { interventions.basculerChrono(courante) }
     }
 
+    /** Pose le temps passé saisi à la main. Voir [InterventionRepository.poserTemps]. */
+    fun onPoserTemps(duree: Duration) {
+        val courante = etat.value?.intervention ?: return
+        viewModelScope.launch { interventions.poserTemps(courante, duree) }
+    }
+
     /** Clôt l'intervention : chrono arrêté, statut terminé, numéro attribué. */
     fun onCloturer() {
         val courante = etat.value?.intervention ?: return

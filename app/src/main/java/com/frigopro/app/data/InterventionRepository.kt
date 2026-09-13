@@ -1,6 +1,7 @@
 package com.frigopro.app.data
 
 import kotlinx.coroutines.flow.Flow
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
@@ -60,6 +61,20 @@ class InterventionRepository(private val dao: InterventionDao) {
             intervention.statut
         }
         val misAJour = intervention.copy(chrono = chrono, statut = statut)
+        enregistrer(misAJour)
+        return misAJour
+    }
+
+    /**
+     * Pose le temps passé à la main. Voir [Chrono.poser].
+     *
+     * Contrairement à [basculerChrono], le statut n'est **pas** touché : saisir
+     * une durée dit combien de temps le travail a pris, pas où il en est. Un
+     * technicien qui remplit son temps le soir pour trois interventions de la
+     * journée ne les rouvre pas en les chiffrant.
+     */
+    suspend fun poserTemps(intervention: Intervention, duree: Duration): Intervention {
+        val misAJour = intervention.copy(chrono = intervention.chrono.poser(duree))
         enregistrer(misAJour)
         return misAJour
     }

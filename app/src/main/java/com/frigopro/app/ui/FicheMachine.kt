@@ -177,8 +177,7 @@ fun DialogueFicheMachine(
                     onValeur = { numeroSerie = it },
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ChampTexte(
-                        libelle = "Fluide",
+                    ChampFluide(
                         valeur = fluide,
                         onValeur = { fluide = it },
                         modifier = Modifier.weight(1f),

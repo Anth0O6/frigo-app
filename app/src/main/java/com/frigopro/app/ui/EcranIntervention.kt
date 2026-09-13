@@ -52,6 +52,8 @@ data class ActionsIntervention(
     val onFermer: () -> Unit = {},
     val onOnglet: (OngletIntervention) -> Unit = {},
     val onBasculerChrono: () -> Unit = {},
+    /** Le temps total, saisi à la main plutôt que chronométré. */
+    val onPoserTemps: (Duration) -> Unit = {},
     val onBp: (Double?) -> Unit = {},
     val onHp: (Double?) -> Unit = {},
     val onSurchauffe: (Double?) -> Unit = {},

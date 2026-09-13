@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,12 +29,14 @@ import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.arrondiDixieme
 import com.frigopro.app.data.enDuree
 import com.frigopro.app.ui.composants.BoutonContour
+import com.frigopro.app.ui.composants.BoutonDiscret
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
+import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.AValider
@@ -175,6 +178,8 @@ private fun CarteTempsPasse(
     actions: ActionsIntervention,
 ) {
     val chrono = etat.intervention.chrono
+    var saisieOuverte by remember { mutableStateOf(false) }
+
     Carte(relief = true) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -190,11 +195,22 @@ private fun CarteTempsPasse(
                     text = when {
                         chrono.vierge -> "Pas encore démarré"
                         chrono.enMarche -> "${heureLocale(chrono.arriveeLe)} → en cours"
+                        // Sans heure d'arrivée, il n'y a pas de flèche à tracer :
+                        // le temps a été saisi après coup, et l'écran le dit plutôt
+                        // que d'afficher « — → 1 h 30 ».
+                        chrono.arriveeLe == null -> ecoule.enDuree()
                         else -> "${heureLocale(chrono.arriveeLe)} → ${ecoule.enDuree()}"
                     },
                     style = MaterialTheme.typography.titleMedium,
                     color = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onSurface,
                 )
+                if (!chrono.vierge && chrono.arriveeLe == null) {
+                    Text(
+                        text = "Saisi à la main",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             BoutonContour(
                 texte = if (chrono.enMarche) "Pause" else "Démarrer",
@@ -203,6 +219,117 @@ private fun CarteTempsPasse(
                 modifier = Modifier.padding(start = 4.dp),
             )
         }
+
+        // Le chronomètre suppose qu'on y pense en arrivant. On n'y pense pas
+        // toujours, et ce chemin-là n'est pas un rattrapage : c'est celui du
+        // technicien qui a laissé le téléphone dans la camionnette.
+        BoutonDiscret(
+            texte = if (chrono.vierge) "Saisir le temps passé" else "Corriger le temps",
+            onClick = { saisieOuverte = true },
+        )
+    }
+
+    if (saisieOuverte) {
+        DialogueTempsPasse(
+            initial = ecoule,
+            onValider = {
+                actions.onPoserTemps(it)
+                saisieOuverte = false
+            },
+            onFermer = { saisieOuverte = false },
+        )
+    }
+}
+
+/**
+ * La saisie du temps passé, à la fin plutôt qu'au début.
+ *
+ * Les durées courantes sont proposées en pastilles **et** les deux champs
+ * restent ouverts : une pose de bi-split se dit « deux heures » et se touche
+ * d'un doigt ganté, un dépannage se compte en « 1 h 47 » et se tape. Ne
+ * proposer que les pastilles aurait fait arrondir un temps facturé, ne proposer
+ * que les champs aurait fait taper quatre chiffres pour le cas courant.
+ */
+@Composable
+private fun DialogueTempsPasse(
+    initial: Duration,
+    onValider: (Duration) -> Unit,
+    onFermer: () -> Unit,
+) {
+    val depart = if (initial.isNegative) 0L else initial.toMinutes()
+    var heures by remember { mutableStateOf((depart / 60).toString()) }
+    var minutes by remember { mutableStateOf((depart % 60).toString()) }
+
+    val h = heures.trim().toIntOrNull()
+    val m = minutes.trim().toIntOrNull()
+    val valide = h != null && m != null && h >= 0 && m in 0..59
+    val total = if (valide) h!! * 60 + m!! else null
+
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Temps passé") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                RangeePastilles(
+                    options = TEMPS_PROPOSES,
+                    retenue = total ?: -1,
+                    libelle = ::libelleTempsPasse,
+                    onChoisir = {
+                        heures = (it / 60).toString()
+                        minutes = (it % 60).toString()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ChampTexte(
+                        libelle = "Heures",
+                        valeur = heures,
+                        onValeur = { heures = it },
+                        clavier = KeyboardType.Number,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ChampTexte(
+                        libelle = "Minutes",
+                        valeur = minutes,
+                        onValeur = { minutes = it },
+                        clavier = KeyboardType.Number,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text(
+                    text = "L'heure d'arrivée n'est pas déduite du temps saisi : elle " +
+                        "figure sur le compte-rendu, et une heure inventée y serait fausse.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { total?.let { onValider(Duration.ofMinutes(it.toLong())) } },
+                enabled = total != null,
+            ) {
+                Text(text = "Enregistrer")
+            }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+/** Les durées d'intervention courantes, en minutes. */
+private val TEMPS_PROPOSES = listOf(15, 30, 45, 60, 90, 120, 180, 240)
+
+/** « 45 min », « 1 h », « 1 h 30 ». */
+private fun libelleTempsPasse(minutes: Int): String {
+    val heures = minutes / 60
+    val reste = minutes % 60
+    return when {
+        heures == 0 -> "$minutes min"
+        reste == 0 -> "$heures h"
+        else -> "$heures h $reste"
     }
 }
 
@@ -346,10 +473,10 @@ private fun DialogueMouvementFluide(
                     onValeur = { masse = it },
                     clavier = KeyboardType.Decimal,
                 )
-                ChampTexte(
-                    libelle = "Fluide",
+                ChampFluide(
                     valeur = fluide,
                     onValeur = { fluide = it },
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 val gwp = Fluides.gwp(fluide)
                 Text(

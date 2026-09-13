@@ -85,6 +85,14 @@ object Fluides {
         "R513A" to 631,
         "R600A" to 3,
         "R717" to 0,
+        // Les deux fluides « naturels » du bas du tableau : l'eau et l'air. Ils
+        // ont bien une désignation frigorigène — un groupe à eau et une machine
+        // à cycle d'air en sont —, et ils sont surtout les deux caloporteurs
+        // qu'on relève tous les jours au bilan de puissance. Les nommer ici leur
+        // donne un GWP nul, donc aucune obligation de contrôle d'étanchéité :
+        // c'est exact, et c'est ce que l'écran doit dire.
+        "R718" to 0,
+        "R729" to 0,
         "R744" to 1,
         "R1234YF" to 4,
         "R1234ZE" to 7,
@@ -136,13 +144,61 @@ object Fluides {
         "R513A" to ClasseSecurite.A1,
         "R600A" to ClasseSecurite.A3,
         "R717" to ClasseSecurite.B2L,
+        "R718" to ClasseSecurite.A1,
+        "R729" to ClasseSecurite.A1,
         "R744" to ClasseSecurite.A1,
         "R1234YF" to ClasseSecurite.A2L,
         "R1234ZE" to ClasseSecurite.A2L,
     )
 
+    /**
+     * Le nom courant des fluides qui en ont un.
+     *
+     * Une désignation normalisée ne se lit pas toute seule : « R-744 » est du CO₂
+     * et « R-718 » de l'eau, et personne sur un chantier ne les nomme autrement.
+     * La liste de sélection montre donc les deux — le code, qui est ce qui est
+     * écrit sur la bouteille et sur la plaque, et le nom, qui est ce qu'on dit.
+     *
+     * Seuls les corps purs en ont un. Un mélange n'a pas de nom courant, et lui
+     * en inventer un serait pire que de n'en afficher aucun.
+     */
+    private val NOMS: Map<String, String> = mapOf(
+        "R290" to "Propane",
+        "R600A" to "Isobutane",
+        "R717" to "Ammoniac",
+        "R718" to "Eau",
+        "R729" to "Air",
+        "R744" to "CO₂",
+    )
+
     /** Les fluides proposés à la saisie, dans l'ordre alphanumérique usuel. */
     val connus: List<String> = GWP.keys.sortedWith(compareBy({ it.length }, { it }))
+
+    /** Le nom courant du fluide, ou `null` pour un mélange qui n'en a pas. */
+    fun nomUsuel(fluide: String): String? = NOMS[normaliser(fluide)]
+
+    /**
+     * Les fluides du catalogue qui répondent à une recherche.
+     *
+     * Elle porte sur les **trois** façons de désigner un fluide, parce que les
+     * trois se tapent : le code tel qu'il est stocké (`R449A`), le code tel qu'il
+     * est imprimé sur la bouteille (`R-449A`), et le nom courant (`ammoniac`).
+     * N'en retenir qu'une aurait obligé à connaître celle que l'application
+     * attend — exactement ce que la liste de sélection existe pour éviter.
+     *
+     * Le `₂` de « CO₂ » est ramené à un `2` pour la comparaison : il se lit à
+     * l'écran, mais personne ne le tape.
+     */
+    fun rechercher(saisie: String): List<String> {
+        val cherche = saisie.trim()
+        if (cherche.isBlank()) return connus
+        val code = normaliser(cherche)
+        return connus.filter { nom ->
+            nom.contains(code) ||
+                afficher(nom).contains(cherche, ignoreCase = true) ||
+                nomUsuel(nom)?.replace("₂", "2")?.contains(cherche, ignoreCase = true) == true
+        }
+    }
 
     /** Forme canonique d'un intitulé saisi : « r452a », « R-452A » → « R452A ». */
     fun normaliser(saisie: String): String =

@@ -123,4 +123,48 @@ class ChronoTest {
         assertEquals("45 min", Duration.ofMinutes(45).enDuree())
         assertEquals("0 min", Duration.ZERO.enDuree())
     }
+
+    /**
+     * Le cas du technicien qui a laissé le téléphone dans la camionnette :
+     * le temps se saisit à la fin, et l'heure d'arrivée reste inconnue plutôt
+     * que d'être déduite — elle partirait sinon sur un compte-rendu signé.
+     */
+    @Test
+    fun `un temps saisi a la main n'invente pas l'heure d'arrivee`() {
+        val pose = Chrono().poser(Duration.ofMinutes(95))
+
+        assertEquals(95 * 60L, pose.cumuleS)
+        assertEquals(Duration.ofMinutes(95), pose.ecoulee(depart))
+        assertNull("rien n'autorise à dire à quelle heure il est arrivé", pose.arriveeLe)
+        assertFalse(pose.enMarche)
+        assertFalse(pose.vierge)
+    }
+
+    /** Corriger un temps chronométré ne doit pas effacer l'heure d'arrivée. */
+    @Test
+    fun `corriger un temps chronometre garde l'heure d'arrivee`() {
+        val chronometre = Chrono().demarrer(depart).arreter(depart.plusSeconds(600))
+        val corrige = chronometre.poser(Duration.ofMinutes(45))
+
+        assertEquals(depart, corrige.arriveeLe)
+        assertEquals(Duration.ofMinutes(45), corrige.ecoulee(depart.plusSeconds(600)))
+    }
+
+    /**
+     * Poser un total pendant que le chrono tourne doit donner ce total, et non
+     * ce total plus ce qui court : sans quoi le temps saisi grandirait tout seul.
+     */
+    @Test
+    fun `poser un temps referme le segment en cours`() {
+        val enMarche = Chrono().demarrer(depart)
+        val pose = enMarche.poser(Duration.ofHours(2))
+
+        assertFalse(pose.enMarche)
+        assertEquals(Duration.ofHours(2), pose.ecoulee(depart.plusSeconds(3600)))
+    }
+
+    @Test
+    fun `un temps negatif est ramene a zero`() {
+        assertEquals(0L, Chrono().poser(Duration.ofMinutes(-30)).cumuleS)
+    }
 }

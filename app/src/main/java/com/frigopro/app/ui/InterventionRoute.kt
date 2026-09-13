@@ -100,6 +100,7 @@ fun InterventionRoute(
             onFermer = viewModel::onFermer,
             onOnglet = viewModel::onOnglet,
             onBasculerChrono = viewModel::onBasculerChrono,
+            onPoserTemps = viewModel::onPoserTemps,
             onBp = viewModel::onBp,
             onHp = viewModel::onHp,
             onSurchauffe = viewModel::onSurchauffe,
