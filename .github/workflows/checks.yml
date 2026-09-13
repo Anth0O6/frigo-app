@@ -80,7 +80,15 @@ jobs:
       # échouer est pire que pas de vérification, parce qu'elle rassure.
       - name: Régénérer le schéma Room
         if: always()
-        run: ./gradlew --rerun-tasks :app:kspDebugKotlin
+        run: |
+          # `--rerun-tasks` ne suffit pas : il force la *tâche* Gradle, mais KSP
+          # garde son propre état incrémental et conclut en neuf secondes qu'il
+          # n'a rien à retraiter — Room ne réécrit alors aucun schéma, et le
+          # contrôle qui suit compare le fichier committé à lui-même. C'est la
+          # deuxième fois que cette vérification passe sans rien vérifier ; il
+          # faut donc effacer l'état de KSP, pas seulement le demander poliment.
+          rm -rf app/build
+          ./gradlew :app:kspDebugKotlin
 
       # Le schéma est produit à la compilation, et il est aussi committé : c'est
       # lui qui permettra d'écrire et d'éprouver la migration suivante. Les deux
