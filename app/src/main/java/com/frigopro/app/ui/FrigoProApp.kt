@@ -104,7 +104,7 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                     onAllerAuxDevis = { onglet = Onglet.DEVIS },
                 )
                 Onglet.CLIENTS -> ClientsRoute()
-                Onglet.DEVIS -> DevisRoute()
+                Onglet.DEVIS -> FacturationRoute()
                 Onglet.OUTILS -> OutilsRoute()
                 Onglet.REGLAGES -> ReglagesRoute()
             }

@@ -97,7 +97,10 @@ class DocumentFactureTest {
 
         assertTrue("l'échéance", pied.contains("Paiement à échéance du 11/04/2026"))
         assertTrue("les pénalités de retard", pied.contains("pénalités"))
-        assertTrue("l'indemnité forfaitaire", pied.contains("40,00 €"))
+        assertTrue(
+            "l'indemnité forfaitaire",
+            pied.contains(Nombres.enEuros(Facture.INDEMNITE_RECOUVREMENT)),
+        )
         assertTrue("son fondement", pied.contains("D. 441-5"))
         assertTrue("l'escompte", pied.contains("escompte"))
     }
@@ -135,7 +138,7 @@ class DocumentFactureTest {
         assertTrue(document.mentions.contains(Parametres.MENTION_FRANCHISE))
         assertFalse("aucune ligne de TVA", document.totaux.any { it.intitule.startsWith("TVA") })
         assertEquals("TOTAL À PAYER", document.totaux.last().intitule)
-        assertEquals("600,00 €", document.totaux.last().valeur)
+        assertEquals(Nombres.enEuros(600.0), document.totaux.last().valeur)
     }
 
     @Test
@@ -147,7 +150,11 @@ class DocumentFactureTest {
 
         assertTrue("la TVA reste due et s'affiche", intitules.contains("TVA 20 %"))
         assertTrue(intitules.any { it.contains("TVA offerte") })
-        assertEquals("le client paie le hors taxes", "600,00 €", document.totaux.last().valeur)
+        assertEquals(
+            "le client paie le hors taxes",
+            Nombres.enEuros(600.0),
+            document.totaux.last().valeur,
+        )
     }
 
     @Test

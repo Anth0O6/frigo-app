@@ -71,7 +71,10 @@ import com.frigopro.app.ui.theme.StyleChiffrePetit
 @Composable
 fun DevisRoute(
     modifier: Modifier = Modifier,
+    /** Passer aux factures : la bascule de l'onglet, tenue par la coquille. */
+    onVoirFactures: () -> Unit = {},
     viewModel: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
+    facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
 ) {
     val liste by viewModel.liste.collectAsStateWithLifecycle()
     val carnet by viewModel.carnet.collectAsStateWithLifecycle()
@@ -136,6 +139,9 @@ fun DevisRoute(
             onOffrirLigne = viewModel::onOffrirLigne,
             onOffrirTva = viewModel::onOffrirTva,
             onExporterPdf = viewModel::onExporterPdf,
+            // Facturer bascule l'onglet tout seul : le ViewModel des factures
+            // est partagé, et la facture créée devient celle qu'il montre.
+            onFacturer = { facturesViewModel.onFacturerDevis(ouvert) },
             enTete = reglages.entreprisePresentable,
             onSupprimerLigne = viewModel::onSupprimerLigne,
             deplacement = EtatDeplacement(
@@ -163,6 +169,7 @@ fun DevisRoute(
             compteurs = compteurs,
             onOuvrir = viewModel::onOuvrir,
             onNouveau = { viewModel.onNouveau(null) },
+            onVoirFactures = onVoirFactures,
             modifier = modifier,
         )
     }
@@ -176,6 +183,7 @@ fun ListeDevis(
     compteurs: CompteursDevis,
     onOuvrir: (Devis) -> Unit,
     onNouveau: () -> Unit,
+    onVoirFactures: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -194,9 +202,18 @@ fun ListeDevis(
     ) { marges ->
         Column(modifier = Modifier.padding(marges)) {
             Text(
-                text = "Devis",
+                text = "Facturation",
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
+            )
+            RangeePastilles(
+                options = VueFacturation.entries,
+                retenue = VueFacturation.DEVIS,
+                libelle = { it.libelle },
+                onChoisir = { if (it == VueFacturation.FACTURES) onVoirFactures() },
+                modifier = Modifier
+                    .padding(horizontal = MargeEcran)
+                    .padding(bottom = 14.dp),
             )
             CompteursEnTete(compteurs = compteurs)
             LazyColumn(
@@ -335,6 +352,14 @@ fun EcranDevis(
     onOffrirLigne: (LigneDevis) -> Unit,
     onOffrirTva: () -> Unit,
     onExporterPdf: () -> Unit,
+    /**
+     * Transformer le devis en facture.
+     *
+     * Proposé une fois le devis **accepté** seulement : facturer ce qui n'a pas
+     * été accepté serait réclamer de l'argent pour un chiffrage que personne n'a
+     * approuvé.
+     */
+    onFacturer: () -> Unit,
     /** L'entreprise est renseignée : le PDF portera un en-tête. */
     enTete: Boolean,
     onSupprimerLigne: (String) -> Unit,
@@ -458,6 +483,13 @@ fun EcranDevis(
                 onClick = onExporterPdf,
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (devis.devis.statut == StatutDevis.ACCEPTE) {
+                BoutonContour(
+                    texte = "Établir la facture",
+                    onClick = onFacturer,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             if (!enTete) {
                 Encart(
                     texte = "Le document partira sans en-tête : la raison sociale, " +

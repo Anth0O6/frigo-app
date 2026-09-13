@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 12,
-    "identityHash": "A_REMPLACER_PAR_LE_TEST",
+    "identityHash": "23ecfb4c23ccb44fb9fc68c9d2d193b2",
     "entities": [
       {
         "tableName": "interventions",

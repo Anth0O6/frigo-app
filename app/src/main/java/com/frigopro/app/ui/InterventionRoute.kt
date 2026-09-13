@@ -39,6 +39,7 @@ fun InterventionRoute(
     /** Ouvrir le formulaire de l'intervention : la coquille seule le détient. */
     onModifierFiche: () -> Unit,
     modifier: Modifier = Modifier,
+    facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val ecoule by viewModel.ecoule.collectAsStateWithLifecycle()
@@ -128,6 +129,16 @@ fun InterventionRoute(
             onCloturer = viewModel::onCloturer,
             onBasculerPoint = viewModel::onBasculerPoint,
             onCreerDevis = onCreerDevis,
+            // Facturer crée la facture — ou rouvre celle qui existe déjà — et la
+            // pose comme facture ouverte. La coquille bascule ensuite sur
+            // l'onglet, qui la montre : le ViewModel des factures est partagé.
+            onFacturer = {
+                val courante = etat?.intervention
+                if (courante != null) {
+                    facturesViewModel.onFacturerIntervention(courante)
+                    onCreerDevis()
+                }
+            },
         ),
         modifier = modifier,
     )

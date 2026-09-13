@@ -75,6 +75,11 @@ data class ActionsIntervention(
     val onBasculerPoint: (PointChecklist) -> Unit = {},
     val onCreerDevis: () -> Unit = {},
     /**
+     * Facturer l'intervention. Elle-même ne sait pas où va l'onglet des
+     * factures : c'est la coquille qui le sait, comme pour le devis.
+     */
+    val onFacturer: () -> Unit = {},
+    /**
      * Corriger la fiche : le créneau, le client, le type, la machine.
      *
      * C'est ici qu'on s'aperçoit d'une erreur d'heure — on ouvre l'intervention

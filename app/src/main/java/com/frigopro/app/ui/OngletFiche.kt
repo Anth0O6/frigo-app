@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.PointChecklist
 import com.frigopro.app.ui.composants.BoutonContour
+import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Section
@@ -169,6 +170,18 @@ fun OngletFiche(
             onClick = actions.onCreerDevis,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // Facturer se propose dès que l'intervention est terminée, et pas
+        // avant : facturer un travail en cours reviendrait à demander de l'argent
+        // pour quelque chose qui n'est pas fini. Le brouillon reste modifiable —
+        // c'est l'émission qui fige, pas ce bouton.
+        if (etat.intervention.statut.close) {
+            BoutonPlein(
+                texte = "Facturer cette intervention",
+                onClick = actions.onFacturer,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         EspaceVertical(24)
     }
 }
