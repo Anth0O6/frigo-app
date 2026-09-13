@@ -1,6 +1,10 @@
 package com.frigopro.app.ui
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,6 +42,7 @@ import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.FactureComplete
 import com.frigopro.app.data.LigneFacture
 import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.RappelsFactures
 import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.ui.composants.BarreActions
 import com.frigopro.app.ui.composants.BoutonContour
@@ -111,6 +116,15 @@ fun FacturesRoute(
     val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
+    // La permission de notifier n'est demandée qu'ici, et jamais au démarrage :
+    // une permission réclamée avant d'avoir montré à quoi elle sert se refuse.
+    // Et l'application marche sans — les impayés paraissent de toute façon sur
+    // l'accueil ; la notification ne fait que les porter au-dehors.
+    var rappelsActifs by remember { mutableStateOf(RappelsFactures.notificationsAutorisees(contexte)) }
+    val demandeRappels = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { accordee -> rappelsActifs = accordee }
+
     // Le partage s'ouvre dès que le PDF est écrit, puis le ViewModel oublie le
     // document : sans cet oubli, revenir sur l'onglet rouvrirait le sélecteur.
     LaunchedEffect(documentPret) {
@@ -167,6 +181,12 @@ fun FacturesRoute(
             compteurs = compteurs,
             onOuvrir = viewModel::onOuvrir,
             onVoirDevis = onVoirDevis,
+            rappelsActifs = rappelsActifs,
+            onAutoriserRappels = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    demandeRappels.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            },
             modifier = modifier,
         )
     }
@@ -180,6 +200,9 @@ fun ListeFactures(
     compteurs: CompteursFactures,
     onOuvrir: (Facture) -> Unit,
     onVoirDevis: () -> Unit,
+    /** Le rappel du matin est autorisé : voir [RappelsFactures]. */
+    rappelsActifs: Boolean = true,
+    onAutoriserRappels: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val statuts = LocalStatuts.current
@@ -236,6 +259,19 @@ fun ListeFactures(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                // Proposé seulement quand il y a de quoi rappeler : demander
+                // l'autorisation de notifier des factures à quelqu'un qui n'en a
+                // aucune, c'est se la faire refuser une fois pour toutes.
+                if (!rappelsActifs && compteurs.enAttente > 0) {
+                    item {
+                        Encart(
+                            texte = "Être prévenu le matin quand une facture dépasse son " +
+                                "échéance. Les impayés resteront de toute façon sur l'accueil.",
+                            complement = "Autoriser les rappels",
+                            onClick = onAutoriserRappels,
+                        )
+                    }
+                }
                 if (factures.isEmpty()) {
                     item {
                         Encart(

@@ -28,9 +28,11 @@ fun AujourdhuiRoute(
     // si bien qu'un formulaire ouvert ici est le même que celui de l'onglet
     // Planning — un onglet changé en pleine saisie ne perd donc rien.
     tournee: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
+    factures: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
+    val impayees by factures.aRelancer.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // Un `if`/`else` plutôt qu'un retour anticipé : la feuille de saisie se pose
@@ -43,6 +45,7 @@ fun AujourdhuiRoute(
                 devis.onNouveau(detail.etat.value?.client)
                 onVoirDevis()
             },
+            facturesViewModel = factures,
             onModifierFiche = {
                 detail.etat.value?.intervention?.let(tournee::onModifierIntervention)
             },
@@ -56,6 +59,13 @@ fun AujourdhuiRoute(
             onVoirPlanning = onVoirPlanning,
             onVoirDevis = onVoirDevis,
             modifier = modifier,
+            impayees = impayees,
+            // Ouvrir la facture, puis basculer : l'onglet montre celle qui est
+            // ouverte, et le ViewModel des factures est partagé.
+            onOuvrirFacture = { facture ->
+                factures.onOuvrir(facture)
+                onVoirDevis()
+            },
         )
     }
 

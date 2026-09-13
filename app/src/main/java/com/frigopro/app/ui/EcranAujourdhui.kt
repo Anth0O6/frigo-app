@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.Facture
+import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.ui.composants.BoutonContour
@@ -58,6 +60,17 @@ fun EcranAujourdhui(
     onVoirPlanning: () -> Unit,
     onVoirDevis: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Les factures échues qu'il est temps de relancer.
+     *
+     * Elles paraissent ici et non seulement dans leur onglet, pour la raison qui
+     * a fait poser les échéances F-Gas au même endroit : l'accueil répond à
+     * « et maintenant ? », et une facture de six semaines est une réponse à
+     * cette question. Rien n'est stocké — « en retard » se déduit de l'échéance
+     * et du jour, et un booléen en base serait faux le lendemain.
+     */
+    impayees: List<FactureChiffree> = emptyList(),
+    onOuvrirFacture: (Facture) -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -121,6 +134,17 @@ fun EcranAujourdhui(
                 Section(intitule = "Suite de la journée", espacement = 8.dp) {
                     etat.suite.forEach { ligne ->
                         LigneSuite(ligne = ligne, onOuvrir = { onOuvrir(ligne.intervention) })
+                    }
+                }
+            }
+
+            if (impayees.isNotEmpty()) {
+                Section(intitule = "À relancer", espacement = 8.dp) {
+                    impayees.forEach { chiffree ->
+                        LigneImpayee(
+                            chiffree = chiffree,
+                            onClick = { onOuvrirFacture(chiffree.facture) },
+                        )
                     }
                 }
             }
@@ -302,6 +326,44 @@ private fun LigneSuite(ligne: LigneTournee, onOuvrir: () -> Unit) {
  * l'accueil qui expose à une sanction, et une date seule ne se compare pas
  * d'un coup d'œil à celle du jour.
  */
+/**
+ * Une facture échue.
+ *
+ * Elle dit **depuis combien de jours**, et c'est le chiffre qui décide : une
+ * facture de trois jours s'oublie, une de six semaines se réclame. Toucher la
+ * ligne ouvre la facture, d'où elle se renvoie — et l'envoi vaut relance.
+ */
+@Composable
+private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
+    val facture = chiffree.facture
+    val retard = facture.joursDeRetard(LocalDate.now()) ?: 0L
+
+    Carte(onClick = onClick, relief = true, liseré = LocalStatuts.current.urgence) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = facture.clientNom.ifBlank { "Client non renseigné" },
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = listOf(
+                        facture.numero,
+                        "échue depuis $retard jour${if (retard > 1) "s" else ""}",
+                    ).filter { it.isNotBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalStatuts.current.urgence,
+                )
+            }
+            Text(
+                text = Nombres.enEuros(chiffree.totalTtc),
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
+    }
+}
+
 @Composable
 private fun LigneEcheance(echeance: EcheanceFgas) {
     val couleur = if (echeance.etat.enRetard) {

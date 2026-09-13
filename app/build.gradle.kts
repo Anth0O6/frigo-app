@@ -117,6 +117,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
+    // Le rappel quotidien des factures échues : voir `RappelsFactures`.
+    implementation(libs.androidx.work.runtime)
+
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)

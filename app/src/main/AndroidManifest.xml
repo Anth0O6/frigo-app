@@ -17,6 +17,17 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+        La seconde permission, et la première que l'utilisateur voit : depuis
+        Android 13, notifier se demande. Elle ne sert qu'aux **factures échues**
+        (voir `RappelsFactures`), et l'application fonctionne entièrement sans —
+        les impayés paraissent alors sur l'accueil, où ils paraissent de toute
+        façon. C'est pour cela qu'elle n'est demandée qu'au moment où l'écran des
+        factures propose le rappel, et jamais au démarrage : une permission
+        réclamée avant d'avoir montré à quoi elle sert se refuse.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".FrigoProApplication"
         android:allowBackup="true"
