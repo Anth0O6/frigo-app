@@ -72,6 +72,16 @@ jobs:
           path: app/schemas/
           if-no-files-found: warn
 
+      # Le schéma n'est écrit que lorsque KSP s'exécute vraiment, et Gradle le
+      # considère souvent à jour : `app/schemas` n'est pas déclaré parmi ses
+      # sorties, si bien qu'un schéma périmé ne le rend pas obsolète. Sans cette
+      # régénération forcée, le contrôle ci-dessous compare le fichier committé
+      # **à lui-même** et passe toujours — une vérification qui ne peut pas
+      # échouer est pire que pas de vérification, parce qu'elle rassure.
+      - name: Régénérer le schéma Room
+        if: always()
+        run: ./gradlew --rerun-tasks :app:kspDebugKotlin
+
       # Le schéma est produit à la compilation, et il est aussi committé : c'est
       # lui qui permettra d'écrire et d'éprouver la migration suivante. Les deux
       # doivent donc coïncider — un schéma committé à la main, ou oublié après un
