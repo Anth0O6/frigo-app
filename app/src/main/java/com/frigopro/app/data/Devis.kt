@@ -92,10 +92,10 @@ data class Devis(
 data class LigneDevis(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val devisId: String,
-    val designation: String,
-    val quantite: Double = 1.0,
-    val unite: String = "",
-    val prixUnitaire: Double = 0.0,
+    override val designation: String,
+    override val quantite: Double = 1.0,
+    override val unite: String = "",
+    override val prixUnitaire: Double = 0.0,
     /**
      * La ligne est **offerte** : elle ne compte pas dans le total.
      *
@@ -105,7 +105,7 @@ data class LigneDevis(
      * a donné. Supprimer la ligne aurait été plus simple et aurait effacé
      * l'argument de vente.
      */
-    val offerte: Boolean = false,
+    override val offerte: Boolean = false,
     /**
      * La ligne a été **produite par le déplacement** et non saisie.
      *
@@ -117,14 +117,7 @@ data class LigneDevis(
      */
     val deplacement: Boolean = false,
     val rang: Int = 0,
-) {
-
-    /** Montant hors taxes de la ligne — nul si elle est offerte. */
-    val montant: Double get() = if (offerte) 0.0 else quantite * prixUnitaire
-
-    /** Ce que la ligne aurait coûté : c'est ce qui se barre sur le document. */
-    val montantAvantGeste: Double get() = quantite * prixUnitaire
-}
+) : LigneChiffree
 
 /**
  * Un devis et ses lignes, tels que l'écran les manipule.
@@ -141,20 +134,21 @@ data class DevisComplet(
     val lignes: List<LigneDevis> = emptyList(),
 ) {
 
-    /** Total hors taxes. */
-    val totalHt: Double get() = lignes.sumOf { it.montant.auCentime() }
+    private val totaux = TotauxDocument(
+        lignes = lignes,
+        tauxTva = devis.tauxTva,
+        assujettiTva = devis.assujettiTva,
+        tvaOfferte = devis.tvaOfferte,
+    )
 
-    /**
-     * La TVA due, avant tout geste commercial.
-     *
-     * Nulle en franchise en base : il n'y a alors pas de TVA à afficher, et le
-     * document porte la mention de l'article 293 B du CGI à la place.
-     */
-    val tvaDue: Double
-        get() = if (!devis.assujettiTva) 0.0 else (totalHt * devis.tauxTva / 100.0).auCentime()
+    /** Total hors taxes. */
+    val totalHt: Double get() = totaux.totalHt
+
+    /** La TVA due, avant tout geste commercial. */
+    val tvaDue: Double get() = totaux.tvaDue
 
     /** La remise quand la TVA est offerte : son montant exact, pas un autre. */
-    val remiseTva: Double get() = if (devis.tvaOfferte) tvaDue else 0.0
+    val remiseTva: Double get() = totaux.remiseTva
 
     /**
      * Ce qui a été donné : les lignes offertes, et la TVA si elle l'est.
@@ -162,12 +156,10 @@ data class DevisComplet(
      * Affiché au technicien et non au client : c'est le chiffre qui dit ce que le
      * geste commercial a coûté, et il se regarde avant d'envoyer, pas après.
      */
-    val gestesCommerciaux: Double
-        get() = (lignes.filter { it.offerte }.sumOf { it.montantAvantGeste.auCentime() } + remiseTva)
-            .auCentime()
+    val gestesCommerciaux: Double get() = totaux.gestesCommerciaux
 
     /** Total toutes taxes comprises. */
-    val totalTtc: Double get() = (totalHt + tvaDue - remiseTva).auCentime()
+    val totalTtc: Double get() = totaux.totalTtc
 }
 
 /**
@@ -202,3 +194,77 @@ data class DevisChiffre(val devis: Devis, val totalHt: Double) {
 
 /** Arrondit au centime, la seule précision qui ait un sens sur une facture. */
 fun Double.auCentime(): Double = (this * 100).roundToLong() / 100.0
+
+/**
+ * Ce qu'une ligne apporte à un total, qu'elle soit de devis ou de facture.
+ *
+ * Le contrat existe pour que [TotauxDocument] n'ait pas à savoir lequel des deux
+ * documents il additionne. Les deux tables restent distinctes — elles ne vivent
+ * pas la même vie, voir [LigneFacture] — mais l'**arithmétique**, elle, doit être
+ * la même : c'est le seul moyen qu'un devis transformé en facture retombe au
+ * centime sur le montant que le client avait accepté.
+ */
+interface LigneChiffree {
+
+    val designation: String
+
+    val quantite: Double
+
+    val unite: String
+
+    val prixUnitaire: Double
+
+    val offerte: Boolean
+
+    /** Montant hors taxes de la ligne — nul si elle est offerte. */
+    val montant: Double get() = if (offerte) 0.0 else quantite * prixUnitaire
+
+    /** Ce que la ligne aurait coûté : c'est ce qui se barre sur le document. */
+    val montantAvantGeste: Double get() = quantite * prixUnitaire
+}
+
+/**
+ * Les totaux d'un document chiffré, devis comme facture.
+ *
+ * Ils se calculent plutôt que de se stocker : ils découlent des lignes, et une
+ * valeur en base finirait par les contredire après une modification.
+ *
+ * Ils sont **arrondis au centime ligne à ligne puis sommés**, dans cet ordre, et
+ * c'est le point le plus subtil de tout le chiffrage : sommer des montants non
+ * arrondis puis arrondir le total donne un résultat qui ne retombe pas sur
+ * l'addition que le client refait à la main. C'est le genre d'écart d'un centime
+ * qui fait rappeler — et, sur une facture, qui fait retenir le paiement.
+ *
+ * Une seule implémentation pour les deux documents, et c'est délibéré : deux
+ * copies de cette règle auraient fini par diverger d'un centime sur l'un des
+ * deux, sans que personne ne sache lequel avait raison.
+ */
+class TotauxDocument(
+    private val lignes: List<LigneChiffree>,
+    private val tauxTva: Double,
+    private val assujettiTva: Boolean,
+    private val tvaOfferte: Boolean,
+) {
+
+    val totalHt: Double get() = lignes.sumOf { it.montant.auCentime() }
+
+    /**
+     * La TVA due, avant tout geste commercial.
+     *
+     * Nulle en franchise en base : il n'y a alors pas de TVA à afficher, et le
+     * document porte la mention de l'article 293 B du CGI à la place.
+     */
+    val tvaDue: Double
+        get() = if (!assujettiTva) 0.0 else (totalHt * tauxTva / 100.0).auCentime()
+
+    /** La remise quand la TVA est offerte : son montant exact, pas un autre. */
+    val remiseTva: Double get() = if (tvaOfferte) tvaDue else 0.0
+
+    /** Ce qui a été donné : les lignes offertes, et la TVA si elle l'est. */
+    val gestesCommerciaux: Double
+        get() = (lignes.filter { it.offerte }.sumOf { it.montantAvantGeste.auCentime() } + remiseTva)
+            .auCentime()
+
+    /** Total toutes taxes comprises. */
+    val totalTtc: Double get() = (totalHt + tvaDue - remiseTva).auCentime()
+}

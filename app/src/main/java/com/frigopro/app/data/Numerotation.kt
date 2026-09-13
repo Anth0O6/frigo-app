@@ -24,6 +24,8 @@ object Numerotation {
 
     const val PREFIXE_DEVIS = "DEV"
 
+    const val PREFIXE_FACTURE = "FAC"
+
     /**
      * @param existants tous les numéros déjà attribués, quel que soit leur
      *   mois — le filtrage se fait ici.
@@ -37,5 +39,36 @@ object Numerotation {
             .maxOrNull()
             ?: 0
         return "$debut%03d".format(dernier + 1)
+    }
+
+    /**
+     * La référence d'une facture : `FAC-2026-0042`.
+     *
+     * Elle ne suit **pas** la règle des deux autres, et l'écart est le sujet.
+     * Un devis ou un compte-rendu se numérotent au mois et tolèrent un rang
+     * abandonné : rien n'oblige à ce qu'ils se suivent. Une facture, si — la
+     * numérotation doit être « chronologique et continue », sans rupture, et un
+     * trou dans la séquence est ce qu'un contrôle cherche en premier.
+     *
+     * D'où deux différences :
+     *
+     * - **L'année entière** plutôt que le mois. Un compteur mensuel repart à 1
+     *   douze fois par an, ce qui fait douze séquences à justifier là où une
+     *   seule suffit. Le rang va donc à quatre chiffres, ce qui tient jusqu'à
+     *   dix mille factures dans l'année.
+     * - **Aucun numéro n'est attribué à un brouillon.** C'est ce qui rend la
+     *   continuité tenable sans registre séparé : le rang ne se consomme qu'au
+     *   moment de l'émission, et une facture émise ne se supprime plus — elle
+     *   s'annule en gardant son numéro. Le `max + 1` d'ici suffit alors, là où
+     *   il ne suffirait pas si un brouillon abandonné avait déjà pris un rang.
+     */
+    fun suivantAnnuel(prefixe: String, jour: LocalDate, existants: Collection<String>): String {
+        val debut = "$prefixe-${jour.year}-"
+        val dernier = existants
+            .filter { it.startsWith(debut) }
+            .mapNotNull { it.removePrefix(debut).toIntOrNull() }
+            .maxOrNull()
+            ?: 0
+        return "$debut%04d".format(dernier + 1)
     }
 }

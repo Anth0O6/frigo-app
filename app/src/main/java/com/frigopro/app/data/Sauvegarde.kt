@@ -39,6 +39,60 @@ data class Sauvegarde(
     val prestations: List<PrestationSauvegarde> = emptyList(),
     val verificationsFluide: List<VerificationFluideSauvegarde> = emptyList(),
     val trajets: List<TrajetSauvegarde> = emptyList(),
+    val factures: List<FactureSauvegarde> = emptyList(),
+    val lignesFacture: List<LigneFactureSauvegarde> = emptyList(),
+)
+
+/**
+ * Une facture.
+ *
+ * Elle est sauvegardée pour une raison que les autres lignes n'ont pas : c'est
+ * un **document comptable**, et l'entreprise doit pouvoir le représenter pendant
+ * dix ans. Perdre un devis coûte un chiffrage à refaire ; perdre une facture
+ * émise coûte une pièce que l'administration réclamera.
+ *
+ * Le numéro part avec, évidemment, et c'est aussi ce qui protège la continuité
+ * de la séquence : sans lui, une restauration sur un téléphone neuf ferait
+ * repartir la numérotation à `0001` alors que des factures sont déjà chez des
+ * clients — deux factures porteraient le même numéro.
+ *
+ * `clientAdresse`, `tauxTva`, `assujettiTva` et `tauxPenalites` sont recopiés sur
+ * la facture et le restent ici : ce sont les mentions **du document envoyé**, pas
+ * l'état actuel du carnet ni des réglages.
+ */
+@Serializable
+data class FactureSauvegarde(
+    val id: String,
+    val numero: String = "",
+    val clientId: String? = null,
+    val clientNom: String = "",
+    val clientAdresse: String = "",
+    val interventionId: String? = null,
+    val devisId: String? = null,
+    val equipementNom: String = "",
+    val objet: String = "",
+    val statut: String,
+    val tauxTva: Double = 20.0,
+    val tvaOfferte: Boolean = false,
+    val assujettiTva: Boolean = true,
+    val emiseLe: String? = null,
+    val echeanceLe: String? = null,
+    val tauxPenalites: Double = 0.0,
+    val payeeLe: String? = null,
+    val relanceeLe: String? = null,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class LigneFactureSauvegarde(
+    val id: String,
+    val factureId: String,
+    val designation: String,
+    val quantite: Double = 1.0,
+    val unite: String = "",
+    val prixUnitaire: Double = 0.0,
+    val offerte: Boolean = false,
+    val rang: Int = 0,
 )
 
 /**
@@ -290,6 +344,13 @@ data class ParametresSauvegarde(
     val prixHeureTrajet: Double = 0.0,
     val minimumDeplacement: Double = 0.0,
     val refacturerPeages: Boolean = true,
+    /**
+     * Trente jours par défaut, comme en base : c'est le délai supplétif du code
+     * de commerce, et une sauvegarde d'avant le format 8 a été faite sous ce
+     * régime — rien n'ayant été convenu, c'est lui qui s'appliquait.
+     */
+    val delaiPaiementJours: Int = 30,
+    val tauxPenalitesRetard: Double = 0.0,
     val modifieLe: Long = 0L,
 )
 
@@ -355,7 +416,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 7
+const val FORMAT_COURANT: Int = 8
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -741,6 +802,8 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     prixHeureTrajet = prixHeureTrajet,
     minimumDeplacement = minimumDeplacement,
     refacturerPeages = refacturerPeages,
+    delaiPaiementJours = delaiPaiementJours,
+    tauxPenalitesRetard = tauxPenalitesRetard,
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -775,6 +838,8 @@ internal fun ParametresSauvegarde.versParametres(): Parametres? {
         prixHeureTrajet = prixHeureTrajet,
         minimumDeplacement = minimumDeplacement,
         refacturerPeages = refacturerPeages,
+        delaiPaiementJours = delaiPaiementJours,
+        tauxPenalitesRetard = tauxPenalitesRetard,
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }
@@ -906,3 +971,73 @@ internal fun VerificationFluideSauvegarde.versVerification(): VerificationFluide
         verifieLe = Instant.ofEpochMilli(verifieLe),
         par = par,
     )
+
+internal fun Facture.versSauvegarde(): FactureSauvegarde = FactureSauvegarde(
+    id = id,
+    numero = numero,
+    clientId = clientId,
+    clientNom = clientNom,
+    clientAdresse = clientAdresse,
+    interventionId = interventionId,
+    devisId = devisId,
+    equipementNom = equipementNom,
+    objet = objet,
+    statut = statut.name,
+    tauxTva = tauxTva,
+    tvaOfferte = tvaOfferte,
+    assujettiTva = assujettiTva,
+    emiseLe = emiseLe?.format(FORMAT_DATE),
+    echeanceLe = echeanceLe?.format(FORMAT_DATE),
+    tauxPenalites = tauxPenalites,
+    payeeLe = payeeLe?.format(FORMAT_DATE),
+    relanceeLe = relanceeLe?.format(FORMAT_DATE),
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/** `null` pour un statut inconnu, même raison que partout ailleurs. */
+internal fun FactureSauvegarde.versFacture(): Facture? {
+    val etat = StatutFacture.entries.firstOrNull { it.name == statut } ?: return null
+    return Facture(
+        id = id,
+        numero = numero,
+        clientId = clientId,
+        clientNom = clientNom,
+        clientAdresse = clientAdresse,
+        interventionId = interventionId,
+        devisId = devisId,
+        equipementNom = equipementNom,
+        objet = objet,
+        statut = etat,
+        tauxTva = tauxTva,
+        tvaOfferte = tvaOfferte,
+        assujettiTva = assujettiTva,
+        emiseLe = emiseLe?.let { jourOuNull(it) },
+        echeanceLe = echeanceLe?.let { jourOuNull(it) },
+        tauxPenalites = tauxPenalites,
+        payeeLe = payeeLe?.let { jourOuNull(it) },
+        relanceeLe = relanceeLe?.let { jourOuNull(it) },
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun LigneFacture.versSauvegarde(): LigneFactureSauvegarde = LigneFactureSauvegarde(
+    id = id,
+    factureId = factureId,
+    designation = designation,
+    quantite = quantite,
+    unite = unite,
+    prixUnitaire = prixUnitaire,
+    offerte = offerte,
+    rang = rang,
+)
+
+internal fun LigneFactureSauvegarde.versLigne(): LigneFacture = LigneFacture(
+    id = id,
+    factureId = factureId,
+    designation = designation,
+    quantite = quantite,
+    unite = unite,
+    prixUnitaire = prixUnitaire,
+    offerte = offerte,
+    rang = rang,
+)

@@ -70,6 +70,7 @@ class SauvegardeRepository(
     private val technicienDao: TechnicienDao,
     private val prestationDao: PrestationDao,
     private val verificationFluideDao: VerificationFluideDao,
+    private val factureDao: FactureDao,
     private val maintenant: () -> Instant = { Instant.now() },
 ) {
 
@@ -90,6 +91,8 @@ class SauvegardeRepository(
         val prestations = prestationDao.toutes()
         val verifications = verificationFluideDao.toutes()
         val trajets = devisDao.tousLesTrajets()
+        val factures = factureDao.toutes()
+        val lignesFacture = factureDao.toutesLesLignes()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -109,6 +112,8 @@ class SauvegardeRepository(
             prestations = prestations.map { it.versSauvegarde() },
             verificationsFluide = verifications.map { it.versSauvegarde() },
             trajets = trajets.map { it.versSauvegarde() },
+            factures = factures.map { it.versSauvegarde() },
+            lignesFacture = lignesFacture.map { it.versSauvegarde() },
         )
 
         // Les signatures sont des images comme les autres, rangées au même
@@ -159,6 +164,8 @@ class SauvegardeRepository(
         if (prestations.any { it == null }) return ResultatRestauration.Illisible
         val trajets = sauvegarde.trajets.map { it.versTrajet() }
         if (trajets.any { it == null }) return ResultatRestauration.Illisible
+        val factures = sauvegarde.factures.map { it.versFacture() }
+        if (factures.any { it == null }) return ResultatRestauration.Illisible
 
         val reglages = sauvegarde.parametres?.versParametres()
         if (sauvegarde.parametres != null && reglages == null) {
@@ -193,6 +200,11 @@ class SauvegardeRepository(
         // Les trajets après les devis, comme les lignes : un trajet ne doit pas
         // désigner un devis que la base ne contient pas encore.
         devisDao.enregistrerTrajets(trajets.filterNotNull())
+        // Les factures après les interventions et les devis, dont elles portent
+        // l'identifiant — même règle que partout : rien ne doit désigner une
+        // ligne que la base ne contient pas encore.
+        factureDao.enregistrerToutes(factures.filterNotNull())
+        factureDao.enregistrerLignes(sauvegarde.lignesFacture.map { it.versLigne() })
         reglages?.let { parametresDao.enregistrer(it) }
 
         return ResultatRestauration.Reussie(

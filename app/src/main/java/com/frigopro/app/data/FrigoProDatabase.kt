@@ -32,8 +32,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Prestation::class,
         VerificationFluide::class,
         Trajet::class,
+        Facture::class,
+        LigneFacture::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -58,6 +60,8 @@ abstract class FrigoProDatabase : RoomDatabase() {
     abstract fun prestationDao(): PrestationDao
 
     abstract fun verificationFluideDao(): VerificationFluideDao
+
+    abstract fun factureDao(): FactureDao
 
     companion object {
 
@@ -98,6 +102,7 @@ abstract class FrigoProDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
                 )
                 .addCallback(CATALOGUE_AU_PREMIER_LANCEMENT)
                 .build()

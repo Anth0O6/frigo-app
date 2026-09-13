@@ -4,6 +4,7 @@ import android.content.Context
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
@@ -49,6 +50,9 @@ class ConteneurApp(private val contexte: Context) {
 
     val devis: DevisRepository by lazy { DevisRepository(base.devisDao()) }
 
+    /** Les factures : ce que le client doit, et depuis quand. */
+    val factures: FactureRepository by lazy { FactureRepository(base.factureDao()) }
+
     val parametres: ParametresRepository by lazy { ParametresRepository(base.parametresDao(), stockagePhotos) }
 
     val techniciens: TechnicienRepository by lazy { TechnicienRepository(base.technicienDao()) }
@@ -83,6 +87,7 @@ class ConteneurApp(private val contexte: Context) {
             base.technicienDao(),
             base.prestationDao(),
             base.verificationFluideDao(),
+            base.factureDao(),
         )
     }
 

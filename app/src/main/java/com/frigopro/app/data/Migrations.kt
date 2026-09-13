@@ -577,3 +577,69 @@ val MIGRATION_10_11: Migration = object : Migration(10, 11) {
         db.execSQL("ALTER TABLE `parametres_neuf` RENAME TO `parametres`")
     }
 }
+
+/**
+ * Version 12 : la facturation.
+ *
+ * Deux tables neuves et deux colonnes sur les réglages — que des ajouts, donc
+ * rien à reconstruire. `factures` porte un `interventionId` et un `devisId` tous
+ * deux nullables, parce qu'une facture vient de l'un **ou** de l'autre : d'une
+ * intervention terminée pour le dépannage imprévu, d'un devis accepté pour le
+ * chantier annoncé, et de rien du tout quand elle est saisie à la main.
+ *
+ * Les défauts posés ici disent quelque chose, comme ceux de [MIGRATION_9_10] :
+ *
+ * - `delaiPaiementJours` à **30**, le délai supplétif du code de commerce —
+ *   celui qui s'applique quand rien n'a été convenu. C'est le seul défaut du
+ *   projet qui soit une valeur réglementaire plutôt qu'un choix.
+ * - `tauxPenalitesRetard` à **zéro**, qui veut dire « non fixé » et non « pas de
+ *   pénalités » : faute de taux convenu, c'est le taux légal qui s'applique de
+ *   plein droit, et le document le mentionne ainsi. Y mettre un chiffre inventé
+ *   l'aurait fait partir chez un client sans que personne ne l'ait relu.
+ */
+val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `factures` (" +
+                "`id` TEXT NOT NULL, `numero` TEXT NOT NULL, `clientId` TEXT, " +
+                "`clientNom` TEXT NOT NULL, `clientAdresse` TEXT NOT NULL, " +
+                "`interventionId` TEXT, `devisId` TEXT, `equipementNom` TEXT NOT NULL, " +
+                "`objet` TEXT NOT NULL, `statut` TEXT NOT NULL, `tauxTva` REAL NOT NULL, " +
+                "`tvaOfferte` INTEGER NOT NULL, `assujettiTva` INTEGER NOT NULL, " +
+                "`emiseLe` TEXT, `echeanceLe` TEXT, `tauxPenalites` REAL NOT NULL, " +
+                "`payeeLe` TEXT, `relanceeLe` TEXT, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        // Les index sont aussi obligatoires que les tables : Room valide le
+        // schéma entier à l'ouverture et refuse une base qui n'y correspond pas.
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_factures_clientId` ON `factures` (`clientId`)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_factures_interventionId` " +
+                "ON `factures` (`interventionId`)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_factures_devisId` ON `factures` (`devisId`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `lignes_facture` (" +
+                "`id` TEXT NOT NULL, `factureId` TEXT NOT NULL, " +
+                "`designation` TEXT NOT NULL, `quantite` REAL NOT NULL, " +
+                "`unite` TEXT NOT NULL, `prixUnitaire` REAL NOT NULL, " +
+                "`offerte` INTEGER NOT NULL, `rang` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_lignes_facture_factureId` " +
+                "ON `lignes_facture` (`factureId`)",
+        )
+
+        db.execSQL(
+            "ALTER TABLE `parametres` ADD COLUMN `delaiPaiementJours` " +
+                "INTEGER NOT NULL DEFAULT 30",
+        )
+        db.execSQL(
+            "ALTER TABLE `parametres` ADD COLUMN `tauxPenalitesRetard` " +
+                "REAL NOT NULL DEFAULT 0",
+        )
+    }
+}

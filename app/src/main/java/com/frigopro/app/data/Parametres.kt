@@ -93,6 +93,33 @@ data class Parametres(
     val prixHeureTrajet: Double = 0.0,
     val minimumDeplacement: Double = 0.0,
     val refacturerPeages: Boolean = true,
+    /**
+     * Le délai de paiement accordé, en jours à compter de l'émission.
+     *
+     * Trente jours par défaut : c'est le délai supplétif du code de commerce,
+     * celui qui s'applique quand rien n'a été convenu. Il sert à calculer
+     * l'échéance **une fois, à l'émission** : elle est ensuite portée par la
+     * facture et ne bouge plus, parce qu'elle est imprimée dessus.
+     *
+     * La loi plafonne ce délai à soixante jours à compter de la facture (ou
+     * quarante-cinq jours fin de mois) ; l'écran le rappelle plutôt que de
+     * l'imposer, un délai plus court restant toujours licite.
+     */
+    val delaiPaiementJours: Int = 30,
+    /**
+     * Le taux annuel des pénalités de retard, en pourcentage.
+     *
+     * **Zéro veut dire « non fixé », pas « pas de pénalités »** — et la nuance
+     * est ce qui protège l'entreprise. Faute de taux convenu, celui qui
+     * s'applique de plein droit est le taux directeur de la BCE majoré de dix
+     * points ; le document le mentionne alors ainsi. Imprimer « 0 % » aurait été
+     * à la fois faux et une renonciation à un recours.
+     *
+     * Il n'est donc pas livré avec une valeur inventée, comme les prix du
+     * catalogue et pour la même raison : un taux sorti de nulle part partirait
+     * chez un vrai client sans que personne ne l'ait relu.
+     */
+    val tauxPenalitesRetard: Double = 0.0,
     val derniereSauvegardeLe: Instant? = null,
     val modifieLe: Instant = Instant.EPOCH,
 ) {
