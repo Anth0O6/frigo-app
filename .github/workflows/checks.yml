@@ -72,52 +72,19 @@ jobs:
           path: app/schemas/
           if-no-files-found: warn
 
-      # Le schéma n'est écrit que lorsque KSP s'exécute vraiment, et Gradle le
-      # considère souvent à jour : `app/schemas` n'est pas déclaré parmi ses
-      # sorties, si bien qu'un schéma périmé ne le rend pas obsolète. Sans cette
-      # régénération forcée, le contrôle ci-dessous compare le fichier committé
-      # **à lui-même** et passe toujours — une vérification qui ne peut pas
-      # échouer est pire que pas de vérification, parce qu'elle rassure.
-      - name: Régénérer le schéma Room
-        if: always()
-        run: |
-          # `--rerun-tasks` ne suffit pas : il force la *tâche* Gradle, mais KSP
-          # garde son propre état incrémental et conclut en neuf secondes qu'il
-          # n'a rien à retraiter — Room ne réécrit alors aucun schéma, et le
-          # contrôle qui suit compare le fichier committé à lui-même. C'est la
-          # deuxième fois que cette vérification passe sans rien vérifier ; il
-          # faut donc effacer l'état de KSP, pas seulement le demander poliment.
-          rm -rf app/build
-          ./gradlew :app:kspDebugKotlin
-
-      # Le schéma est produit à la compilation, et il est aussi committé : c'est
-      # lui qui permettra d'écrire et d'éprouver la migration suivante. Les deux
-      # doivent donc coïncider — un schéma committé à la main, ou oublié après un
-      # changement d'entité, rendrait la prochaine migration invérifiable.
-      - name: Vérifier que le schéma committé est à jour
-        if: always()
-        run: |
-          if [ -z "$(git status --porcelain app/schemas/)" ]; then
-            echo "Schéma committé conforme."
-            exit 0
-          fi
-          echo "::error::Le schéma Room committé ne correspond pas à celui que la"
-          echo "::error::compilation produit. Committez ce qui suit."
-
-          # Un schéma *modifié* se lit en diff.
-          git --no-pager diff -- app/schemas/
-
-          # Un schéma *nouveau* n'apparaît dans aucun diff, et c'est pourtant le
-          # cas le plus courant : une migration ajoute une version. Le fichier
-          # fait une quarantaine de kilo-octets — il se récupère dans l'artefact
-          # `room-schemas` — mais son empreinte d'identité est imprimée ici,
-          # parce que c'est elle que `MigrationTest` doit connaître et la seule
-          # valeur qui ne se déduise pas du schéma précédent.
-          git ls-files --others --exclude-standard -- app/schemas/ | while read -r f; do
-            echo "::error::Schéma absent du dépôt : $f"
-            echo "    empreinte : $(grep -o '\"identityHash\": \"[a-f0-9]*\"' "$f" | head -1)"
-          done
-          exit 1
+      # Le schéma est produit à la compilation et il est aussi committé : c'est
+      # lui qui permettra d'écrire et d'éprouver la migration suivante.
+      #
+      # La correspondance des deux n'est **pas** vérifiée ici. Elle l'a été, et
+      # mal : le schéma n'est réécrit que si KSP retraite les sources, ce que ni
+      # Gradle ni `--rerun-tasks` ne garantissent, si bien que le contrôle
+      # comparait le fichier committé à lui-même et ne pouvait pas échouer. Il
+      # est passé au vert sur un schéma dont l'empreinte était le texte « à
+      # remplacer ».
+      #
+      # C'est `SchemaCommitteTest` qui s'en charge désormais : il crée une vraie
+      # base et compare son empreinte à celle du fichier committé. Aucun cache
+      # ne peut le rendre complaisant.
 
       - name: Publish test report on failure
         if: failure()
