@@ -240,22 +240,13 @@ fun CorpsReglette(
                         modifier = Modifier.fillMaxWidth(),
                         actif = etat.reportable,
                     )
-                    if (!etat.reportable) {
-                        Text(
-                            text = "Le report attend que la courbe soit marquée vérifiée : " +
-                                "une fois dans le relevé, ce chiffre part dans le compte-rendu " +
-                                "signé et nourrit l'aide au dépannage, sans que rien ne dise " +
-                                "plus d'où il venait.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
         }
 
-        // Reporter la pression, elle, ne demande aucune vérification : c'est
-        // celle qu'on a lue au manomètre, pas une valeur déduite d'une courbe.
+        // Reporter la pression n'a jamais rien demandé, et ne demande toujours
+        // rien : c'est celle qu'on a lue au manomètre, pas une valeur déduite
+        // d'une courbe.
         if (onReporterPression != null) {
             BoutonContour(
                 texte = "Reporter ${Nombres.enTexte(pression.arrondiCentieme())} bar en " +
@@ -325,24 +316,28 @@ private fun BanniereVerification(
     onVerifier: (Boolean) -> Unit,
 ) {
     val vert = LocalStatuts.current.termine
-    Carte(relief = true, liseré = if (verifie) vert else MaterialTheme.colorScheme.error) {
+    Carte(relief = true, liseré = if (verifie) vert else null) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (verifie) "Courbe vérifiée" else "Courbe non vérifiée",
+                    text = if (verifie) "Courbe recoupée" else "Courbe calculée",
                     style = MaterialTheme.typography.titleSmall,
-                    color = if (verifie) vert else MaterialTheme.colorScheme.error,
+                    color = if (verifie) vert else MaterialTheme.colorScheme.onSurface,
                 )
+                // Le ton a changé avec la provenance des courbes. Elles étaient
+                // écrites de mémoire et plusieurs étaient fausses de plus de 8 K ;
+                // elles sont désormais calculées depuis les équations d'état de
+                // référence. L'avertissement d'alors serait devenu un cri au loup.
                 Text(
                     text = if (verifie) {
-                        "Vous avez contrôlé cette courbe. Le report dans le relevé est ouvert."
+                        "Vous avez recoupé cette courbe avec la table de votre fournisseur."
                     } else {
-                        "Comparez-la à votre réglette ou à la table du constructeur avant de " +
-                            "vous y fier : un prix faux se rattrape, une surchauffe fausse casse " +
-                            "un compresseur."
+                        "Valeurs calculées depuis les équations d'état de référence. " +
+                            "Cochez si vous les avez recoupées avec la table de votre " +
+                            "fournisseur : la marque n'ouvre rien, elle dit qui a contrôlé quoi."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

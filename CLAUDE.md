@@ -67,8 +67,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Fluide.kt              # GWP, classe ISO 817, périodicité 517/2014
 │       │   │   ├── Conversions.kt         # huit familles d'unités, affines
 │       │   │   ├── PuissanceEchangee.kt   # débit × ρ × cp × Δt, dans les trois sens
-│       │   │   ├── CourbesSaturation.kt   # bulle et rosée, les dix-sept fluides
-│       │   │   ├── VerificationFluide.kt  # « j'ai contrôlé cette courbe »
+│       │   │   ├── CourbesSaturation.kt   # bulle et rosée, calculées, 23 fluides
+│       │   │   ├── VerificationFluide.kt  # « j'ai recoupé cette courbe »
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
 │       │   │   ├── Devis.kt               # devis, lignes, et les totaux partagés
@@ -170,6 +170,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │                                   # chemins du FileProvider (xml/)
 ├── design/                         # le logo source et le script qui en tire
 │                                   # les icônes (voir « Icône »)
+├── donnees/                        # `genere-courbes.py` : les courbes de
+│                                   # saturation, calculées par CoolProp
 ├── relais/                         # le relais d'itinéraire : il tient la clé
 │                                   # pour que l'utilisateur n'ait rien à faire
 ├── gradle/libs.versions.toml       # versions centralisées
@@ -326,15 +328,24 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   tarif kilométrique déduit : annoncer « 3 km à 8,33 € » aurait inventé un tarif
   pour justifier le montant, et un tarif qu'un client peut opposer au trajet
   suivant.
-  `CourbesSaturation` porte les courbes bulle / rosée de dix-sept fluides, écrites
-  **en clair** dans un format relisible contre une réglette de poche : ces valeurs
-  doivent pouvoir être contrôlées par quelqu'un qui n'écrit pas de code. Elles
-  vivent dans le code comme les GWP — ce sont des constantes physiques — mais
-  **qui les a vérifiées est une donnée de l'utilisateur** et va en base
-  (`VerificationFluide`) : c'est lui qui engage sa responsabilité en réglant un
-  détendeur dessus. Rien n'est extrapolé hors de la plage saisie, et la courbe du
-  CO₂ s'arrête au point critique : au-delà il n'y a plus de saturation, et un
-  chiffre inventé serait le plus nuisible là précisément.
+  `CourbesSaturation` porte les courbes bulle / rosée de vingt-trois fluides.
+  Elles sont **calculées** et non recopiées : `donnees/genere-courbes.py` les
+  produit avec CoolProp, l'implémentation libre des équations d'état de référence.
+  La première version avait été écrite de mémoire, et elle avait un défaut
+  caractéristique — les corps purs anciens justes, **tous les mélanges récents
+  trop bas**, le R-449A de 4,80 bar au lieu de 6,15 à 0 °C, soit plus de 8 K
+  d'erreur sur la rosée. La leçon n'est pas « mieux recopier » mais **ne plus
+  recopier** : une valeur douteuse se recontrôle en relançant le script, et le
+  tableau ne se retouche donc jamais à la main — une correction faite là et pas
+  dans le script serait reperdue au calcul suivant. Le format reste une chaîne
+  relisible ligne à ligne contre une table constructeur, pour la même raison
+  qu'avant : ces valeurs doivent pouvoir être contrôlées par quelqu'un qui n'écrit
+  pas de code. **Qui les a recoupées reste une donnée de l'utilisateur** et va en
+  base (`VerificationFluide`) — la marque ne commande plus rien, elle dit avec
+  quelle table du commerce la courbe a été confrontée, ce qui a un sens sur un
+  parc servi par deux fournisseurs. Rien n'est extrapolé hors de la plage
+  calculée, et la courbe du CO₂ s'arrête au point critique : au-delà il n'y a plus
+  de saturation, et un chiffre inventé serait le plus nuisible là précisément.
   `ClasseSecurite` porte la classification ISO 817 des fluides du catalogue. Elle
   commande la façon de travailler : l'inflammabilité décide des outils, du brasage
   et de la charge admise dans un local, la toxicité de la ventilation. Le libellé
@@ -456,13 +467,14 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   suffisante quand elle ne l'est pas, et c'est du liquide qui arrive au
   compresseur. Les pressions sont en **bar relatifs**, comme sur un manomètre, et
   l'unité est dite à l'écran plutôt que supposée : l'écart avec l'absolu fait
-  1,013 bar, soit environ 7 K sur un R-410A en basse pression. Le garde-fou est
-  `reportable` : **aucun écart calculé sur une courbe non vérifiée n'entre dans un
-  relevé**. La réglette peut l'afficher — l'avertissement est sous les yeux de
-  celui qui le lit — mais une fois dans le relevé le chiffre devient un fait, qui
-  part dans le compte-rendu signé et nourrit l'aide au dépannage sans que rien ne
-  dise plus d'où il venait. Reporter la *pression*, elle, ne demande rien : c'est
-  celle qu'on a lue au manomètre. La plage du curseur vient de la courbe et est
+  1,013 bar, soit environ 7 K sur un R-410A en basse pression. `reportable` a longtemps
+  été un garde-fou — aucun écart calculé sur une courbe non cochée n'entrait dans
+  un relevé —, et il l'était à raison : les courbes étaient fausses. Depuis
+  qu'elles sont calculées, il ne reste que la condition qui compte, l'écart doit
+  exister. Le verrou aurait obligé à cocher « j'ai contrôlé » pour se servir de
+  valeurs qui n'en ont plus besoin, et une case qu'on coche par habitude est un
+  garde-fou vide. Reporter la *pression* n'a jamais rien demandé : c'est celle
+  qu'on a lue au manomètre. La plage du curseur vient de la courbe et est
   l'**intersection** des deux colonnes : sur un mélange la rosée descend plus bas
   que la bulle et monte moins haut, si bien qu'une plage prise aux extrêmes
   afficherait « hors plage » aux deux bouts. `CorpsReglette` est le corps commun
@@ -747,8 +759,8 @@ l'APK : un test rouge bloque la publication.
 | `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
 | `ConversionsTest` | Les repères du métier (1 bar = 14,5 psi, 0 °C = 32 °F), la distinction température / écart, et l'aller-retour de toute paire d'unités |
 | `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
-| `CourbesSaturationTest` | Cohérence interne des courbes : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
-| `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant que la courbe n'est pas vérifiée |
+| `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
+| `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
 | `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
@@ -1246,10 +1258,11 @@ place » venant en tête :
 - **Les péages automatiques**, le jour où ils compteront plus que l'absence de
   carte bancaire. C'est le relais qui changerait, pas l'application : elle sait
   déjà lire un péage chiffré et le dire connu.
-- **Contrôler les courbes de saturation livrées**, fluide par fluide, contre une
-  table constructeur, puis cocher chacune dans la réglette. Tant que ce n'est pas
-  fait, elle affiche l'avertissement et refuse de reporter un écart dans un
-  relevé : c'est voulu, mais ce n'est pas un état d'arrivée.
+- **Recouper les courbes livrées** avec la table du fournisseur qu'on utilise,
+  fluide par fluide, et cocher chacune dans la réglette. Ce n'est plus un
+  préalable — les valeurs sont calculées, et le report est ouvert —, mais un
+  frigoriste qui travaille sur les tables d'une marque a intérêt à savoir
+  lesquelles il a confrontées aux siennes.
 - **L'avoir**, qui manque encore à la facturation. Une facture erronée s'annule
   aujourd'hui en gardant son numéro, ce qui est correct et suffit tant qu'elle
   n'est pas partie ; une facture déjà envoyée et payée demanderait, elle, un

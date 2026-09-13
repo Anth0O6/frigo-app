@@ -10,15 +10,14 @@ import org.junit.Test
 /**
  * Les courbes de saturation, et ce qu'on peut en vérifier sans réglette.
  *
- * Ces tests **ne disent pas que les valeurs sont justes** — seul un contrôle
- * contre une table constructeur peut le dire, et c'est le rôle de la vérification
- * par fluide. Ils disent autre chose, qui est vérifiable ici : que les données se
- * relisent toutes sans perdre un point, et qu'aucune ne viole une propriété
- * physique élémentaire.
+ * Ces tests ne rejouent pas le calcul des valeurs : il vient des équations d'état
+ * de référence, et le refaire ici reviendrait à embarquer CoolProp dans
+ * l'application. Ils disent autre chose : que les données se relisent toutes sans
+ * perdre un point, et qu'aucune ne viole une propriété physique élémentaire.
  *
- * C'est utile précisément parce que ces valeurs ont été écrites à la main : une
- * coquille de frappe — un point-virgule au lieu d'un deux-points, un chiffre
- * transposé — serait autrement silencieuse.
+ * C'est utile même depuis qu'elles sont calculées et non plus recopiées. Ce que
+ * le générateur écrit, l'application le relit par son propre analyseur, et c'est
+ * ce trajet-là — pas le calcul — qu'une coquille casserait, silencieusement.
  */
 class CourbesSaturationTest {
 
@@ -126,8 +125,8 @@ class CourbesSaturationTest {
 
     @Test
     fun `la lecture retombe sur un point de la table`() {
-        // 7,38 bar abs est exactement le point 0 °C du R-410A.
-        val lecture = CourbesSaturation.temperatureA("R410A", pressionBarAbs = 7.38)
+        // 8,01 bar abs est exactement le point 0 °C du R-410A, côté bulle.
+        val lecture = CourbesSaturation.temperatureA("R410A", pressionBarAbs = 8.01)
 
         assertNotNull(lecture)
         assertEquals(0.0, lecture!!.temperatureBulleC, 0.05)
@@ -135,8 +134,8 @@ class CourbesSaturationTest {
 
     @Test
     fun `la lecture interpole entre deux points`() {
-        // Entre 0 °C (7,38) et 5 °C (8,58) : 7,98 doit donner environ 2,5 °C.
-        val lecture = CourbesSaturation.temperatureA("R410A", pressionBarAbs = 7.98)
+        // Entre 0 °C (8,01) et 5 °C (9,36) : le milieu doit donner environ 2,5 °C.
+        val lecture = CourbesSaturation.temperatureA("R410A", pressionBarAbs = 8.685)
 
         assertNotNull(lecture)
         assertEquals(2.5, lecture!!.temperatureBulleC, 0.2)
@@ -165,8 +164,8 @@ class CourbesSaturationTest {
         assertTrue(CourbesSaturation.couvert("r-410a"))
         assertTrue(CourbesSaturation.couvert(" R410A "))
         assertEquals(
-            CourbesSaturation.temperatureA("R410A", 7.38)?.temperatureBulleC,
-            CourbesSaturation.temperatureA("r-410a", 7.38)?.temperatureBulleC,
+            CourbesSaturation.temperatureA("R410A", 8.01)?.temperatureBulleC,
+            CourbesSaturation.temperatureA("r-410a", 8.01)?.temperatureBulleC,
         )
     }
 
@@ -174,8 +173,8 @@ class CourbesSaturationTest {
     fun `la reglette marche aussi dans l'autre sens`() {
         val (bulle, rosee) = CourbesSaturation.pressionA("R410A", temperatureC = 0.0)!!
 
-        assertEquals(7.38, bulle, 0.05)
-        assertEquals(7.38, rosee, 0.05)
+        assertEquals(8.01, bulle, 0.05)
+        assertEquals(7.98, rosee, 0.05)
     }
 
     /**
@@ -209,8 +208,8 @@ class CourbesSaturationTest {
 
     @Test
     fun `l'absolu et le relatif se convertissent dans les deux sens`() {
-        assertEquals(7.38, 6.367.enBarAbsolus(), 0.001)
-        assertEquals(6.367, 7.38.enBarRelatifs(), 0.001)
+        assertEquals(8.01, 6.997.enBarAbsolus(), 0.001)
+        assertEquals(6.997, 8.01.enBarRelatifs(), 0.001)
         assertEquals(5.0, 5.0.enBarAbsolus().enBarRelatifs(), 0.0001)
     }
 }

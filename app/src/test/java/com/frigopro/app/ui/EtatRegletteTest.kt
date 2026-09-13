@@ -12,11 +12,11 @@ import org.junit.Test
 /**
  * La réglette, et la seule erreur qui casse un compresseur.
  *
- * Ces tests ne vérifient pas que les courbes sont justes — c'est le rôle de la
- * vérification par fluide, et [CourbesSaturationTest] dit ce qui est vérifiable
- * sans table constructeur. Ils vérifient ce qui est entièrement de notre
- * ressort : que la **bonne colonne** est prise de chaque côté du circuit, et
- * qu'aucun chiffre non vérifié ne peut entrer dans un relevé.
+ * Ces tests ne vérifient pas que les courbes sont justes — elles sont calculées,
+ * et [CourbesSaturationTest] dit ce qui reste vérifiable sans les recalculer. Ils
+ * vérifient ce qui est entièrement de notre ressort : que la **bonne colonne** est
+ * prise de chaque côté du circuit, et que rien d'incomplet ou de hors plage
+ * n'entre dans un relevé.
  */
 class EtatRegletteTest {
 
@@ -30,10 +30,10 @@ class EtatRegletteTest {
      */
     @Test
     fun `la surchauffe se calcule sur la rosee`() {
-        // R-448A à 0 °C : bulle 4,78 bar abs, rosée 4,03 bar abs. À la pression de
+        // R-448A à 0 °C : bulle 6,23 bar abs, rosée 5,11 bar abs. À la pression de
         // bulle, la rosée est donc nettement plus chaude que 0 °C.
-        val pression = 4.78.enBarRelatifs()
-        val lecture = CourbesSaturation.temperatureA("R448A", 4.78)!!
+        val pression = 6.23.enBarRelatifs()
+        val lecture = CourbesSaturation.temperatureA("R448A", 6.23)!!
         val etat = EtatReglette(
             fluide = "R448A",
             pressionRelativeBar = pression,
@@ -60,10 +60,12 @@ class EtatRegletteTest {
      */
     @Test
     fun `le sous-refroidissement se calcule sur la bulle`() {
-        val lecture = CourbesSaturation.temperatureA("R448A", 14.56)!!
+        // 18,83 bar abs est le point 40 °C du R-448A côté bulle : une condensation
+        // ordinaire, dont le liquide ressort à 34 °C.
+        val lecture = CourbesSaturation.temperatureA("R448A", 18.83)!!
         val etat = EtatReglette(
             fluide = "R448A",
-            pressionRelativeBar = 14.56.enBarRelatifs(),
+            pressionRelativeBar = 18.83.enBarRelatifs(),
             cote = CoteCircuit.REFOULEMENT,
             temperatureLigneC = 34.0,
         )
@@ -85,16 +87,16 @@ class EtatRegletteTest {
      */
     @Test
     fun `les deux ecarts sont positifs dans le cas normal`() {
-        val saturation = CourbesSaturation.temperatureA("R410A", 7.38)!!
+        val saturation = CourbesSaturation.temperatureA("R410A", 8.01)!!
         val aspiration = EtatReglette(
             fluide = "R410A",
-            pressionRelativeBar = 7.38.enBarRelatifs(),
+            pressionRelativeBar = 8.01.enBarRelatifs(),
             cote = CoteCircuit.ASPIRATION,
             temperatureLigneC = saturation.temperatureRoseeC + 6.0,
         )
         val refoulement = EtatReglette(
             fluide = "R410A",
-            pressionRelativeBar = 7.38.enBarRelatifs(),
+            pressionRelativeBar = 8.01.enBarRelatifs(),
             cote = CoteCircuit.REFOULEMENT,
             temperatureLigneC = saturation.temperatureBulleC - 5.0,
         )
@@ -110,46 +112,49 @@ class EtatRegletteTest {
      */
     @Test
     fun `la pression saisie est relative, la courbe absolue`() {
-        // Le point 0 °C du R-410A est à 7,38 bar abs, donc 6,367 bar au manomètre.
-        val etat = EtatReglette(fluide = "R410A", pressionRelativeBar = 6.367)
+        // Le point 0 °C du R-410A est à 8,01 bar abs, donc 6,997 bar au manomètre.
+        val etat = EtatReglette(fluide = "R410A", pressionRelativeBar = 6.997)
 
         assertEquals(0.0, etat.lecture!!.temperatureBulleC, 0.05)
     }
 
     /**
-     * Le garde-fou central : **aucun chiffre non vérifié n'entre dans un relevé**.
+     * Le report ne dépend plus de la marque de vérification.
      *
-     * La réglette peut l'afficher — l'utilisateur le lit en sachant ce qu'il lit,
-     * l'avertissement est sous ses yeux. Mais une fois dans le relevé il devient un
-     * fait : il part dans le compte-rendu signé et nourrit l'aide au dépannage,
-     * sans que rien ne dise plus d'où il venait.
+     * Il en a dépendu, et c'était justifié : les courbes avaient été écrites de
+     * mémoire, plusieurs étaient fausses de plus de 8 K, et un tel chiffre reporté
+     * dans un relevé devient un fait — il part dans le compte-rendu signé et
+     * nourrit l'aide au dépannage sans que rien ne dise plus d'où il venait. Elles
+     * sont désormais calculées, et exiger « j'ai contrôlé » pour s'en servir
+     * n'aurait plus protégé de rien : la case aurait fini cochée par habitude, ce
+     * qui est la façon la plus sûre de vider un garde-fou de son sens.
      */
     @Test
-    fun `un ecart non verifie s'affiche mais ne se reporte pas`() {
+    fun `un ecart calcule se reporte, coche ou non`() {
         val etat = EtatReglette(
             fluide = "R410A",
-            pressionRelativeBar = 6.367,
+            pressionRelativeBar = 6.997,
             temperatureLigneC = 6.0,
             verifie = false,
         )
 
         assertNotNull("le chiffre est calculé et montré", etat.ecartK)
-        assertFalse("mais le report est fermé", etat.reportable)
-        assertTrue("et il s'ouvre une fois la courbe contrôlée", etat.copy(verifie = true).reportable)
+        assertTrue("et il se reporte sans avoir à cocher quoi que ce soit", etat.reportable)
+        assertTrue("cocher ne change rien", etat.copy(verifie = true).reportable)
     }
 
     /** Sans température de tuyauterie, il n'y a pas d'écart — et rien à reporter. */
     @Test
     fun `sans temperature relevee, aucun ecart`() {
-        val etat = EtatReglette(fluide = "R410A", pressionRelativeBar = 6.367, verifie = true)
+        val etat = EtatReglette(fluide = "R410A", pressionRelativeBar = 6.997, verifie = true)
 
         assertNull(etat.ecartK)
         assertFalse(etat.reportable)
     }
 
     /**
-     * Hors de la plage saisie, la réglette se taît, et le report reste fermé même
-     * sur une courbe vérifiée : vérifier une courbe ne la prolonge pas.
+     * Hors de la plage calculée, la réglette se taît, et le report reste fermé :
+     * il n'y a aucun écart à reporter, et cocher la courbe ne la prolonge pas.
      */
     @Test
     fun `hors plage, rien n'est lu ni reporte`() {

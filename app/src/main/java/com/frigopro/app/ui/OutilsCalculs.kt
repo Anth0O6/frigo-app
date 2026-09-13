@@ -297,10 +297,10 @@ fun OutilControleEtancheite() {
     val periodicite = tonnes?.let { PeriodiciteControle.pour(it, detecteurFixe = detecteur) }
 
     ColonneOutil {
-        ChampTexte(
-            libelle = "Fluide",
+        ChampFluide(
             valeur = fluide,
             onValeur = { fluide = it },
+            modifier = Modifier.fillMaxWidth(),
         )
         ChampTexte(
             libelle = "Charge (kg)",
@@ -396,16 +396,16 @@ fun OutilFicheFluide(verifies: Set<String>) {
     val points = CourbesSaturation.points(fluide)
 
     ColonneOutil {
-        ChampTexte(
-            libelle = "Fluide",
+        ChampFluide(
             valeur = fluide,
             onValeur = { fluide = it },
+            modifier = Modifier.fillMaxWidth(),
         )
 
         if (fluide.isBlank()) {
             Encart(
-                texte = "Saisissez un fluide : « R410A », « R-448A », « r32 » — la graphie " +
-                    "n'a pas d'importance.",
+                texte = "Choisissez un fluide pour voir son GWP, sa classe de sécurité et, " +
+                    "s'il en a une, sa courbe de saturation.",
             )
             return@ColonneOutil
         }

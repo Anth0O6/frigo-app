@@ -55,8 +55,12 @@ data class EtatReglette(
     /** La température lue sur la tuyauterie, `null` tant qu'on n'a pas mesuré. */
     val temperatureLigneC: Double? = null,
     /**
-     * La courbe de ce fluide a été contrôlée par l'utilisateur contre une table
-     * constructeur (voir `VerificationFluide`).
+     * La courbe de ce fluide a été recoupée par l'utilisateur avec la table de
+     * son fournisseur (voir `VerificationFluide`).
+     *
+     * Ne commande plus rien — voir [reportable]. C'est une information, et elle
+     * engage celui qui la pose : sur un parc où l'on travaille avec deux
+     * fournisseurs, savoir quelle courbe a été recoupée avec laquelle a un sens.
      */
     val verifie: Boolean = false,
 ) {
@@ -101,15 +105,22 @@ data class EtatReglette(
     /**
      * L'écart peut-il être reporté dans le relevé ?
      *
-     * **Non tant que la courbe n'est pas vérifiée**, et c'est la règle qui justifie
-     * tout le dispositif de vérification. Une surchauffe écrite dans le relevé
-     * devient un fait : elle part dans le compte-rendu signé par le client, elle
-     * nourrit l'aide au dépannage, et plus rien ne dit ensuite d'où elle venait.
-     * La réglette peut montrer un chiffre non vérifié — l'utilisateur le lit en
-     * sachant ce qu'il lit, l'avertissement est sous ses yeux — mais elle ne peut
-     * pas le laisser entrer en silence dans les données de l'intervention.
+     * Il a longtemps fallu que la courbe soit **cochée vérifiée**, et c'était
+     * justifié : les valeurs avaient été écrites de mémoire et plusieurs étaient
+     * fausses de plus de 8 K. Une surchauffe fausse écrite dans un relevé devient
+     * un fait — elle part dans le compte-rendu signé, elle nourrit l'aide au
+     * dépannage, et plus rien ne dit ensuite d'où elle venait.
+     *
+     * Les courbes sont désormais **calculées** depuis les équations d'état de
+     * référence (voir [CourbesSaturation]), et le verrou n'a plus d'objet : il
+     * obligerait à cocher « j'ai contrôlé » pour se servir de valeurs qui n'ont
+     * plus besoin de l'être. Il ne reste donc que la condition qui compte —
+     * l'écart doit exister, c'est-à-dire que la pression soit dans la plage de la
+     * courbe et que la température de ligne soit saisie.
+     *
+     * La marque de vérification, elle, reste : voir [verifie].
      */
-    val reportable: Boolean get() = verifie && ecartK != null
+    val reportable: Boolean get() = ecartK != null
 
     /** Le glissement du mélange à cette pression, quand il compte. */
     val glissementNotable: Boolean get() = lecture?.glissementNotable == true
