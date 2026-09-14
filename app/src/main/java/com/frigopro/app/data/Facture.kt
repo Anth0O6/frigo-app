@@ -210,6 +210,24 @@ data class FactureComplete(
 data class TotalFacture(val factureId: String, val montant: Double)
 
 /**
+ * Ce qu'un devis est devenu : la facture qui en est sortie, en trois colonnes.
+ *
+ * C'est une **projection**, pas une entité. Elle sert à l'onglet des devis, qui
+ * a besoin de savoir lequel est déjà facturé — pour le ranger plus bas — et sous
+ * quel numéro — pour pouvoir le dire. Le reste de la facture ne le regarde pas.
+ *
+ * Le statut est là pour une raison précise : une facture **annulée** garde son
+ * numéro et son lien, et un devis dont la facture a été annulée n'est pas dans
+ * la même situation qu'un devis facturé pour de bon. L'écran doit pouvoir faire
+ * la différence.
+ */
+data class DevisFacture(
+    val devisId: String,
+    val numero: String,
+    val statut: StatutFacture,
+)
+
+/**
  * Une facture et son montant, tels que les listes et les compteurs les
  * affichent. C'est [FactureComplete] sans le détail des lignes.
  */

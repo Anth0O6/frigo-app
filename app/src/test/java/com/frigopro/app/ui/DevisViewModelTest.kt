@@ -5,9 +5,12 @@ import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.Facture
+import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxDevisDao
 import com.frigopro.app.data.FauxEquipementDao
+import com.frigopro.app.data.FauxFactureDao
 import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxPrestationDao
@@ -19,6 +22,7 @@ import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.RaisonEchec
 import com.frigopro.app.data.ResultatItineraire
 import com.frigopro.app.data.ServiceItineraire
+import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.data.TarifDeplacement
 import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.OrigineTrajet
@@ -46,6 +50,7 @@ import java.time.LocalDate
 class DevisViewModelTest {
 
     private val daoDevis = FauxDevisDao()
+    private val daoFactures = FauxFactureDao()
     private val daoClients = FauxClientDao()
     private val daoParametres = FauxParametresDao()
     private val daoPrestations = FauxPrestationDao()
@@ -62,6 +67,49 @@ class DevisViewModelTest {
     @After
     fun nettoyer() {
         Dispatchers.resetMain()
+    }
+
+    /**
+     * Un devis facturé quitte la liste principale, et **seulement** celle-là.
+     *
+     * Deux choses à tenir d'un coup, et la seconde est la plus facile à perdre :
+     * il sort de ce qui attend une réponse, et il reste consultable. Un filtre
+     * qui l'aurait effacé pour de bon aurait emporté la pièce qui dit ce que le
+     * client avait accepté — celle qu'on ressort quand il conteste la facture.
+     */
+    @Test
+    fun `un devis facture quitte la liste sans disparaitre`() = runTest {
+        val depot = DevisRepository(daoDevis)
+        val viewModel = creerViewModel()
+        val chiffré = depot.creer(client = null, equipement = null, aujourdhui = mai)
+        val enAttente = depot.creer(client = null, equipement = null, aujourdhui = mai)
+        advanceUntilIdle()
+
+        assertEquals(2, viewModel.liste.value.enCours.size)
+
+        daoFactures.enregistrer(
+            Facture(
+                id = "f-1",
+                numero = "FAC-2026-0001",
+                devisId = chiffré.id,
+                statut = StatutFacture.EMISE,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            "seul le devis non facturé reste en tête",
+            listOf(enAttente.id),
+            viewModel.liste.value.enCours.map { it.devis.id },
+        )
+        val facturés = viewModel.liste.value.facturés
+        assertEquals("l'autre est rangé, pas supprimé", 1, facturés.size)
+        assertEquals(chiffré.id, facturés.single().chiffre.devis.id)
+        assertEquals(
+            "et il dit sous quel numéro il est parti",
+            "FAC-2026-0001",
+            facturés.single().facture.numero,
+        )
     }
 
     /**
@@ -424,6 +472,7 @@ class DevisViewModelTest {
             ParametresRepository(daoParametres, stockage),
             PrestationRepository(daoPrestations),
             EquipementRepository(daoEquipements, stockage),
+            FactureRepository(daoFactures),
             // Le PDF ne se dessine pas sans Android : le producteur rend `null`, ce
             // qui est le chemin d'échec. Ce que le document dit et où tombent ses
             // lignes est vérifié par [DocumentDevisTest] et [MiseEnPageDevisTest].

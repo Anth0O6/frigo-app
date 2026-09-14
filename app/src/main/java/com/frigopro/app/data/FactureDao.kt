@@ -45,6 +45,17 @@ abstract class FactureDao {
     @Query("SELECT * FROM factures WHERE devisId = :devisId LIMIT 1")
     abstract suspend fun pourDevis(devisId: String): Facture?
 
+    /**
+     * Quel devis a produit quelle facture.
+     *
+     * Trois colonnes et pas la facture entière : ce qu'on en veut, c'est savoir
+     * qu'un devis est facturé et sous quel numéro, pour le ranger et le dire.
+     * Charger les factures pour n'en lire que cela ferait passer par la mémoire,
+     * à chaque ouverture de l'onglet, tout ce que l'entreprise a jamais émis.
+     */
+    @Query("SELECT devisId, numero, statut FROM factures WHERE devisId IS NOT NULL")
+    abstract fun observerDevisFactures(): Flow<List<DevisFacture>>
+
     @Query("SELECT * FROM factures WHERE interventionId = :interventionId LIMIT 1")
     abstract suspend fun pourIntervention(interventionId: String): Facture?
 

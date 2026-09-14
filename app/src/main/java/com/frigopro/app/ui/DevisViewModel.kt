@@ -19,6 +19,8 @@ import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.OrigineTrajet
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.DevisFacture
+import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.RaisonEchec
@@ -66,6 +68,23 @@ data class CompteursDevis(
 }
 
 /**
+ * Les devis rangés en deux, et c'est tout ce que le rangement fait.
+ *
+ * Un devis qui a produit une facture est une affaire close : le laisser dans la
+ * liste principale y mélange ce qu'il reste à faire et ce qui est fait, et c'est
+ * la première qui est la question de l'écran. Il n'est pas **supprimé** pour
+ * autant — c'est la pièce qui dit ce que le client a accepté, et on y revient
+ * quand il conteste la facture.
+ */
+data class DevisRanges(
+    val enCours: List<DevisChiffre> = emptyList(),
+    val facturés: List<DevisFacturé> = emptyList(),
+)
+
+/** Un devis facturé, et de quelle facture il s'agit. */
+data class DevisFacturé(val chiffre: DevisChiffre, val facture: DevisFacture)
+
+/**
  * L'onglet Devis : la liste, et le devis ouvert.
  *
  * Même motif que partout ailleurs — le devis ouvert est retenu par son
@@ -79,6 +98,11 @@ class DevisViewModel(
     private val parametres: ParametresRepository,
     private val prestations: PrestationRepository,
     private val equipements: EquipementRepository,
+    /**
+     * Les factures, dont cet écran n'a besoin que d'une chose : savoir quel devis
+     * en a déjà produit une, pour le ranger plus bas.
+     */
+    private val factures: FactureRepository,
     /**
      * Ce qui produit le PDF. Une interface, parce que le dessin est
      * irréductiblement Android et qu'un ViewModel qui en dépendrait directement ne
@@ -101,8 +125,15 @@ class DevisViewModel(
      * serait s'exposer à ce qu'il cesse d'être juste après une modification,
      * et un devis qui affiche un total faux est pire qu'un devis sans total.
      */
-    val liste: StateFlow<List<DevisChiffre>> = devis.devisChiffres
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+    val liste: StateFlow<DevisRanges> =
+        combine(devis.devisChiffres, factures.devisFactures) { chiffres, liens ->
+            DevisRanges(
+                enCours = chiffres.filter { it.devis.id !in liens },
+                facturés = chiffres.mapNotNull { chiffre ->
+                    liens[chiffre.devis.id]?.let { DevisFacturé(chiffre, it) }
+                },
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), DevisRanges())
 
     /**
      * Les compteurs de l'en-tête : ce qui attend, ce qui est gagné, et combien.
@@ -451,6 +482,7 @@ class DevisViewModel(
                     conteneur.parametres,
                     conteneur.prestations,
                     conteneur.equipements,
+                    conteneur.factures,
                     ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                     conteneur.itineraires,
                 )

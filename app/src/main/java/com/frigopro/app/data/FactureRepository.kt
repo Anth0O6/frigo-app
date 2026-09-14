@@ -41,6 +41,17 @@ class FactureRepository(private val dao: FactureDao) {
             factures.map { FactureChiffree(it, (parId[it.id] ?: 0.0).auCentime()) }
         }
 
+    /**
+     * Ce que chaque devis facturé est devenu, par identifiant de devis.
+     *
+     * L'onglet des devis s'en sert pour **ranger plus bas** ceux qui ont déjà
+     * produit une facture : un devis facturé est une affaire close, et le laisser
+     * en tête de liste noie ceux qui attendent encore une réponse — c'est la
+     * seule question à laquelle cet écran doit répondre d'un coup d'œil.
+     */
+    val devisFactures: Flow<Map<String, DevisFacture>> =
+        dao.observerDevisFactures().map { liens -> liens.associateBy { it.devisId } }
+
     /** Une facture et ses lignes, réunies pour que les totaux soient calculables. */
     fun observerComplete(id: String): Flow<FactureComplete?> =
         combine(dao.observer(id), dao.observerLignes(id)) { facture, lignes ->

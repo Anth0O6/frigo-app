@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -34,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,11 +51,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
+import com.frigopro.app.data.DevisFacture
 import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.StatutDevis
+import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
@@ -63,6 +68,7 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.composants.TuileChiffre
+import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.LocalStatuts
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
@@ -175,17 +181,34 @@ fun DevisRoute(
     }
 }
 
-/** La liste des devis, du plus récent au plus ancien. */
+/**
+ * La liste des devis, du plus récent au plus ancien.
+ *
+ * Ceux qui ont produit une facture sont **repliés en bas**, sous un en-tête qui
+ * les compte. Ils ne sont ni supprimés ni filtrés au loin : un devis facturé
+ * reste la pièce qui dit ce que le client a accepté, et c'est celle qu'on
+ * ressort quand il conteste la facture. Mais c'est une affaire close, et la
+ * laisser au milieu de ce qui attend encore une réponse noie la seule question
+ * à laquelle cet écran doit répondre d'un coup d'œil.
+ *
+ * Repliés plutôt qu'ailleurs, et c'est la même décision que partout dans ce
+ * projet : une destination de plus aurait demandé un graphe de navigation pour
+ * une liste qu'on ouvre trois fois par an.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListeDevis(
-    devis: List<DevisChiffre>,
+    devis: DevisRanges,
     compteurs: CompteursDevis,
     onOuvrir: (Devis) -> Unit,
     onNouveau: () -> Unit,
     onVoirFactures: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    // Replié par défaut, et l'état ne survit pas à la sortie de l'onglet : c'est
+    // un coup d'œil qu'on donne, pas une vue qu'on adopte.
+    var facturésDepliés by rememberSaveable { mutableStateOf(false) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -224,7 +247,7 @@ fun ListeDevis(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (devis.isEmpty()) {
+                if (devis.enCours.isEmpty() && devis.facturés.isEmpty()) {
                     item {
                         Encart(
                             texte = "Aucun devis. Un devis chiffré sur place et envoyé avant " +
@@ -232,12 +255,34 @@ fun ListeDevis(
                                 "la semaine suivante.",
                         )
                     }
+                } else if (devis.enCours.isEmpty()) {
+                    item {
+                        Encart(texte = "Tous les devis sont facturés.")
+                    }
                 }
-                items(items = devis, key = { it.devis.id }) { document ->
+                items(items = devis.enCours, key = { it.devis.id }) { document ->
                     LigneDevisListe(
                         chiffre = document,
                         onClick = { onOuvrir(document.devis) },
                     )
+                }
+                if (devis.facturés.isNotEmpty()) {
+                    item(key = "entete-factures") {
+                        EnTeteFacturés(
+                            nombre = devis.facturés.size,
+                            deplié = facturésDepliés,
+                            onBasculer = { facturésDepliés = !facturésDepliés },
+                        )
+                    }
+                    if (facturésDepliés) {
+                        items(items = devis.facturés, key = { it.chiffre.devis.id }) { facturé ->
+                            LigneDevisListe(
+                                chiffre = facturé.chiffre,
+                                onClick = { onOuvrir(facturé.chiffre.devis) },
+                                facture = facturé.facture,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -281,7 +326,11 @@ private fun CompteursEnTete(compteurs: CompteursDevis) {
 }
 
 @Composable
-private fun LigneDevisListe(chiffre: DevisChiffre, onClick: () -> Unit) {
+private fun LigneDevisListe(
+    chiffre: DevisChiffre,
+    onClick: () -> Unit,
+    facture: DevisFacture? = null,
+) {
     val devis = chiffre.devis
     Carte(onClick = onClick) {
         Row(
@@ -309,10 +358,76 @@ private fun LigneDevisListe(chiffre: DevisChiffre, onClick: () -> Unit) {
                 // Le montant TTC : c'est celui que le client lit, et le seul
                 // qu'on compare d'un devis à l'autre.
                 Text(text = Nombres.enEuros(chiffre.totalTtc), style = StyleChiffrePetit)
-                PuceStatut(devis.statut)
+                // Sur un devis facturé, le numéro de la facture remplace le
+                // statut du devis : « Accepté » ne dit plus rien d'utile une
+                // fois la facture partie, et le numéro, lui, permet de la
+                // retrouver dans l'autre vue.
+                if (facture != null) {
+                    PuceFacture(facture)
+                } else {
+                    PuceStatut(devis.statut)
+                }
             }
         }
     }
+}
+
+/**
+ * L'en-tête qui replie les devis facturés.
+ *
+ * Il porte le compte, parce que c'est la seule information qu'on lit sans
+ * déplier — « sept devis facturés » dit que l'année avance ; une flèche seule ne
+ * dirait rien.
+ */
+@Composable
+private fun EnTeteFacturés(nombre: Int, deplié: Boolean, onBasculer: () -> Unit) {
+    Surface(
+        onClick = onBasculer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = LocalCibles.current.action),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = if (nombre == 1) "1 devis facturé" else "$nombre devis facturés",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (deplié) {
+                    Icons.Filled.KeyboardArrowUp
+                } else {
+                    Icons.Filled.KeyboardArrowDown
+                },
+                contentDescription = if (deplié) "Replier" else "Déplier",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Le numéro de la facture qu'un devis a produite, et son sort. */
+@Composable
+private fun PuceFacture(facture: DevisFacture) {
+    val statuts = LocalStatuts.current
+    val couleur = when (facture.statut) {
+        StatutFacture.PAYEE -> statuts.termine
+        StatutFacture.ANNULEE -> statuts.urgence
+        else -> statuts.planifie
+    }
+    val texte = if (facture.statut == StatutFacture.BROUILLON) {
+        "FACTURE EN BROUILLON"
+    } else {
+        facture.numero
+    }
+    Puce(texte = texte, couleur = couleur, fond = couleur.copy(alpha = 0.16f))
 }
 
 @Composable

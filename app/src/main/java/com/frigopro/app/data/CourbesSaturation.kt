@@ -332,14 +332,36 @@ object CourbesSaturation {
      */
     private fun interpoler(x: Double, paires: List<Pair<Double, Double>>): Double? {
         val triees = paires.sortedBy { it.first }
-        if (x < triees.first().first || x > triees.last().first) return null
-        val apres = triees.indexOfFirst { it.first >= x }
+        val bas = triees.first().first
+        val haut = triees.last().first
+        if (x < bas - PINCEMENT || x > haut + PINCEMENT) return null
+
+        // Ramené sur la borne quand il n'en sort que du bruit : voir [PINCEMENT].
+        val borne = x.coerceIn(bas, haut)
+        val apres = triees.indexOfFirst { it.first >= borne }
         if (apres == 0) return triees.first().second
         val (x0, y0) = triees[apres - 1]
         val (x1, y1) = triees[apres]
         if (x1 == x0) return y0
-        return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+        return y0 + (y1 - y0) * (borne - x0) / (x1 - x0)
     }
+
+    /**
+     * De combien on tolère de sortir de la table avant de se taire.
+     *
+     * Ce n'est **pas** une extrapolation déguisée, et l'ordre de grandeur le dit :
+     * un millionième de bar, soit dix mille fois moins que ce qu'un manomètre
+     * affiche. C'est du bruit de virgule flottante, et il vient d'un aller-retour
+     * précis : la réglette raisonne en bar relatifs et interroge la courbe en
+     * absolus, or `0,46 − 1,013 + 1,013` ne rend pas `0,46` mais
+     * `0,459999999999999 96`. La borne basse d'une courbe tombait ainsi « hors
+     * table » à un milliardième de bar de son propre premier point — le R-450A,
+     * dont la courbe démarre à 0,46 bar, ne se lisait plus au bas de son curseur.
+     *
+     * Au-delà de ce bruit, la règle tient entière : rien n'est extrapolé, et une
+     * pression hors de la plage calculée ne rend toujours rien.
+     */
+    private const val PINCEMENT = 1e-6
 
     /**
      * Lit une courbe écrite en clair.

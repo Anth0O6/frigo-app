@@ -41,6 +41,12 @@ class FauxFactureDao : FactureDao() {
     override suspend fun pourIntervention(interventionId: String): Facture? =
         documents.value.firstOrNull { it.interventionId == interventionId }
 
+    override fun observerDevisFactures(): Flow<List<DevisFacture>> = documents.map { liste ->
+        liste.mapNotNull { facture ->
+            facture.devisId?.let { DevisFacture(it, facture.numero, facture.statut) }
+        }
+    }
+
     override suspend fun toutes(): List<Facture> = documents.value
 
     override suspend fun numeros(): List<String> =
