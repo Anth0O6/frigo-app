@@ -81,6 +81,11 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── ItineraireRelais.kt    # la seule classe qui ouvre une connexion
 │       │   │   ├── Parametres.kt          # les réglages, en une seule ligne
 │       │   │   ├── Prestation.kt          # technicien, checklist, catalogue
+│       │   │   ├── Degressif.kt           # un prix par rang d'unité
+│       │   │   ├── Materiel.kt            # fournisseurs, articles, deux stocks
+│       │   │   ├── MaterielDao.kt
+│       │   │   ├── MaterielRepository.kt
+│       │   │   ├── Substitution.kt        # par quoi remplacer un fluide
 │       │   │   ├── CatalogueDao.kt
 │       │   │   ├── CatalogueRepository.kt
 │       │   │   ├── Initiales.kt           # « KB », une seule fois pour quatre écrans
@@ -150,6 +155,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FeuilleReglette.kt   # la réglette, curseur et avertissement
 │       │       ├── EcranOutils.kt       # l'onglet Outils, et le cadre d'un outil
 │       │       ├── OutilsCalculs.kt     # convertisseur, bilan, F-Gas, fiche fluide
+│       │       ├── OutilSubstitution.kt # par quoi remplacer, et à quel prix
 │       │       ├── OutilsViewModel.kt
 │       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
 │       │       ├── SectionsReglages.kt  # technicien, thème, gants, tarifs
@@ -374,6 +380,61 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   reprise à l'écran : la masse volumique de l'air varie de près de moitié entre une
   chambre froide et une toiture en août, et le résultat est un **ordre de grandeur
   juste**, pas un relevé de réception.
+  **Le magasin** (`Materiel.kt`) tient ce qu'on achète, ce qu'on en a, et chez
+  qui. Le fil qui relie ses trois tables est le **prix d'achat**, la seule donnée
+  qui manquait pour savoir ce qu'une pièce rapporte. `Marge` en tire trois
+  grandeurs et refuse de les confondre : 100 € acheté, 150 € vendu font 50 € de
+  marge brute, 33 % de **taux de marque** et un **coefficient** de 1,5.
+  « 50 % de marge » n'est ni vrai ni faux, c'est ambigu — et l'ambiguïté se règle
+  en nommant les trois plutôt qu'en choisissant, exactement comme la séparation
+  entre une température et un écart de température. Rien n'est stocké : un
+  troisième champ aurait cessé d'être juste au premier prix d'achat qui monte.
+  Rien n'est deviné non plus — sans prix d'achat la marge est **inconnue**, pas
+  nulle, même règle que le GWP d'un fluide hors catalogue.
+  **Deux stocks**, parce que la question n'est pas « est-ce que j'en ai ? » mais
+  « est-ce que j'en ai *ici* ? » : ce qui est à l'atelier ne dépanne personne à
+  40 km, ce qui est dans le camion n'est pas là pour demain. Le manque est
+  dérivé (`quantite < minimum`) et jamais stocké ; un seuil à zéro veut dire
+  « pas de seuil » et non « seuil à zéro », sans quoi tout article épuisé
+  alerterait — y compris celui qu'on commande à la demande, et une alerte qui se
+  déclenche toujours est une alerte qu'on cesse de lire. Un mouvement
+  **additionne** au lieu d'écraser, ce qui le rend juste quand deux écrans
+  l'appellent coup sur coup, et un transfert atelier → camion ne prend jamais
+  plus que ce qu'il y a. L'unicité `(articleId, lieu)` est portée par le **seul
+  index unique du projet**, et c'est une règle et non une optimisation : deux
+  lignes « atelier » donneraient deux comptes contradictoires sans que rien ne
+  dise lequel est bon.
+  **Le catalogue d'un fournisseur est un lien, pas un import.** Un catalogue n'a
+  pas de format d'échange et change sans prévenir ; l'aspirer reviendrait à tenir
+  une copie fausse au premier changement de tarif — le genre de faux qui part
+  ensuite sur un devis. La préférence est un booléen et non une note : on n'a pas
+  d'avis nuancé sur un fournisseur, on a celui qu'on appelle en premier et les
+  autres, et il remonte en tête de liste plutôt que d'être marqué au milieu.
+  `Degressif.kt` porte le **prix par rang d'unité** : entretenir un split coûte
+  100 €, la deuxième unité 80, la troisième 70. C'est un prix par unité qui
+  décroît et non une remise sur le total — le déplacement et la mise en route
+  sont payés par la première. La lecture est **par rang et non par tranche**, et
+  les deux diffèrent : trois unités font 100 + 80 + 70 = 250 € et non 3 × 70.
+  Celle-ci est la lecture du métier, et surtout la seule qui ne fasse jamais
+  *baisser* la facture quand on ajoute une unité — un test tient cette propriété.
+  Le rang 1 n'est pas un palier : c'est `Prestation.prixUnitaire`, et le
+  dupliquer l'aurait fait diverger au premier changement de tarif. La dégression
+  **devient des lignes de devis ordinaires** (`LignesDegressives`), comme le
+  déplacement avant elle et pour les mêmes raisons — et c'est aussi ce qui la
+  rend visible pour le client, là où un prix moyenné l'aurait cachée.
+  `Substitutions` répond à « par quoi remplacer ce fluide, et pourquoi celui-là
+  plutôt que l'autre ? ». **Ce n'est jamais un verdict**, comme `Depannage` : la
+  table connaît des familles de fluides, pas *cette* machine — le compresseur,
+  son année et sa garantie décident, et le renvoi au constructeur est en tête de
+  l'écran plutôt qu'en pied de page, parce que lu après avoir choisi il ne sert
+  plus à rien. Rien n'y est extrapolé : un fluide absent n'a aucune piste, et
+  rapprocher deux fluides « parce qu'ils se ressemblent » serait plus grave
+  qu'un GWP deviné — c'est un compresseur qui le paie. Rien n'y est recopié non
+  plus : `EcartFluides` tire le GWP et la classe du catalogue, le glissement des
+  courbes calculées, si bien qu'une correction de GWP se répercute seule. Une
+  **hausse** de GWP s'affiche comme telle : une conversion de prolongation
+  alourdit le bilan, et le taire laisserait croire que toute conversion est un
+  progrès.
   `initialesDe` est partagée : quatre écrans la dérivaient chacun à sa façon, et
   elles divergeaient déjà — « L'Épicerie du coin » donnait « L » sur l'un et
   « LÉ » sur l'autre.
@@ -486,7 +547,8 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `EcranOutils` tient l'onglet **Outils**, d'une autre nature que les cinq
   autres : il ne regarde **aucune donnée de l'application**. Ce sont des outils de
   métier — réglette, convertisseur, bilan de puissance, périodicité réglementaire,
-  fiche fluide — qu'on consulte sans client ni intervention ouverte, et rien n'y
+  fiche fluide, substitution de fluide — qu'on consulte sans client ni
+  intervention ouverte, et rien n'y
   est persisté : un convertisseur n'a pas d'état à conserver, et lui donner un
   historique aurait créé quelque chose à sauvegarder, restaurer et migrer pour
   rien. Un outil ouvert *remplace* la liste, comme un devis ou une machine
@@ -687,6 +749,26 @@ vient de l'entité, si bien qu'un défaut côté base qu'aucune entité ne décl
 ignoré à la validation. C'est déjà le cas des colonnes de tarif de
 `MIGRATION_9_10`.
 
+`MIGRATION_12_13` apporte les sites et la sous-traitance : trois colonnes,
+aucune table, rien à reconstruire — et c'est le signe que le modèle s'y prêtait.
+`clients.parentId` fait du carnet un arbre à un niveau, et les machines n'ont
+rien eu à changer puisqu'elles pendent déjà d'un `clientId`.
+`interventions.clientFactureId` arrive **nullable**, et c'est ce qui rend justes
+toutes les tournées déjà saisies sans les toucher : `null` veut dire « facturé à
+celui chez qui on est allé ». Un défaut non nul les aurait toutes fait passer
+pour de la sous-traitance d'elles-mêmes, et le test de migration porte là-dessus.
+
+`MIGRATION_13_14` apporte le magasin : trois tables, **cinq index**, aucune
+reconstruction. L'index de `stocks` est le **seul unique du projet** et porte une
+règle plutôt qu'une optimisation — un article n'a qu'une ligne par lieu, et deux
+lignes « atelier » donneraient deux comptes contradictoires sans que rien ne dise
+lequel est bon. La base le refuse, plutôt que de compter sur le dépôt pour y
+penser. Les prix arrivent à zéro comme partout ailleurs.
+
+`MIGRATION_14_15` apporte le prix dégressif : une table, un index. Le prix du
+rang 1 est déjà `prestations.prixUnitaire`, et un palier `aPartirDe = 1` aurait
+dupliqué cette valeur pour la faire diverger au premier changement de tarif.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -769,13 +851,19 @@ l'APK : un test rouge bloque la publication.
 | `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
+| `MaterielRepositoryTest` | Les trois façons de dire une marge et leur non-confusion, le manque jugé endroit par endroit, le seuil à zéro qui n'alerte pas, un mouvement qui additionne, un transfert qui ne prend que le disponible |
+| `DegressifTest` | Le prix par rang et non par tranche, le total qui ne décroît jamais quand on ajoute une unité, les rangs au même prix regroupés, la dégression devenue lignes de devis |
+| `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
 `FauxDevisDao`, `FauxParametresDao`, `FauxTechnicienDao`, `FauxPrestationDao`,
-`FauxVerificationFluideDao` — qui reproduisent le contrat SQL des vrais, et sur `FauxRangementPhotos`, une liste de noms de
+`FauxVerificationFluideDao`, `FauxMaterielDao` — qui reproduisent le contrat SQL
+des vrais (celui du magasin recopie à la main l'unicité `(articleId, lieu)` que
+l'index porte en base : la laisser au hasard ferait passer des tests que la vraie
+base refuserait), et sur `FauxRangementPhotos`, une liste de noms de
 fichiers qui tient lieu de stockage d'images. Seul `MigrationTest` a besoin d'un
 vrai SQLite, fourni par Robolectric. Rien ne décode d'image : ce qui se vérifie
 sans téléphone est isolé dans `ReductionPhoto`.
@@ -815,6 +903,24 @@ versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
 
+Le format 11 ajoute les **paliers dégressifs**, pour la même raison que les prix
+du catalogue : c'est une décision commerciale de l'entreprise, pas une donnée
+qu'on retrouve. Un technicien qui restaure et voit ses dégressions effacées
+referait ses devis au plein tarif sans s'en apercevoir.
+
+Le format 10 ajoute le **magasin** — fournisseurs, articles, stocks. Deux champs
+justifient à eux seuls que ces tables partent dans l'archive : le **prix
+d'achat**, qui se relève sur une facture fournisseur et ne se retrouve nulle part
+ailleurs, et le **seuil** de réapprovisionnement, qui est un jugement porté sur
+son propre métier — « en dessous de trois, je suis en panne ». Le perdre rendrait
+toutes les alertes muettes sans que rien ne le signale.
+
+Le format 9 ajoute les **sites** (`clients.parentId`) et la **sous-traitance**
+(`clientFactureId`). Les deux champs y sont facultatifs, et leur absence veut
+dire dans un fichier ce qu'elle veut dire en base : le carnet était plat, et la
+facture partait chez celui chez qui on était allé. Une tournée d'alors se relit
+donc juste, sans rien supposer.
+
 Le format 8 ajoute les factures et leurs lignes, ainsi que le délai de paiement
 et le taux de pénalités des réglages. Une facture est sauvegardée pour une raison
 que les autres lignes n'ont pas : c'est un **document comptable**, que
@@ -843,6 +949,17 @@ même titre qu'un statut.
 avait d'abord exclu une clé d'API des réglages exportés ; depuis que la clé vit
 dans le relais, il n'y en a plus du tout à exclure. Le test reste, pour que la
 propriété ne se reperde pas le jour où un champ de ce genre reviendrait.
+
+Il cherche un **nom de champ**, et non une sous-chaîne, et il a fallu s'y
+reprendre : la première version balayait le fichier entier à la recherche de
+« cle », ce qui a fini par mordre le jour où le magasin a ajouté une liste
+`articles` — qui contient les trois lettres. La leçon vaut d'être écrite parce
+qu'elle ne concerne pas que ce test : **un test qui échoue sur un mot ordinaire
+ne survit pas**, il finit désactivé, et la propriété qu'il gardait part avec lui.
+Il découpe donc les noms de champ en mots et compare mot à mot, ce qui attrape
+toujours `cleApi` ou `tokenRelais` sans se déclencher sur `articles`. Les mots
+sans ambiguïté — `token`, `secret` — restent cherchés partout, valeurs comprises :
+un secret rangé sous un nom anodin ne se repère qu'ainsi.
 
 Le format 6 avait ajouté les unités intérieures (`parentId`), la prestation comptée par
 unité, la ligne offerte et le régime de TVA du devis, l'en-tête d'entreprise avec
@@ -1304,6 +1421,14 @@ place » venant en tête :
 - **Les péages automatiques**, le jour où ils compteront plus que l'absence de
   carte bancaire. C'est le relais qui changerait, pas l'application : elle sait
   déjà lire un péage chiffré et le dire connu.
+- **Ce qu'une intervention a coûté, et ce qu'elle rapporte.** Le magasin apporte
+  le prix d'achat, le chrono apporte le temps ; il manque le **coût horaire
+  interne** — ce qu'une heure de technicien coûte à l'entreprise, distinct du
+  taux facturé — et le prix d'achat recopié sur la pièce posée, pour que la marge
+  d'une intervention de mars reste celle de mars.
+- **Les écrans du magasin** : l'inventaire, les alertes de réapprovisionnement,
+  le carnet de fournisseurs et le chargement du camion. Le modèle est posé et
+  éprouvé, rien n'y mène encore depuis l'application.
 - **Recouper les courbes livrées** avec la table du fournisseur qu'on utilise,
   fluide par fluide, et cocher chacune dans la réglette. Ce n'est plus un
   préalable — les valeurs sont calculées, et le report est ouvert —, mais un

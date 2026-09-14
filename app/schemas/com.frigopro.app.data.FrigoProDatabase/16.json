@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 15,
-    "identityHash": "370fe6ae1c3555a4ec2f9c7dc26648e5",
+    "version": 16,
+    "identityHash": "a-remplacer",
     "entities": [
       {
         "tableName": "interventions",
@@ -528,7 +528,7 @@
       },
       {
         "tableName": "mouvements_fluide",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `equipementId` TEXT, `fluide` TEXT NOT NULL, `sens` TEXT NOT NULL, `masseKg` REAL NOT NULL, `le` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `equipementId` TEXT, `fluide` TEXT NOT NULL, `sens` TEXT NOT NULL, `masseKg` REAL NOT NULL, `prixAchatKg` REAL NOT NULL, `le` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -562,6 +562,12 @@
           {
             "fieldPath": "masseKg",
             "columnName": "masseKg",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixAchatKg",
+            "columnName": "prixAchatKg",
             "affinity": "REAL",
             "notNull": true
           },
@@ -607,7 +613,7 @@
       },
       {
         "tableName": "pieces_posees",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `designation` TEXT NOT NULL, `reference` TEXT NOT NULL, `quantite` REAL NOT NULL, `prixUnitaire` REAL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `interventionId` TEXT NOT NULL, `designation` TEXT NOT NULL, `reference` TEXT NOT NULL, `quantite` REAL NOT NULL, `prixUnitaire` REAL, `prixAchat` REAL NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -643,6 +649,12 @@
             "fieldPath": "prixUnitaire",
             "columnName": "prixUnitaire",
             "affinity": "REAL"
+          },
+          {
+            "fieldPath": "prixAchat",
+            "columnName": "prixAchat",
+            "affinity": "REAL",
+            "notNull": true
           },
           {
             "fieldPath": "modifieLe",
@@ -860,7 +872,7 @@
       },
       {
         "tableName": "parametres",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `technicien` TEXT NOT NULL, `attestation` TEXT NOT NULL, `themeSombre` INTEGER NOT NULL, `modeGants` INTEGER NOT NULL, `chronoAuto` INTEGER NOT NULL, `tauxHoraire` REAL NOT NULL, `tauxTva` REAL NOT NULL, `assujettiTva` INTEGER NOT NULL, `entreprise` TEXT NOT NULL, `entrepriseAdresse` TEXT NOT NULL, `entrepriseTelephone` TEXT NOT NULL, `entrepriseEmail` TEXT NOT NULL, `entrepriseSiret` TEXT NOT NULL, `logoFichier` TEXT, `adresseDepart` TEXT NOT NULL, `modeDeplacement` TEXT NOT NULL, `prixKm` REAL NOT NULL, `prixHeureTrajet` REAL NOT NULL, `minimumDeplacement` REAL NOT NULL, `refacturerPeages` INTEGER NOT NULL, `delaiPaiementJours` INTEGER NOT NULL, `tauxPenalitesRetard` REAL NOT NULL, `derniereSauvegardeLe` INTEGER, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `technicien` TEXT NOT NULL, `attestation` TEXT NOT NULL, `themeSombre` INTEGER NOT NULL, `modeGants` INTEGER NOT NULL, `chronoAuto` INTEGER NOT NULL, `tauxHoraire` REAL NOT NULL, `coutHoraireInterne` REAL NOT NULL, `tauxTva` REAL NOT NULL, `assujettiTva` INTEGER NOT NULL, `entreprise` TEXT NOT NULL, `entrepriseAdresse` TEXT NOT NULL, `entrepriseTelephone` TEXT NOT NULL, `entrepriseEmail` TEXT NOT NULL, `entrepriseSiret` TEXT NOT NULL, `logoFichier` TEXT, `adresseDepart` TEXT NOT NULL, `modeDeplacement` TEXT NOT NULL, `prixKm` REAL NOT NULL, `prixHeureTrajet` REAL NOT NULL, `minimumDeplacement` REAL NOT NULL, `refacturerPeages` INTEGER NOT NULL, `delaiPaiementJours` INTEGER NOT NULL, `tauxPenalitesRetard` REAL NOT NULL, `derniereSauvegardeLe` INTEGER, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -901,6 +913,12 @@
           {
             "fieldPath": "tauxHoraire",
             "columnName": "tauxHoraire",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coutHoraireInterne",
+            "columnName": "coutHoraireInterne",
             "affinity": "REAL",
             "notNull": true
           },
@@ -1827,7 +1845,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '370fe6ae1c3555a4ec2f9c7dc26648e5')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a-remplacer')"
     ]
   }
 }

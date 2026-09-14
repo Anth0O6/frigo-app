@@ -349,6 +349,8 @@ data class MouvementFluideSauvegarde(
     val fluide: String,
     val sens: String,
     val masseKg: Double,
+    /** Le prix du kilo au jour du mouvement. Absent d'avant le format 12. */
+    val prixAchatKg: Double = 0.0,
     val le: Long = 0L,
     val modifieLe: Long = 0L,
 )
@@ -361,6 +363,8 @@ data class PiecePoseeSauvegarde(
     val reference: String = "",
     val quantite: Double = 1.0,
     val prixUnitaire: Double? = null,
+    /** Le prix d'achat au jour de la pose. Absent d'avant le format 12. */
+    val prixAchat: Double = 0.0,
     val modifieLe: Long = 0L,
 )
 
@@ -422,6 +426,8 @@ data class ParametresSauvegarde(
     val modeGants: Boolean = false,
     val chronoAuto: Boolean = false,
     val tauxHoraire: Double = 0.0,
+    /** Ce qu'une heure coûte à l'entreprise, distinct du taux facturé. */
+    val coutHoraireInterne: Double = 0.0,
     val tauxTva: Double = 20.0,
     val assujettiTva: Boolean = true,
     val entreprise: String = "",
@@ -513,7 +519,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 11
+const val FORMAT_COURANT: Int = 12
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -879,6 +885,7 @@ internal fun MouvementFluide.versSauvegarde(): MouvementFluideSauvegarde = Mouve
     fluide = fluide,
     sens = sens.name,
     masseKg = masseKg,
+    prixAchatKg = prixAchatKg,
     le = le.toEpochMilli(),
     modifieLe = modifieLe.toEpochMilli(),
 )
@@ -898,6 +905,7 @@ internal fun MouvementFluideSauvegarde.versMouvement(): MouvementFluide? {
         fluide = fluide,
         sens = direction,
         masseKg = masseKg,
+        prixAchatKg = prixAchatKg,
         le = Instant.ofEpochMilli(le),
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
@@ -992,6 +1000,7 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     modeGants = modeGants,
     chronoAuto = chronoAuto,
     tauxHoraire = tauxHoraire,
+    coutHoraireInterne = coutHoraireInterne,
     tauxTva = tauxTva,
     assujettiTva = assujettiTva,
     entreprise = entreprise,
@@ -1026,6 +1035,7 @@ internal fun ParametresSauvegarde.versParametres(): Parametres? {
         modeGants = modeGants,
         chronoAuto = chronoAuto,
         tauxHoraire = tauxHoraire,
+        coutHoraireInterne = coutHoraireInterne,
         tauxTva = tauxTva,
         assujettiTva = assujettiTva,
         entreprise = entreprise,

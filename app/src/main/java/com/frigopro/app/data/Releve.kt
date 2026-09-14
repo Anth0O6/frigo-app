@@ -89,6 +89,14 @@ data class MouvementFluide(
     val fluide: String,
     val sens: SensFluide,
     val masseKg: Double,
+    /**
+     * Ce que le kilo de fluide a coûté, hors taxes.
+     *
+     * Même motif que [PiecePosee.prixAchat] : le prix du jour du mouvement, et
+     * non celui d'aujourd'hui. Sur un fluide dont le tarif a doublé en un an —
+     * ce qui est arrivé au R-404A —, l'écart n'est pas anecdotique.
+     */
+    val prixAchatKg: Double = 0.0,
     val le: Instant = Instant.EPOCH,
     val modifieLe: Instant = Instant.EPOCH,
 )
@@ -114,5 +122,15 @@ data class PiecePosee(
     val reference: String = "",
     val quantite: Double = 1.0,
     val prixUnitaire: Double? = null,
+    /**
+     * Ce que la pièce a coûté, hors taxes.
+     *
+     * Recopié sur la ligne plutôt que lu dans le magasin au moment du calcul,
+     * et c'est la même règle que le taux de TVA d'une facture : une
+     * intervention de mars doit rester chiffrable en mars, et une hausse du
+     * tarif fournisseur en juin ne doit pas réécrire la marge qu'on a
+     * réellement faite. Zéro veut dire « non renseigné ».
+     */
+    val prixAchat: Double = 0.0,
     val modifieLe: Instant = Instant.EPOCH,
 )

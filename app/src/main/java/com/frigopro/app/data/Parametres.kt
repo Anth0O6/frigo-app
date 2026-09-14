@@ -42,6 +42,20 @@ data class Parametres(
     val modeGants: Boolean = false,
     val chronoAuto: Boolean = false,
     val tauxHoraire: Double = 0.0,
+    /**
+     * Ce qu'une heure de technicien **coûte à l'entreprise**, hors taxes.
+     *
+     * À ne pas confondre avec [tauxHoraire], qui est ce qu'on facture : entre
+     * les deux il y a le salaire chargé, et c'est tout l'écart qu'on cherche à
+     * mesurer. Les nommer distinctement est le seul moyen de ne pas les
+     * intervertir un jour de saisie rapide — et une inversion donnerait une
+     * marge négative sur une intervention rentable.
+     *
+     * Zéro veut dire « non renseigné », et l'écran réclame alors la valeur
+     * plutôt que d'afficher une marge égale à la recette : un chiffre juste par
+     * accident ne se distingue pas d'un vrai.
+     */
+    val coutHoraireInterne: Double = 0.0,
     val tauxTva: Double = 20.0,
     /**
      * L'entreprise est assujettie à la TVA.

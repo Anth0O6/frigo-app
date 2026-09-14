@@ -770,3 +770,33 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         )
     }
 }
+
+/**
+ * Ce qu'une intervention coûte : trois colonnes, aucune table.
+ *
+ * Les deux prix d'achat sont **recopiés sur la ligne** plutôt que lus dans le
+ * magasin au moment du calcul, et c'est la même règle que le taux de TVA d'une
+ * facture : une intervention de mars doit rester chiffrable en mars. Une hausse
+ * du tarif fournisseur en juin ne doit pas réécrire la marge qu'on a réellement
+ * faite — sur un fluide dont le prix a doublé en un an, l'écart n'est pas
+ * anecdotique.
+ *
+ * `coutHoraireInterne` arrive à **zéro**, qui veut dire « non renseigné » et non
+ * « une heure ne coûte rien ». C'est le même choix que le taux de pénalités, et
+ * pour la même raison : un chiffre inventé ici donnerait une marge fausse, et une
+ * marge fausse se paie sur la tarification de l'année suivante. L'écran réclame
+ * la valeur plutôt que d'afficher un résultat flatteur.
+ */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `pieces_posees` ADD COLUMN `prixAchat` REAL NOT NULL DEFAULT 0",
+        )
+        db.execSQL(
+            "ALTER TABLE `mouvements_fluide` ADD COLUMN `prixAchatKg` REAL NOT NULL DEFAULT 0",
+        )
+        db.execSQL(
+            "ALTER TABLE `parametres` ADD COLUMN `coutHoraireInterne` REAL NOT NULL DEFAULT 0",
+        )
+    }
+}
