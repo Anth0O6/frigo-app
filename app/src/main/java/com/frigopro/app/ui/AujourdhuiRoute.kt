@@ -8,71 +8,52 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * L'écran d'accueil, avec son état.
+ * L'accueil, avec son état : la première des trois vues de la tournée.
  *
- * Il partage le `InterventionViewModel` des autres onglets — `viewModel()` rend
- * la même instance pour une même classe — si bien qu'une intervention ouverte
- * depuis l'accueil est la même que celle ouverte depuis le planning, avec son
- * chronomètre en marche et ses relevés déjà saisis. C'est aussi ce qui évite un
- * détour par l'onglet Planning pour commencer sa journée.
+ * Il ne porte plus que l'accueil. L'intervention ouverte et la feuille de saisie
+ * sont tenues par [TourneeRoute], qui l'héberge — elles y étaient recopiées à
+ * l'identique du temps où l'accueil était un onglet à lui seul, et deux copies
+ * du même branchement finissent par ne plus se comporter pareil selon l'onglet
+ * d'où l'on vient.
+ *
+ * Il partage l'`InterventionViewModel` et l'`InterventionsViewModel` des autres
+ * vues — `viewModel()` rend la même instance par classe — si bien qu'une
+ * intervention ouverte d'ici est la même que celle ouverte du planning, avec son
+ * chronomètre en marche et ses relevés déjà saisis.
  */
 @Composable
 fun AujourdhuiRoute(
-    onVoirPlanning: () -> Unit,
+    vue: VueTournee,
+    onVue: (VueTournee) -> Unit,
     onVoirDevis: () -> Unit,
     onVoirMagasin: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AujourdhuiViewModel = viewModel(factory = AujourdhuiViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
-    devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
-    // Celui du planning, et c'est voulu : c'est lui qui tient la saisie en cours,
-    // si bien qu'un formulaire ouvert ici est le même que celui de l'onglet
-    // Planning — un onglet changé en pleine saisie ne perd donc rien.
-    tournee: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
     factures: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
     materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory),
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
-    val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val impayees by factures.aRelancer.collectAsStateWithLifecycle()
     val manquants by materiel.aReapprovisionner.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
-    // Un `if`/`else` plutôt qu'un retour anticipé : la feuille de saisie se pose
-    // **après** ce bloc et doit pouvoir recouvrir les deux écrans, sans quoi
-    // corriger une heure depuis une intervention ouverte ici n'affichait rien.
-    if (ouverte != null) {
-        InterventionRoute(
-            viewModel = detail,
-            onCreerDevis = {
-                devis.onNouveau(detail.etat.value?.client)
-                onVoirDevis()
-            },
-            facturesViewModel = factures,
-            onModifierFiche = {
-                detail.etat.value?.intervention?.let(tournee::onModifierIntervention)
-            },
-            modifier = modifier,
-        )
-    } else {
-        EcranAujourdhui(
-            etat = etat,
-            onOuvrir = detail::onOuvrir,
-            onItineraire = { client -> contexte.ouvrirItineraire(client.adresseComplete) },
-            onVoirPlanning = onVoirPlanning,
-            onVoirDevis = onVoirDevis,
-            modifier = modifier,
-            impayees = impayees,
-            // Ouvrir la facture, puis basculer : l'onglet montre celle qui est
-            // ouverte, et le ViewModel des factures est partagé.
-            onOuvrirFacture = { facture ->
-                factures.onOuvrir(facture)
-                onVoirDevis()
-            },
-            manquants = manquants,
-            onVoirMagasin = onVoirMagasin,
-        )
-    }
-
-    FeuilleFormulaireIntervention(tournee)
+    EcranAujourdhui(
+        etat = etat,
+        vue = vue,
+        onVue = onVue,
+        onOuvrir = detail::onOuvrir,
+        onItineraire = { client -> contexte.ouvrirItineraire(client.adresseComplete) },
+        onVoirDevis = onVoirDevis,
+        modifier = modifier,
+        impayees = impayees,
+        // Ouvrir la facture, puis basculer : l'onglet montre celle qui est
+        // ouverte, et le ViewModel des factures est partagé.
+        onOuvrirFacture = { facture ->
+            factures.onOuvrir(facture)
+            onVoirDevis()
+        },
+        manquants = manquants,
+        onVoirMagasin = onVoirMagasin,
+    )
 }

@@ -114,7 +114,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── InterventionRepository.kt
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
-│       │       ├── FrigoProApp.kt      # coquille : les six onglets
+│       │       ├── FrigoProApp.kt      # coquille : les cinq onglets
 │       │       ├── EcranDemarrage.kt  # logo, anneau et nom, le temps que ce soit prêt
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
@@ -470,17 +470,45 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
-- **`ui`** — `FrigoProApp` est la coquille : six onglets, `Aujourd'hui`,
-  `Planning`, `Facturation`, `Clients`, `Outils` et `Réglages`, et la barre qui
-  en change. Deux de ces onglets portent **plusieurs vues sous une bascule** —
-  la facturation ses deux documents, les clients ses trois carnets — et c'est la
-  réponse constante du projet au fait que la barre est pleine. **Six est un de plus que ce que Material recommande**, et les libellés
-  sont déjà abrégés au plus court lisible ; la contrepartie est assumée plutôt que
-  contournée par un menu « plus » — un onglet derrière un menu n'est pas un onglet,
+- **`ui`** — `FrigoProApp` est la coquille : cinq onglets, `Tournée`,
+  `Factures`, `Carnets`, `Outils` et `Réglages`, et la barre qui en change.
+  **Trois de ces onglets portent plusieurs vues sous une bascule** — la tournée
+  ses trois distances de lecture, la facturation ses deux documents, les carnets
+  ses trois listes — et c'est la réponse constante du projet au fait que la barre
+  est étroite : une bascule sous le titre plutôt qu'un onglet de plus.
+  Ils étaient **six**, et c'était un de plus que ce que Material recommande. La
+  contrepartie ne se payait pas où on l'avait écrite : elle se payait sur les
+  **libellés**, abrégés au point de ne plus rien dire — « Auj. » — et sur l'un
+  d'eux qui **mentait**, l'onglet « Devis » ouvrant un écran intitulé
+  « Facturation ». Le sixième a disparu en réunissant l'accueil et le planning,
+  qui montraient **les mêmes interventions sous deux entrées différentes** sans
+  que rien ne dise laquelle regarder : c'était le point le plus déroutant de
+  l'application, et c'était aussi le plus facile à ne pas voir de l'intérieur.
+  Un menu « plus » reste exclu : un onglet derrière un menu n'est pas un onglet,
   et celui-ci doit s'atteindre d'un pouce, gants aux mains.
-  L'accueil vient en tête parce qu'il répond à la question qu'on se pose en
-  sortant le téléphone — « et maintenant ? » — et le planning juste après, pour
-  la suivante : « et le reste de la semaine ? ». Trois listes y répondent
+  `VueTournee` porte les trois vues du premier onglet — `Maintenant`, `Jour`,
+  `Semaine` —, et elles ne sont pas trois écrans mais trois **distances de
+  lecture** de la même chose : « et maintenant ? », « et le reste de la
+  journée ? », « et le reste de la semaine ? ». L'état vit dans
+  `InterventionsViewModel` et non dans la coquille, à la différence du carnet
+  ouvert : l'accueil et le planning partagent déjà ce ViewModel, si bien qu'une
+  carte de l'accueil n'a rien à transporter pour ouvrir la semaine. On rouvre
+  toujours sur `Maintenant` — revenir sur la vue qu'on avait quittée aurait
+  rouvert le planning de jeudi prochain un mardi matin. `TourneeRoute` héberge
+  les trois, **et l'intervention ouverte**, qui les remplace toutes : le
+  branchement « une intervention est ouverte » et la feuille de saisie étaient
+  auparavant recopiés dans l'accueil *et* dans le planning, et deux copies du
+  même branchement finissent par ne plus se comporter pareil selon l'onglet d'où
+  l'on vient.
+  Le choix **frise / liste** de la journée ne passe pas par cette bascule mais
+  par un bouton de la barre du haut, et la distinction est le point à ne pas
+  perdre : les trois vues sont une navigation, frise-ou-liste une préférence
+  d'affichage. Deux rangées de pastilles empilées auraient laissé croire à cinq
+  destinations là où il y en a trois.
+  Le titre d'un écran nomme **la vue ouverte et non l'onglet** — « Devis », pas
+  « Facturation » —, comme celui des carnets le faisait déjà : répéter le nom du
+  groupe au-dessus d'une bascule laissait l'écran sans dire lequel des deux
+  documents on regarde. Trois listes y répondent
   ensemble et pour la même raison : les factures **à relancer**, les articles
   **à racheter**, les **échéances F-Gas**. Aucune n'est stockée — un impayé, un
   manque et une échéance se déduisent tous trois d'un seuil et d'une date, et un
@@ -1329,11 +1357,12 @@ au lendemain. C'est un défaut qui ne se voit qu'en attendant plusieurs matins, 
 
 ### Là où elles vivent
 
-L'onglet `Devis` est devenu **`Facturation`** et porte les deux documents,
-séparés par une bascule. Une bascule plutôt qu'un septième onglet, et ce n'est
-pas un pis-aller : la barre en porte déjà six, un de plus que ce que Material
-recommande, et un septième aurait réduit chaque cible à ce qu'un pouce ganté ne
-trouve plus. Les deux documents se suivent d'ailleurs dans le temps.
+L'onglet des documents commerciaux — **`Factures`** dans la barre — porte les
+deux, séparés par une bascule, et son titre nomme celui qu'on regarde. Une bascule plutôt qu'un onglet de plus, et ce n'est
+pas un pis-aller : c'est le motif que les trois onglets à plusieurs vues
+partagent, et un onglet supplémentaire aurait réduit chaque cible à ce qu'un
+pouce ganté ne trouve plus. Les deux documents se suivent d'ailleurs dans le
+temps.
 
 Créer une facture depuis une intervention ou depuis un devis **bascule l'onglet
 tout seul**, sans que la coquille ait à transporter un identifiant : `viewModel()`

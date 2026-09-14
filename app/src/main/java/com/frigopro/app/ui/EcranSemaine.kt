@@ -49,6 +49,9 @@ import java.time.LocalDate
  */
 @Composable
 fun EcranSemaine(
+    /** Laquelle des trois vues de la tournée est ouverte : celle-ci, ici. */
+    vue: VueTournee,
+    onVue: (VueTournee) -> Unit,
     lundi: LocalDate,
     jourRetenu: LocalDate,
     interventions: List<Intervention>,
@@ -73,6 +76,13 @@ fun EcranSemaine(
                 total = interventions.size,
                 onPrecedente = onSemainePrecedente,
                 onSuivante = onSemaineSuivante,
+            )
+            BasculeTournee(
+                vue = vue,
+                onVue = onVue,
+                modifier = Modifier
+                    .padding(horizontal = MargeEcran)
+                    .padding(bottom = 14.dp),
             )
             BandeauJours(
                 lundi = lundi,

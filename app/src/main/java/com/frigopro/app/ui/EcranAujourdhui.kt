@@ -56,9 +56,11 @@ import java.time.LocalTime
 @Composable
 fun EcranAujourdhui(
     etat: EtatAujourdhui,
+    /** Laquelle des trois vues de la tournée est ouverte : celle-ci, ici. */
+    vue: VueTournee,
+    onVue: (VueTournee) -> Unit,
     onOuvrir: (Intervention) -> Unit,
     onItineraire: (Client) -> Unit,
-    onVoirPlanning: () -> Unit,
     onVoirDevis: () -> Unit,
     modifier: Modifier = Modifier,
     /**
@@ -98,6 +100,14 @@ fun EcranAujourdhui(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             EnTeteAccueil(etat = etat)
+
+            // La bascule des trois vues, juste sous le titre : exactement où
+            // les carnets et la facturation posent la leur. Elle remplace le
+            // bouton « Planning » qui était en bas de l'écran — un bouton qui
+            // changeait d'onglet, là où ces trois vues sont maintenant le même.
+            // Sans marge propre : la colonne de l'écran pose déjà la marge des
+            // côtés et espace ses enfants.
+            BasculeTournee(vue = vue, onVue = onVue)
 
             if (etat.enAvant != null) {
                 CarteEnAvant(
@@ -186,18 +196,13 @@ fun EcranAujourdhui(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BoutonContour(
-                    texte = "Planning",
-                    onClick = onVoirPlanning,
-                    modifier = Modifier.weight(1f),
-                )
-                BoutonContour(
-                    texte = "Devis",
-                    onClick = onVoirDevis,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            // Le seul raccourci qui reste : les trois vues de la tournée sont
+            // dans la bascule du haut, et la facturation est un autre onglet.
+            BoutonContour(
+                texte = "Devis et factures",
+                onClick = onVoirDevis,
+                modifier = Modifier.fillMaxWidth(),
+            )
             EspaceVertical(24)
         }
     }
@@ -558,9 +563,10 @@ private fun ApercuAujourdhui() {
                 devisEnAttente = 2,
                 chiffreDuMois = 12400.0,
             ),
+            vue = VueTournee.MAINTENANT,
+            onVue = {},
             onOuvrir = {},
             onItineraire = {},
-            onVoirPlanning = {},
             onVoirDevis = {},
         )
     }

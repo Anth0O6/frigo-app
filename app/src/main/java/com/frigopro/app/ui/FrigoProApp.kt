@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.RequestQuote
 import androidx.compose.material.icons.filled.Straighten
@@ -28,34 +27,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * Les six sections de l'application.
+ * Les cinq sections de l'application.
  *
- * L'accueil vient en premier parce qu'il répond à la question qu'on se pose en
- * sortant le téléphone — « et maintenant ? » — et le planning juste après, pour
- * la question suivante : « et le reste de la semaine ? ». Réglages ferme la
- * marche : c'est là que vit la sauvegarde, qu'on ouvre rarement mais dont
- * l'absence se paierait cher.
+ * Elles étaient six, et c'était une de trop — Material n'en recommande pas plus
+ * de cinq, et la contrepartie se lisait sur les libellés : « Auj. » ne voulait
+ * rien dire pour personne, et l'onglet « Devis » ouvrait un écran intitulé
+ * « Facturation ». Le sixième a disparu en réunissant **l'accueil et le
+ * planning**, qui montraient les mêmes interventions sous deux entrées
+ * différentes sans que rien ne dise laquelle regarder : ils sont maintenant deux
+ * des trois vues de [VueTournee], sous la bascule que les carnets et la
+ * facturation portent déjà.
  *
- * **Outils** se range juste avant, et c'est une section d'une autre nature que les
- * cinq autres : elle ne regarde aucune donnée de l'application. Une réglette, un
- * convertisseur, une périodicité réglementaire se consultent sans client ni
- * intervention — au téléphone, devant une plaque, en préparant une tournée — et
- * les enfouir dans la fiche d'une intervention obligeait à en ouvrir une pour
- * convertir des psi.
+ * L'ordre reste celui des questions qu'on se pose : la tournée d'abord — « et
+ * maintenant ? » —, ce qu'elle rapporte ensuite, puis les carnets qu'on tient.
+ * **Outils** se range avant-dernier, et c'est une section d'une autre nature que
+ * les quatre autres : elle ne regarde aucune donnée de l'application. Une
+ * réglette, un convertisseur, une périodicité réglementaire se consultent sans
+ * client ni intervention — au téléphone, devant une plaque —, et les enfouir
+ * dans la fiche d'une intervention obligeait à en ouvrir une pour convertir des
+ * psi. **Réglages** ferme la marche : c'est là que vivent la sauvegarde et le
+ * registre des fluides, qu'on ouvre rarement mais dont l'absence se paierait
+ * cher.
  *
- * Six est **un de plus que ce que Material recommande**, et le libellé s'en
- * ressent : ils sont déjà abrégés au plus court lisible. La contrepartie est
- * assumée plutôt que contournée par un menu « plus » — un onglet derrière un menu
- * n'est pas un onglet, et celui-ci doit s'atteindre d'un pouce, gants aux mains.
+ * Aucun libellé n'est abrégé, et aucun ne ment sur ce qu'il ouvre : c'est ce
+ * que le cinquième onglet a payé.
  */
 enum class Onglet(val libelle: String, val icone: ImageVector) {
-    AUJOURDHUI("Auj.", Icons.Filled.Today),
-
-    // La variante « AutoMirrored » se retourne dans une langue écrite de droite
-    // à gauche, ce que `Icons.Filled` ne fait pas : c'est elle qu'il faut.
-    TOURNEE("Planning", Icons.AutoMirrored.Filled.EventNote),
-    DEVIS("Devis", Icons.Filled.RequestQuote),
-    CLIENTS("Clients", Icons.Filled.Contacts),
+    TOURNEE("Tournée", Icons.Filled.Today),
+    FACTURES("Factures", Icons.Filled.RequestQuote),
+    CARNETS("Carnets", Icons.Filled.Contacts),
     OUTILS("Outils", Icons.Filled.Straighten),
     REGLAGES("Réglages", Icons.Filled.Tune),
 }
@@ -63,7 +63,7 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
 /**
  * Coquille de l'application : la section affichée et la barre qui en change.
  *
- * Pas de graphe de navigation. Avec six sections sans lien hiérarchique, une
+ * Pas de graphe de navigation. Avec cinq sections sans lien hiérarchique, une
  * variable d'état suffit, et `rememberSaveable` la fait survivre à une rotation
  * comme à la mise en arrière-plan. La bibliothèque de navigation aura son
  * intérêt le jour où il faudra une pile arrière — une fiche client ouverte en
@@ -82,7 +82,7 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
  */
 @Composable
 fun FrigoProApp(modifier: Modifier = Modifier) {
-    var onglet by rememberSaveable { mutableStateOf(Onglet.AUJOURDHUI) }
+    var onglet by rememberSaveable { mutableStateOf(Onglet.TOURNEE) }
 
     // Le carnet ouvert est tenu **ici** et non dans `CarnetsRoute`, parce que
     // l'accueil doit pouvoir désigner le magasin : « il manque trois articles »
@@ -103,20 +103,16 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                 ),
         ) {
             when (onglet) {
-                Onglet.AUJOURDHUI -> AujourdhuiRoute(
-                    onVoirPlanning = { onglet = Onglet.TOURNEE },
-                    onVoirDevis = { onglet = Onglet.DEVIS },
+                Onglet.TOURNEE -> TourneeRoute(
+                    onAllerAuxDevis = { onglet = Onglet.FACTURES },
                     onVoirMagasin = {
                         carnet = VueCarnet.MAGASIN
-                        onglet = Onglet.CLIENTS
+                        onglet = Onglet.CARNETS
                     },
                 )
 
-                Onglet.TOURNEE -> InterventionsRoute(
-                    onAllerAuxDevis = { onglet = Onglet.DEVIS },
-                )
-                Onglet.CLIENTS -> CarnetsRoute(vue = carnet, onVue = { carnet = it })
-                Onglet.DEVIS -> FacturationRoute()
+                Onglet.FACTURES -> FacturationRoute()
+                Onglet.CARNETS -> CarnetsRoute(vue = carnet, onVue = { carnet = it })
                 Onglet.OUTILS -> OutilsRoute()
                 Onglet.REGLAGES -> ReglagesRoute()
             }
@@ -127,8 +123,9 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                     selected = onglet == cible,
                     onClick = { onglet = cible },
                     icon = { Icon(imageVector = cible.icone, contentDescription = null) },
-                    // `maxLines` explicite : à six onglets la place d'un libellé se
-                    // compte, et un retour à la ligne décalerait toute la barre.
+                    // `maxLines` explicite : la place d'un libellé se compte
+                    // encore à cinq, et un retour à la ligne décalerait toute
+                    // la barre.
                     label = { Text(text = cible.libelle, maxLines = 1) },
                 )
             }

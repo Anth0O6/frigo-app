@@ -29,6 +29,28 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
+ * Les trois vues de la tournée, sous une seule bascule.
+ *
+ * Elles ne sont pas trois écrans mais trois **distances de lecture** de la même
+ * chose : « et maintenant ? », « et le reste de la journée ? », « et le reste de
+ * la semaine ? ». Les avoir séparées en deux onglets — l'accueil et le planning
+ * — était le point le plus déroutant de l'application : deux entrées de la barre
+ * du bas montraient les mêmes interventions, sans que rien ne dise laquelle
+ * regarder. Une bascule sous le titre est la réponse que le projet donne déjà
+ * partout où un onglet porte plusieurs vues, les carnets et la facturation, et
+ * les trois se comportent maintenant de la même façon.
+ *
+ * Le gain n'est pas seulement visuel : la barre du bas passe de six entrées à
+ * cinq, c'est-à-dire au maximum que Material recommande, et les libellés
+ * cessent d'être abrégés — « Auj. » ne voulait rien dire pour personne.
+ */
+enum class VueTournee(val libelle: String) {
+    MAINTENANT("Maintenant"),
+    JOUR("Jour"),
+    SEMAINE("Semaine"),
+}
+
+/**
  * Détient l'état de l'écran « Interventions ».
  *
  * L'UI observe [jour], [lignes], [clients], [types] et [formulaire], et remonte
@@ -64,17 +86,25 @@ class InterventionsViewModel(
         _frise.value = !_frise.value
     }
 
-    private val _semaineOuverte = MutableStateFlow(false)
+    private val _vue = MutableStateFlow(VueTournee.MAINTENANT)
 
     /**
-     * La vue semaine, par-dessus la tournée.
+     * Laquelle des trois vues de la tournée est ouverte.
      *
-     * Même onglet et non une section de plus : la journée et la semaine
-     * répondent à deux questions du même métier — « et maintenant ? » et
-     * « où puis-je caser jeudi ? » — et passer de l'une à l'autre ne doit pas
-     * coûter un aller-retour par la barre du bas.
+     * Elle est tenue **ici** et non dans la coquille, à la différence du carnet,
+     * parce que l'accueil et le planning partagent déjà ce ViewModel : la carte
+     * de l'accueil n'a donc rien à transporter pour ouvrir la semaine, elle la
+     * demande à l'objet qu'elle a sous la main.
+     *
+     * On rouvre sur « Maintenant », qui est la question qu'on se pose en sortant
+     * le téléphone. Revenir sur la vue qu'on avait quittée aurait rouvert le
+     * planning de jeudi prochain un mardi matin.
      */
-    val semaineOuverte: StateFlow<Boolean> = _semaineOuverte.asStateFlow()
+    val vue: StateFlow<VueTournee> = _vue.asStateFlow()
+
+    fun onVue(vue: VueTournee) {
+        _vue.value = vue
+    }
 
     /** Les interventions de la semaine où tombe la journée affichée. */
     val semaine: StateFlow<List<Intervention>> = _jour
@@ -84,14 +114,6 @@ class InterventionsViewModel(
             started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
             initialValue = emptyList(),
         )
-
-    fun onOuvrirSemaine() {
-        _semaineOuverte.value = true
-    }
-
-    fun onFermerSemaine() {
-        _semaineOuverte.value = false
-    }
 
     /** Recule ou avance d'une semaine entière, en gardant le jour de la semaine. */
     fun onSemainePrecedente() {

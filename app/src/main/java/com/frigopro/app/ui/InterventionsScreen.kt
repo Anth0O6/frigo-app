@@ -22,12 +22,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -57,6 +58,7 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
+import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.AValider
 import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.FrigoProTheme
@@ -76,9 +78,11 @@ import java.time.LocalTime
  * navigation.
  */
 @Composable
-fun InterventionsRoute(
+fun TourneeRoute(
     /** Chiffrer depuis une intervention : la coquille seule sait changer d'onglet. */
     onAllerAuxDevis: () -> Unit,
+    /** Le manque annoncé par l'accueil mène au magasin, dans un autre onglet. */
+    onVoirMagasin: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
@@ -87,14 +91,19 @@ fun InterventionsRoute(
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
-    val semaineOuverte by viewModel.semaineOuverte.collectAsStateWithLifecycle()
+    val vue by viewModel.vue.collectAsStateWithLifecycle()
     val frise by viewModel.frise.collectAsStateWithLifecycle()
     val semaine by viewModel.semaine.collectAsStateWithLifecycle()
 
-    BackHandler(enabled = semaineOuverte && ouverte == null) { viewModel.onFermerSemaine() }
+    // Le retour système ramène à « Maintenant », qui est le point de départ de
+    // l'onglet. Une seule profondeur à défaire : toujours pas de graphe de
+    // navigation.
+    BackHandler(enabled = ouverte == null && vue != VueTournee.MAINTENANT) {
+        viewModel.onVue(VueTournee.MAINTENANT)
+    }
 
-    // Un `when` plutôt que trois retours anticipés : le formulaire se pose **après**
-    // ce bloc et doit pouvoir recouvrir n'importe lequel des trois écrans. Avec des
+    // Un `when` plutôt que des retours anticipés : le formulaire se pose **après**
+    // ce bloc et doit pouvoir recouvrir n'importe lequel des écrans. Avec des
     // `return`, corriger l'heure depuis une intervention ouverte n'affichait rien —
     // la feuille était bien là, mais on sortait de la fonction avant de la dessiner.
     when {
@@ -110,13 +119,26 @@ fun InterventionsRoute(
             modifier = modifier,
         )
 
-        semaineOuverte -> EcranSemaine(
+        vue == VueTournee.MAINTENANT -> AujourdhuiRoute(
+            vue = vue,
+            onVue = viewModel::onVue,
+            onVoirDevis = onAllerAuxDevis,
+            onVoirMagasin = onVoirMagasin,
+            modifier = modifier,
+        )
+
+        vue == VueTournee.SEMAINE -> EcranSemaine(
+            vue = vue,
+            onVue = viewModel::onVue,
             lundi = lundiDe(jour),
             jourRetenu = jour,
             interventions = semaine,
+            // Toucher un jour de la semaine ouvre ce jour-là : c'est le geste
+            // qu'on fait pour aller voir, et rester sur la semaine après l'avoir
+            // choisi n'aurait mené nulle part.
             onJourRetenu = {
                 viewModel.onJourChoisi(it)
-                viewModel.onFermerSemaine()
+                viewModel.onVue(VueTournee.JOUR)
             },
             onSemainePrecedente = viewModel::onSemainePrecedente,
             onSemaineSuivante = viewModel::onSemaineSuivante,
@@ -126,13 +148,14 @@ fun InterventionsRoute(
         )
 
         else -> InterventionsScreen(
+            vue = vue,
+            onVue = viewModel::onVue,
             jour = jour,
             lignes = lignes,
             onJourPrecedent = viewModel::onJourPrecedent,
             onJourSuivant = viewModel::onJourSuivant,
             onJourChoisi = viewModel::onJourChoisi,
             onNouvelleIntervention = viewModel::onNouvelleIntervention,
-            onOuvrirSemaine = viewModel::onOuvrirSemaine,
             onOuvrirIntervention = detail::onOuvrir,
             onModifierIntervention = viewModel::onModifierIntervention,
             onChangerStatut = viewModel::onChangerStatut,
@@ -199,13 +222,14 @@ fun FeuilleFormulaireIntervention(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InterventionsScreen(
+    vue: VueTournee,
+    onVue: (VueTournee) -> Unit,
     jour: LocalDate,
     lignes: List<LigneTournee>,
     onJourPrecedent: () -> Unit,
     onJourSuivant: () -> Unit,
     onJourChoisi: (LocalDate) -> Unit,
     onNouvelleIntervention: () -> Unit,
-    onOuvrirSemaine: () -> Unit,
     onOuvrirIntervention: (Intervention) -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
@@ -239,11 +263,18 @@ fun InterventionsScreen(
                 onJourPrecedent = onJourPrecedent,
                 onJourSuivant = onJourSuivant,
                 onOuvrirSelecteur = { selecteurOuvert = true },
-                onOuvrirSemaine = onOuvrirSemaine,
+                frise = frise,
+                onBasculerVue = onBasculerVue,
                 actions = actions,
             )
+            BasculeTournee(
+                vue = vue,
+                onVue = onVue,
+                modifier = Modifier
+                    .padding(horizontal = MargeEcran)
+                    .padding(bottom = 14.dp),
+            )
             PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
-            BasculeVue(frise = frise, onBasculerVue = onBasculerVue)
             BandeauJournee(lignes = lignes)
             if (frise) {
                 Column(
@@ -322,7 +353,9 @@ private fun EnTeteTournee(
     onJourPrecedent: () -> Unit,
     onJourSuivant: () -> Unit,
     onOuvrirSelecteur: () -> Unit,
-    onOuvrirSemaine: () -> Unit,
+    /** La journée en frise horaire plutôt qu'en liste. */
+    frise: Boolean,
+    onBasculerVue: () -> Unit,
     actions: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -359,10 +392,15 @@ private fun EnTeteTournee(
             description = "Jour suivant",
             onClick = onJourSuivant,
         )
+        // Frise ou liste : une préférence d'affichage, pas une navigation. Elle
+        // tient donc dans un bouton de la barre du haut, là où la bascule des
+        // trois vues occupe la rangée en dessous — les deux ne se lisent pas au
+        // même niveau, et les empiler en deux rangées de pastilles laissait
+        // croire à quatre destinations.
         BoutonCarre(
-            icone = Icons.Filled.CalendarMonth,
-            description = "Voir la semaine",
-            onClick = onOuvrirSemaine,
+            icone = if (frise) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.Schedule,
+            description = if (frise) "Voir en liste" else "Voir en frise",
+            onClick = onBasculerVue,
         )
         actions()
     }
@@ -431,41 +469,28 @@ private fun PastillesSemaine(jour: LocalDate, onJourChoisi: (LocalDate) -> Unit)
 
 private const val JOURS_SEMAINE = 7
 
-/** La bascule frise / liste : deux mots, celui qui est actif en plein. */
+/**
+ * La bascule des trois vues de la tournée.
+ *
+ * Elle passe par [RangeePastilles], comme celle des carnets et celle de la
+ * facturation, là où cet écran portait sa propre bascule dessinée à la main. Le
+ * projet nomme son vocabulaire visuel une fois pour cette raison précise : deux
+ * bascules qui se ressemblent sans être la même divergent au premier
+ * ajustement, et l'utilisateur apprend alors deux gestes pour une seule idée.
+ */
 @Composable
-private fun BasculeVue(frise: Boolean, onBasculerVue: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .padding(horizontal = MargeEcran)
-            .padding(bottom = 14.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            OngletVue(texte = "Frise", actif = frise, onClick = { if (!frise) onBasculerVue() })
-            OngletVue(texte = "Liste", actif = !frise, onClick = { if (frise) onBasculerVue() })
-        }
-    }
-}
-
-@Composable
-private fun OngletVue(texte: String, actif: Boolean, onClick: () -> Unit) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = if (actif) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
-        onClick = onClick,
-    ) {
-        Text(
-            text = texte,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (actif) {
-                MaterialTheme.colorScheme.onPrimary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
-        )
-    }
+fun BasculeTournee(
+    vue: VueTournee,
+    onVue: (VueTournee) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    RangeePastilles(
+        options = VueTournee.entries,
+        retenue = vue,
+        libelle = { it.libelle },
+        onChoisir = onVue,
+        modifier = modifier,
+    )
 }
 
 /**
@@ -762,6 +787,8 @@ private fun sousTitre(intervention: Intervention): String = listOf(
 private fun ApercuTournee() {
     FrigoProTheme(sombre = true) {
         InterventionsScreen(
+            vue = VueTournee.JOUR,
+            onVue = {},
             jour = LocalDate.of(2026, 5, 14),
             lignes = listOf(
                 LigneTournee(
@@ -794,7 +821,6 @@ private fun ApercuTournee() {
             onJourSuivant = {},
             onJourChoisi = {},
             onNouvelleIntervention = {},
-            onOuvrirSemaine = {},
             onOuvrirIntervention = {},
             onModifierIntervention = {},
             onChangerStatut = {},

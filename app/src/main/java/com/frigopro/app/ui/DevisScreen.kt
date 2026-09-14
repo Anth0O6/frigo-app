@@ -296,7 +296,11 @@ fun ListeDevis(
     ) { marges ->
         Column(modifier = Modifier.padding(marges)) {
             Text(
-                text = "Facturation",
+                // Le titre nomme la vue ouverte et non l'onglet, comme celui
+                // des carnets : « Facturation » au-dessus d'une bascule
+                // « Devis · Factures » répétait le nom du groupe et laissait
+                // l'écran sans dire lequel des deux on regarde.
+                text = VueFacturation.DEVIS.libelle,
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
             )
