@@ -13,7 +13,7 @@ registre, les pièces posées, des photos avant/après, et un compte-rendu que l
 client signe du doigt. Les relevés alimentent une **aide au dépannage** qui
 propose des pistes — jamais un verdict — et le contrôle qui tranche chacune.
 
-Un onglet Clients tient le carnet — adresse et téléphone compris — ainsi que le
+Un onglet Carnets tient le carnet des clients — adresse et téléphone compris — ainsi que le
 parc de machines de chaque client : plaque signalétique, fluide et charge,
 photos, échéance du contrôle d'étanchéité et historique. Un onglet Facturation
 permet de chiffrer sur place, **déplacement compris** : temps de trajet,
@@ -133,7 +133,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── EcranFournisseurs.kt # le carnet, filtré, et le catalogue
 │       │       ├── MaterielViewModel.kt
 │       │       ├── DialoguePaliers.kt  # le prix par rang d'unité
-│       │       ├── EcranIntervention.kt # les quatre volets d'une intervention
+│       │       ├── EcranIntervention.kt # les cinq volets d'une intervention
 │       │       ├── OngletReleves.kt     # chrono, relevés frigorifiques, fluide
 │       │       ├── OngletPieces.kt      # pièces posées, photos avant/après
 │       │       ├── OngletRapport.kt     # compte-rendu, et tracé de la signature
@@ -560,7 +560,7 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   qui elle a lieu, `null` pour une ligne d'avant le carnet. Le rapprochement se
   fait là plutôt que par une jointure SQL : les deux flux sont déjà observés, et
   l'écran reçoit de quoi afficher comme de quoi agir. `ClientsViewModel` tient
-  l'onglet Clients sur le même modèle, `EtatFicheClient` jouant pour la fiche le
+  le carnet des clients sur le même modèle, `EtatFicheClient` jouant pour la fiche le
   rôle d'`EtatFormulaire` pour l'intervention. `EquipementsViewModel` tient le
   parc : la carte d'un client se déplie sur ses machines, et une machine s'ouvre
   en plein onglet — on y regarde des photos, ce qu'une feuille à mi-hauteur ne
@@ -572,9 +572,9 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   décode une image à la taille demandée, sans bibliothèque de chargement : les
   fichiers sont locaux, peu nombreux et déjà réduits, et ce qu'une bibliothèque
   apporterait — cache réseau, préchargement — ne servirait à rien ici.
-  `EcranCarnets` fait de l'onglet Clients les **trois carnets** de l'entreprise :
+  `EcranCarnets` fait de l'onglet `Carnets` les **trois carnets** de l'entreprise :
   pour qui je travaille, chez qui j'achète, et ce que je transporte. Trois listes
-  qu'on tient à jour, par opposition aux cinq autres onglets qui montrent du
+  qu'on tient à jour, par opposition aux autres onglets qui montrent du
   temps — une tournée, une semaine — ou des documents. Le magasin est au milieu
   parce que c'est celui qu'on ouvre le plus souvent : chaque matin, avant de
   charger. `CadreCarnet` est leur coquille commune — titre, bascule, bouton
@@ -663,7 +663,7 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   ne se valent pas, et c'est le seul écart : les rappels de report sont
   **facultatifs**, parce que depuis les Outils il n'y a aucun relevé où écrire et
   qu'un bouton sans effet vaut moins que pas de bouton.
-  `EcranOutils` tient l'onglet **Outils**, d'une autre nature que les cinq
+  `EcranOutils` tient l'onglet **Outils**, d'une autre nature que les quatre
   autres : il ne regarde **aucune donnée de l'application**. Ce sont des outils de
   métier — réglette, convertisseur, bilan de puissance, périodicité réglementaire,
   fiche fluide, substitution de fluide — qu'on consulte sans client ni
@@ -712,18 +712,20 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   effaçait le numéro attribué et la signature du client dès qu'on corrigeait une
   heure mal saisie. Tout nouveau champ qui ne passe pas par le formulaire doit
   donc traverser par `copy`, et non être réécrit. Les écrans suivent le motif *state hoisting* :
-  `InterventionsRoute` (avec état) enveloppe `InterventionsScreen` et
+  `TourneeRoute` (avec état) enveloppe `InterventionsScreen` et
   `FormulaireIntervention` (sans état, testables et prévisualisables).
   **Le formulaire s'ouvre depuis les quatre endroits où l'on voit une
   intervention** — la liste du jour, la carte de celle en cours, la frise de la
-  semaine et la fiche ouverte —, ce qui a demandé de rendre `InterventionsRoute`
-  capable de le superposer à n'importe laquelle de ses trois vues plutôt que de
+  semaine et la fiche ouverte —, ce qui a demandé de rendre `TourneeRoute`
+  capable de le superposer à n'importe laquelle de ses vues plutôt que de
   sortir par un `return` avant de l'atteindre. Une heure mal saisie se corrige là
   où elle se voit : l'ouvrir depuis la seule liste du jour obligeait à en sortir
   d'abord, et depuis la fiche c'était impossible. La feuille elle-même est un
-  composable à part, `FeuilleFormulaireIntervention`, parce que l'accueil l'ouvre
-  aussi : la recopier dans les deux routes aurait fait diverger cinq flux au
-  premier champ ajouté. Les deux passent le **même** `InterventionsViewModel` —
+  composable à part, `FeuilleFormulaireIntervention` : l'accueil et le planning
+  l'ouvrent tous deux, et la recopier dans chacun aurait fait diverger cinq flux
+  au premier champ ajouté. Depuis la réunion des deux sous `TourneeRoute`, elle
+  n'est plus posée **qu'une fois**, pour les trois vues comme pour
+  l'intervention ouverte. Toutes passent le **même** `InterventionsViewModel` —
   `viewModel()` rend une seule instance par classe —, si bien qu'une saisie
   commencée dans un onglet se retrouve intacte dans l'autre. L'appui long y mène partout, et
   un bouton visible là où la place le permet — un geste qui ne se voit pas n'est
@@ -763,7 +765,7 @@ poignée d'objets ne justifie pas encore Hilt.
 La saisie se fait dans une `ModalBottomSheet` plutôt que sur une destination
 dédiée : un seul écran, pas de navigation. Ajouter une vraie destination
 impliquera d'introduire un graphe de navigation et de déplacer
-`InterventionsRoute` derrière celui-ci.
+`TourneeRoute` derrière celui-ci.
 
 ### Deux choix faits pour une synchronisation future
 
