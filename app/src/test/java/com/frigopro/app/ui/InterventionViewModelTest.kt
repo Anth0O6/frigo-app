@@ -9,11 +9,15 @@ import com.frigopro.app.data.FauxFactureDao
 import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxEquipementDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.FauxMaterielDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxSuiviDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.Article
+import com.frigopro.app.data.LieuStock
+import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.FauxVerificationFluideDao
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.VerificationFluideRepository
@@ -55,6 +59,7 @@ class InterventionViewModelTest {
     private val daoClients = FauxClientDao()
     private val daoParametres = FauxParametresDao()
     private val daoVerifications = FauxVerificationFluideDao()
+    private val daoMateriel = FauxMaterielDao()
     private val stockage = FauxRangementPhotos()
 
     @After
@@ -342,6 +347,56 @@ class InterventionViewModelTest {
         assertNull(daoInterventions.contenu.single().signeeLe)
     }
 
+    @Test
+    fun `une piece prise au camion emporte son prix d'achat et sort du stock`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION)
+        val materiel = MaterielRepository(daoMateriel)
+        val article = materiel.enregistrerArticle(
+            Article(designation = "Détendeur TEV", reference = "TX3", prixAchat = 42.0),
+        )
+        materiel.definirStock(article.id, LieuStock.CAMION, quantite = 5.0, minimum = 2.0)
+        val viewModel = ouvrir()
+
+        viewModel.onAjouterPiece(
+            PosePiece(
+                designation = article.designation,
+                reference = article.reference,
+                quantite = 2.0,
+                articleId = article.id,
+                prixAchat = article.prixAchat,
+            ),
+        )
+        advanceUntilIdle()
+
+        // Le prix est **sur la ligne** : une intervention de mars reste
+        // chiffrable en mars, même si le tarif du magasin a bougé depuis.
+        val posee = daoSuivi.contenuPieces.single()
+        assertEquals(42.0, posee.prixAchat, 0.001)
+        assertEquals(2.0, posee.quantite, 0.001)
+
+        // Et le camion en a deux de moins : un mouvement, pas une écriture
+        // absolue, pour rester juste si l'écran montrait un compte périmé.
+        val stock = daoMateriel.contenuStocks.single { it.articleId == article.id }
+        assertEquals(3.0, stock.quantite, 0.001)
+    }
+
+    @Test
+    fun `une piece saisie a la main ne touche aucun stock`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION)
+        val materiel = MaterielRepository(daoMateriel)
+        val article = materiel.enregistrerArticle(Article(designation = "Détendeur TEV"))
+        materiel.definirStock(article.id, LieuStock.CAMION, quantite = 5.0, minimum = 0.0)
+        val viewModel = ouvrir()
+
+        // Achetée en route chez un grossiste : elle n'est pas au magasin, et
+        // le compte-rendu doit quand même pouvoir la dire.
+        viewModel.onAjouterPiece(PosePiece(designation = "Joint torique", quantite = 4.0))
+        advanceUntilIdle()
+
+        assertEquals(0.0, daoSuivi.contenuPieces.single().prixAchat, 0.001)
+        assertEquals(5.0, daoMateriel.contenuStocks.single().quantite, 0.001)
+    }
+
     private fun TestScope.ouvrir(): InterventionViewModel {
         val viewModel = creerViewModel()
         viewModel.onOuvrir(INTERVENTION)
@@ -365,9 +420,11 @@ class InterventionViewModelTest {
             ParametresRepository(daoParametres, stockage),
             VerificationFluideRepository(daoVerifications),
             FactureRepository(FauxFactureDao()),
+            MaterielRepository(daoMateriel),
         )
         backgroundScope.launch(ordonnanceur) { viewModel.etat.collect { } }
         backgroundScope.launch(ordonnanceur) { viewModel.fluidesVerifies.collect { } }
+        backgroundScope.launch(ordonnanceur) { viewModel.magasin.collect { } }
         return viewModel
     }
 

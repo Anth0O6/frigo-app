@@ -14,11 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -113,29 +109,32 @@ fun CadreCarnet(
 /**
  * L'onglet des carnets : celui qui est ouvert, et ce qu'il montre.
  *
- * La vue retenue survit à une rotation (`rememberSaveable`) mais pas à la
- * fermeture de l'application : on rouvre sur les clients, qui est le carnet le
- * plus consulté sur la durée. Une vue mémorisée pour toujours ferait rouvrir
- * l'onglet sur un magasin qu'on avait regardé une fois.
+ * La vue est tenue par la **coquille** et non ici, et c'est ce qui permet à
+ * l'accueil d'ouvrir le magasin directement quand il manque quelque chose : un
+ * état posé dans cette fonction aurait été hors d'atteinte, et il aurait fallu
+ * transporter l'intention d'un onglet à l'autre. Elle survit ainsi à une
+ * rotation par le `rememberSaveable` de la coquille, mais pas à la fermeture de
+ * l'application : on rouvre sur les clients, qui est le carnet le plus consulté
+ * sur la durée.
  */
 @Composable
 fun CarnetsRoute(
+    vue: VueCarnet,
+    onVue: (VueCarnet) -> Unit,
     modifier: Modifier = Modifier,
     materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory),
 ) {
-    var vue by rememberSaveable { mutableStateOf(VueCarnet.CLIENTS) }
-
     when (vue) {
-        VueCarnet.CLIENTS -> ClientsRoute(vue = vue, onVue = { vue = it }, modifier = modifier)
+        VueCarnet.CLIENTS -> ClientsRoute(vue = vue, onVue = onVue, modifier = modifier)
         VueCarnet.MAGASIN -> MagasinRoute(
             vue = vue,
-            onVue = { vue = it },
+            onVue = onVue,
             modifier = modifier,
             viewModel = materiel,
         )
         VueCarnet.FOURNISSEURS -> FournisseursRoute(
             vue = vue,
-            onVue = { vue = it },
+            onVue = onVue,
             modifier = modifier,
             viewModel = materiel,
         )

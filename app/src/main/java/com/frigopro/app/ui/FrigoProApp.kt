@@ -84,6 +84,14 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
 fun FrigoProApp(modifier: Modifier = Modifier) {
     var onglet by rememberSaveable { mutableStateOf(Onglet.AUJOURDHUI) }
 
+    // Le carnet ouvert est tenu **ici** et non dans `CarnetsRoute`, parce que
+    // l'accueil doit pouvoir désigner le magasin : « il manque trois articles »
+    // n'est une réponse à « et maintenant ? » que si elle mène quelque part.
+    // C'est le même motif que la facture ouverte depuis l'accueil, à ceci près
+    // qu'un carnet n'est pas un `ViewModel` et ne peut donc pas être partagé
+    // par `viewModel()`.
+    var carnet by rememberSaveable { mutableStateOf(VueCarnet.CLIENTS) }
+
     Column(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -98,12 +106,16 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                 Onglet.AUJOURDHUI -> AujourdhuiRoute(
                     onVoirPlanning = { onglet = Onglet.TOURNEE },
                     onVoirDevis = { onglet = Onglet.DEVIS },
+                    onVoirMagasin = {
+                        carnet = VueCarnet.MAGASIN
+                        onglet = Onglet.CLIENTS
+                    },
                 )
 
                 Onglet.TOURNEE -> InterventionsRoute(
                     onAllerAuxDevis = { onglet = Onglet.DEVIS },
                 )
-                Onglet.CLIENTS -> CarnetsRoute()
+                Onglet.CLIENTS -> CarnetsRoute(vue = carnet, onVue = { carnet = it })
                 Onglet.DEVIS -> FacturationRoute()
                 Onglet.OUTILS -> OutilsRoute()
                 Onglet.REGLAGES -> ReglagesRoute()

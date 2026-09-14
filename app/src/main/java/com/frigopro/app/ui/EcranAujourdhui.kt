@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
@@ -71,6 +72,17 @@ fun EcranAujourdhui(
      */
     impayees: List<FactureChiffree> = emptyList(),
     onOuvrirFacture: (Facture) -> Unit = {},
+    /**
+     * Ce qu'il faut racheter, atelier et camion confondus.
+     *
+     * Même raison que les factures échues, et c'est la dernière liste du projet
+     * à rejoindre l'accueil : un article sous son seuil répond à « et
+     * maintenant ? » aussi franchement qu'un impayé — il décide de ce qu'on
+     * charge avant de partir, et un manque découvert sur un toit coûte la
+     * journée. Le manque est dérivé du seuil et de la quantité, jamais stocké.
+     */
+    manquants: List<ArticleEnStock> = emptyList(),
+    onVoirMagasin: () -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -144,6 +156,25 @@ fun EcranAujourdhui(
                         LigneImpayee(
                             chiffree = chiffree,
                             onClick = { onOuvrirFacture(chiffree.facture) },
+                        )
+                    }
+                }
+            }
+
+            if (manquants.isNotEmpty()) {
+                Section(intitule = "À racheter", espacement = 8.dp) {
+                    manquants.take(MANQUANTS_MONTRES).forEach { entree ->
+                        LigneManquant(entree = entree, onClick = onVoirMagasin)
+                    }
+                    // Le reste est compté plutôt que déroulé : l'accueil alerte,
+                    // le magasin tient l'inventaire. Une liste de trente lignes
+                    // ici ne serait plus lue — même règle que les échéances.
+                    val reste = manquants.size - MANQUANTS_MONTRES
+                    if (reste > 0) {
+                        BoutonContour(
+                            texte = "$reste autre${if (reste > 1) "s" else ""} au magasin",
+                            onClick = onVoirMagasin,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
@@ -364,6 +395,68 @@ private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Un article sous son seuil.
+ *
+ * Il dit **où** il manque, et c'est tout l'intérêt de tenir deux stocks : « 1 u
+ * au camion, mini 3 » n'appelle pas le même geste que le même manque à
+ * l'atelier — l'un se recharge le soir, l'autre se commande. Toucher la ligne
+ * ouvre le magasin, où le mouvement se pose.
+ */
+@Composable
+private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
+    val urgence = LocalStatuts.current.urgence
+    Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 3.dp, height = 30.dp)
+                    .background(urgence, MaterialTheme.shapes.extraSmall),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entree.article.designation,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    // Le même vocabulaire que le magasin : « 1 u · mini 3 ».
+                    // Le seuil donne son sens au chiffre, et le chiffre seul ne
+                    // dirait pas de combien on est court.
+                    text = entree.aReapprovisionner.joinToString("  ·  ") { lieu ->
+                        val stock = entree.stocks[lieu]
+                        buildString {
+                            append(lieu.libelle)
+                            append(" : ")
+                            append(Nombres.enTexte(entree.quantite(lieu)))
+                            append(' ')
+                            append(entree.article.unite)
+                            if (stock != null) append(" · mini ${Nombres.enTexte(stock.minimum)}")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = urgence,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (entree.article.fournisseurNom.isNotBlank()) {
+                Text(
+                    text = entree.article.fournisseurNom,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun LigneEcheance(echeance: EcheanceFgas) {
     val couleur = if (echeance.etat.enRetard) {
@@ -422,6 +515,15 @@ private fun LigneEcheance(echeance: EcheanceFgas) {
         }
     }
 }
+
+/**
+ * Combien d'articles manquants l'accueil montre.
+ *
+ * Trois, comme les échéances, et pour la même raison : le but est d'alerter, pas
+ * de tenir l'inventaire. Le magasin porte le détail, et le compte du reste y
+ * mène.
+ */
+private const val MANQUANTS_MONTRES = 3
 
 /** « 08:00 → 09:30 », d'après l'heure de début et la durée prévue. */
 private fun creneau(intervention: Intervention): String {

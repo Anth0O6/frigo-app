@@ -20,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun AujourdhuiRoute(
     onVoirPlanning: () -> Unit,
     onVoirDevis: () -> Unit,
+    onVoirMagasin: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AujourdhuiViewModel = viewModel(factory = AujourdhuiViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
@@ -29,10 +30,12 @@ fun AujourdhuiRoute(
     // Planning — un onglet changé en pleine saisie ne perd donc rien.
     tournee: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
     factures: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
+    materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory),
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val impayees by factures.aRelancer.collectAsStateWithLifecycle()
+    val manquants by materiel.aReapprovisionner.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // Un `if`/`else` plutôt qu'un retour anticipé : la feuille de saisie se pose
@@ -66,6 +69,8 @@ fun AujourdhuiRoute(
                 factures.onOuvrir(facture)
                 onVoirDevis()
             },
+            manquants = manquants,
+            onVoirMagasin = onVoirMagasin,
         )
     }
 

@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Photo
 import com.frigopro.app.data.PointChecklist
@@ -63,7 +64,7 @@ data class ActionsIntervention(
     val onVerifierFluide: (String, Boolean) -> Unit = { _, _ -> },
     val onMouvement: (SensFluide, Double, String) -> Unit = { _, _, _ -> },
     val onSupprimerMouvement: (String) -> Unit = {},
-    val onAjouterPiece: (String, String, Double) -> Unit = { _, _, _ -> },
+    val onAjouterPiece: (PosePiece) -> Unit = {},
     val onSupprimerPiece: (String) -> Unit = {},
     val onPhotographier: (CategoriePhoto) -> Unit = {},
     val onChoisirImage: (CategoriePhoto) -> Unit = {},
@@ -107,6 +108,8 @@ fun EcranIntervention(
     chargerPhoto: suspend (String, Int) -> Bitmap?,
     /** Les fluides dont la courbe de saturation a été contrôlée. */
     fluidesVerifies: Set<String> = emptySet(),
+    /** Ce que le camion transporte : le volet des pièces y puise. */
+    magasin: List<ArticleEnStock> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -136,7 +139,11 @@ fun EcranIntervention(
                         actions = actions,
                         fluidesVerifies = fluidesVerifies,
                     )
-                    OngletIntervention.PIECES -> OngletPieces(etat = etat, actions = actions)
+                    OngletIntervention.PIECES -> OngletPieces(
+                        etat = etat,
+                        actions = actions,
+                        magasin = magasin,
+                    )
                     OngletIntervention.PHOTOS -> OngletPhotos(
                         etat = etat,
                         actions = actions,

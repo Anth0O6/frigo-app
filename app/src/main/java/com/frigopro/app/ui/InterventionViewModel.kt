@@ -19,6 +19,9 @@ import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.ArticleEnStock
+import com.frigopro.app.data.LieuStock
+import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.MouvementFluide
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
@@ -157,6 +160,15 @@ class InterventionViewModel(
      * a rapporté, pour le comparer à ce qu'elle a coûté.
      */
     private val factures: FactureRepository,
+    /**
+     * Le magasin, d'où les pièces se posent.
+     *
+     * C'est ce qui ferme la boucle entre l'inventaire et la marge : une pièce
+     * prise dans le camion emporte son **prix d'achat du jour** sur la ligne, et
+     * sort du stock au passage. Sans lui, `PiecePosee.prixAchat` restait à zéro
+     * et la rentabilité d'une intervention ne comptait que le temps.
+     */
+    private val materiel: MaterielRepository,
 ) : ViewModel() {
 
     private val _ouverte = MutableStateFlow<String?>(null)
@@ -349,17 +361,49 @@ class InterventionViewModel(
 
     // — Pièces —————————————————————————————————————————————————————————————
 
-    fun onAjouterPiece(designation: String, reference: String, quantite: Double) {
+    /**
+     * Ce que le camion transporte, pour poser une pièce sans la ressaisir.
+     *
+     * Exposé à part de [EtatIntervention], comme [fluidesVerifies] et pour les
+     * mêmes deux raisons : les `combine` de l'état sont saturés, et le magasin
+     * ne dépend pas de l'intervention ouverte.
+     */
+    val magasin: StateFlow<List<ArticleEnStock>> = materiel.magasin
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    /**
+     * Poser une pièce.
+     *
+     * Deux chemins, et un seul geste : une pièce **saisie à la main** est un
+     * intitulé et une quantité, une pièce **prise au magasin** emporte en plus
+     * son prix d'achat et sort du stock. Le prix est recopié sur la ligne et non
+     * relu plus tard dans le magasin : une intervention de mars doit rester
+     * chiffrable en mars, et sur une pièce dont le tarif a monté depuis, l'écart
+     * n'est pas anecdotique — même règle que le taux de TVA d'une facture.
+     *
+     * La sortie de stock est un **mouvement**, qui s'additionne à ce qu'il y
+     * avait : deux pièces posées coup sur coup se retranchent toutes les deux,
+     * même si l'écran montrait encore l'ancien compte. Retirer la ligne ensuite
+     * ne remet rien au camion — la ligne ne désigne pas l'article, et une pièce
+     * réellement posée puis effacée du compte-rendu n'est pas revenue dans le
+     * véhicule ; le magasin se corrige depuis sa fiche, qui écrit une quantité
+     * absolue.
+     */
+    fun onAjouterPiece(pose: PosePiece) {
         val courant = etat.value ?: return
         viewModelScope.launch {
             suivi.enregistrerPiece(
                 PiecePosee(
                     interventionId = courant.intervention.id,
-                    designation = designation,
-                    reference = reference,
-                    quantite = quantite,
+                    designation = pose.designation,
+                    reference = pose.reference,
+                    quantite = pose.quantite,
+                    prixAchat = pose.prixAchat,
                 ),
             )
+            if (pose.articleId != null && pose.sortirDuStock) {
+                materiel.bouger(pose.articleId, LieuStock.CAMION, -pose.quantite)
+            }
         }
     }
 
@@ -509,6 +553,7 @@ class InterventionViewModel(
                     conteneur.parametres,
                     conteneur.verificationsFluide,
                     conteneur.factures,
+                    conteneur.materiel,
                 )
             }
         }

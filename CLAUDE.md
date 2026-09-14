@@ -477,7 +477,17 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   et celui-ci doit s'atteindre d'un pouce, gants aux mains.
   L'accueil vient en tête parce qu'il répond à la question qu'on se pose en
   sortant le téléphone — « et maintenant ? » — et le planning juste après, pour
-  la suivante : « et le reste de la semaine ? ». `EcranAujourdhui` met en avant
+  la suivante : « et le reste de la semaine ? ». Trois listes y répondent
+  ensemble et pour la même raison : les factures **à relancer**, les articles
+  **à racheter**, les **échéances F-Gas**. Aucune n'est stockée — un impayé, un
+  manque et une échéance se déduisent tous trois d'un seuil et d'une date, et un
+  booléen en base serait faux le lendemain. Les trois sont **plafonnées à trois
+  lignes** : l'accueil alerte, les onglets tiennent le détail, et une liste de
+  trente lignes ne serait plus lue. Celle du magasin compte le reste et y
+  mène — un manque qui ne mène nulle part n'est pas une réponse à « et
+  maintenant ? ». C'est pourquoi **la coquille tient le carnet ouvert** plutôt
+  que `CarnetsRoute` : un état posé dans la route aurait été hors d'atteinte de
+  l'accueil. `EcranAujourdhui` met en avant
   l'intervention en cours, ou à défaut la prochaine, et ne navigue **jamais**
   dans le temps : donner deux façons de changer de date conduirait à se demander
   laquelle des deux on regarde. Les échéances F-Gas qu'il annonce ne sont
@@ -549,6 +559,21 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   l'écran montre une valeur d'il y a une seconde ; la fiche écrit une quantité
   **absolue**, qui est le vrai inventaire. Les deux cohabitent parce qu'ils ne
   disent pas la même chose — l'un compte, l'autre corrige.
+  **Poser une pièce se fait depuis le camion**, et c'est ce qui ferme la boucle
+  entre l'inventaire et la marge : la boîte de saisie propose d'abord ce que le
+  véhicule transporte, recopie le **prix d'achat du jour** sur la ligne
+  (`PiecePosee.prixAchat`) et retranche la pièce du stock. Le prix est recopié et
+  non relu plus tard dans le magasin, pour la raison qui vaut déjà pour le taux
+  de TVA d'une facture : une intervention de mars doit rester chiffrable en mars.
+  La **saisie libre reste ouverte** — un frigoriste passe chez un grossiste en
+  cours de route, et lui interdire de noter la pièce tant qu'elle n'est pas au
+  magasin l'aurait fait renoncer à la noter. Un article que le camion n'a plus
+  reste choisissable, et la sortie descend le stock à zéro sans jamais passer en
+  dessous : refuser la saisie aurait obligé à corriger l'inventaire avant de
+  pouvoir rendre compte du travail. Retirer la ligne ensuite **ne remet rien au
+  camion** : la ligne ne désigne pas l'article, et une pièce réellement posée
+  puis effacée du compte-rendu n'est pas revenue dans le véhicule — le magasin se
+  corrige depuis sa fiche, qui écrit une quantité absolue.
   `EcranFournisseurs` filtre par famille, par préférence et par **ville**. La
   ville et non le GPS : demander la permission de localisation pour trier une
   liste de numéros serait disproportionné — l'application n'en a que deux, toutes
@@ -905,7 +930,7 @@ l'APK : un test rouge bloque la publication.
 | `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
 | `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, montant de chaque devis, ce qui compte comme « en attente », lignes emportées avec le devis |
 | `ParametresRepositoryTest` | Valeurs par défaut sans ligne en base, ligne unique, initiales |
-| `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite |
+| `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite, pièce prise au camion qui emporte son prix d'achat et sort du stock, pièce saisie à la main qui ne touche rien |
 | `InitialesTest` | « KB », « LÉ » : deux lettres au plus, apostrophe comprise |
 | `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
 | `ConversionsTest` | Les repères du métier (1 bar = 14,5 psi, 0 °C = 32 °F), la distinction température / écart, et l'aller-retour de toute paire d'unités |
@@ -1496,15 +1521,6 @@ place » venant en tête :
 - **Les péages automatiques**, le jour où ils compteront plus que l'absence de
   carte bancaire. C'est le relais qui changerait, pas l'application : elle sait
   déjà lire un péage chiffré et le dire connu.
-- **Le réapprovisionnement sur l'accueil.** Le magasin sait ce qui manque
-  (`MaterielRepository.aReapprovisionner`), mais il faut ouvrir l'onglet pour le
-  voir. Un manque répond à « et maintenant ? » exactement comme une facture
-  échue, et sa place est à côté d'elles — c'est le seul endroit du projet où une
-  liste existante n'a pas encore rejoint l'écran qui la réclamerait.
-- **Le prix d'achat à la pose.** `PiecePosee.prixAchat` existe et se sauvegarde,
-  mais rien ne le remplit : il faudrait que poser une pièce depuis le magasin
-  recopie son prix d'achat du jour, et décrémente le stock du camion au passage.
-  C'est ce qui fermerait la boucle entre l'inventaire et la marge.
 - **Recouper les courbes livrées** avec la table du fournisseur qu'on utilise,
   fluide par fluide, et cocher chacune dans la réglette. Ce n'est plus un
   préalable — les valeurs sont calculées, et le report est ouvert —, mais un

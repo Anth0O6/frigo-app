@@ -47,6 +47,7 @@ fun InterventionRoute(
     val depannageOuvert by viewModel.depannageOuvert.collectAsStateWithLifecycle()
     val agrandie by viewModel.agrandie.collectAsStateWithLifecycle()
     val fluidesVerifies by viewModel.fluidesVerifies.collectAsStateWithLifecycle()
+    val magasin by viewModel.magasin.collectAsStateWithLifecycle()
     val portee = rememberCoroutineScope()
 
     // La prise de vue quitte l'application : la catégorie visée et le fichier à
@@ -97,6 +98,7 @@ fun InterventionRoute(
         onglet = onglet,
         chargerPhoto = viewModel::charger,
         fluidesVerifies = fluidesVerifies,
+        magasin = magasin,
         actions = ActionsIntervention(
             onFermer = viewModel::onFermer,
             onOnglet = viewModel::onOnglet,
