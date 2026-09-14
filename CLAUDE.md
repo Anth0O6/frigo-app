@@ -127,6 +127,11 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
+│       │       ├── EcranCarnets.kt     # les trois carnets, et leur coquille
+│       │       ├── EcranMagasin.kt     # l'inventaire, atelier et camion
+│       │       ├── EcranFournisseurs.kt # le carnet, filtré, et le catalogue
+│       │       ├── MaterielViewModel.kt
+│       │       ├── DialoguePaliers.kt  # le prix par rang d'unité
 │       │       ├── EcranIntervention.kt # les quatre volets d'une intervention
 │       │       ├── OngletReleves.kt     # chrono, relevés frigorifiques, fluide
 │       │       ├── OngletPieces.kt      # pièces posées, photos avant/après
@@ -463,8 +468,10 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
 - **`ui`** — `FrigoProApp` est la coquille : six onglets, `Aujourd'hui`,
-  `Planning`, `Devis`, `Clients`, `Outils` et `Réglages`, et la barre qui en
-  change. **Six est un de plus que ce que Material recommande**, et les libellés
+  `Planning`, `Facturation`, `Clients`, `Outils` et `Réglages`, et la barre qui
+  en change. Deux de ces onglets portent **plusieurs vues sous une bascule** —
+  la facturation ses deux documents, les clients ses trois carnets — et c'est la
+  réponse constante du projet au fait que la barre est pleine. **Six est un de plus que ce que Material recommande**, et les libellés
   sont déjà abrégés au plus court lisible ; la contrepartie est assumée plutôt que
   contournée par un menu « plus » — un onglet derrière un menu n'est pas un onglet,
   et celui-ci doit s'atteindre d'un pouce, gants aux mains.
@@ -524,6 +531,42 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   décode une image à la taille demandée, sans bibliothèque de chargement : les
   fichiers sont locaux, peu nombreux et déjà réduits, et ce qu'une bibliothèque
   apporterait — cache réseau, préchargement — ne servirait à rien ici.
+  `EcranCarnets` fait de l'onglet Clients les **trois carnets** de l'entreprise :
+  pour qui je travaille, chez qui j'achète, et ce que je transporte. Trois listes
+  qu'on tient à jour, par opposition aux cinq autres onglets qui montrent du
+  temps — une tournée, une semaine — ou des documents. Le magasin est au milieu
+  parce que c'est celui qu'on ouvre le plus souvent : chaque matin, avant de
+  charger. `CadreCarnet` est leur coquille commune — titre, bascule, bouton
+  d'ajout — et l'écran des clients y passe aussi plutôt que de garder son propre
+  `Scaffold` : trois copies des mêmes marges divergent au premier ajustement,
+  ce qui est exactement le travers que `ui.composants` existe pour éviter.
+  `EcranMagasin` montre **les deux endroits côte à côte** sur chaque article,
+  parce que la question du terrain n'est pas « est-ce que j'en ai ? » mais
+  « est-ce que j'en ai *ici* ? ». Ce qui manque remonte en tête avec un liseré,
+  comme les factures échues sur l'accueil : la seule chose de l'écran qui appelle
+  une action doit être la première qu'on voit. Les boutons `−` et `+` posent un
+  **mouvement**, qui s'additionne à ce qu'il y avait et reste donc juste même si
+  l'écran montre une valeur d'il y a une seconde ; la fiche écrit une quantité
+  **absolue**, qui est le vrai inventaire. Les deux cohabitent parce qu'ils ne
+  disent pas la même chose — l'un compte, l'autre corrige.
+  `EcranFournisseurs` filtre par famille, par préférence et par **ville**. La
+  ville et non le GPS : demander la permission de localisation pour trier une
+  liste de numéros serait disproportionné — l'application n'en a que deux, toutes
+  deux justifiées — et c'est de toute façon la meilleure réponse, puisqu'on
+  cherche un fournisseur près du *chantier* et non près d'où l'on tient son
+  téléphone. Trois gestes ferment la question : appeler, l'itinéraire, et ouvrir
+  le catalogue au navigateur (`Context.ouvrirLien`).
+  `DialoguePaliers` ne s'ouvre que sur une prestation **comptée par unité** : un
+  forfait n'a pas de rangs, et proposer la boîte sur « déplacement zone 1 »
+  aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
+  total pour deux, trois et quatre unités pendant la saisie, parce que les prix
+  unitaires se lisent mal et que leur somme se lit tout de suite.
+  La **marge d'une intervention** est en bas de sa fiche et non en haut : ce
+  n'est pas une information de terrain — elle ne sert ni à trouver le client ni à
+  savoir quoi vérifier —, elle se lit après coup, et la mettre devant l'adresse
+  et la checklist aurait inversé les priorités de l'écran. Sans coût horaire
+  renseigné elle **réclame le réglage** au lieu d'afficher une marge égale à la
+  recette : un chiffre juste par accident ne se distingue pas d'un vrai.
   `ReglagesViewModel` tient l'onglet
   Réglages — la liste des types, et les prix du catalogue, qui ne se saisissent
   que là : le catalogue est livré sans tarifs, et un catalogue qu'on ne peut pas
@@ -1453,12 +1496,15 @@ place » venant en tête :
 - **Les péages automatiques**, le jour où ils compteront plus que l'absence de
   carte bancaire. C'est le relais qui changerait, pas l'application : elle sait
   déjà lire un péage chiffré et le dire connu.
-- **Les écrans du magasin et de la rentabilité.** Quatre modèles sont posés et
-  éprouvés sans qu'aucun écran n'y mène encore : l'inventaire et ses alertes de
-  réapprovisionnement, le carnet de fournisseurs, le chargement du camion, la
-  saisie des paliers dégressifs, et la marge d'une intervention sur sa fiche. La
-  couche `data` est le travail difficile — migrations, arrondis, règles — et il
-  est fait ; ce qui reste est de l'assemblage d'écrans sur des flux existants.
+- **Le réapprovisionnement sur l'accueil.** Le magasin sait ce qui manque
+  (`MaterielRepository.aReapprovisionner`), mais il faut ouvrir l'onglet pour le
+  voir. Un manque répond à « et maintenant ? » exactement comme une facture
+  échue, et sa place est à côté d'elles — c'est le seul endroit du projet où une
+  liste existante n'a pas encore rejoint l'écran qui la réclamerait.
+- **Le prix d'achat à la pose.** `PiecePosee.prixAchat` existe et se sauvegarde,
+  mais rien ne le remplit : il faudrait que poser une pièce depuis le magasin
+  recopie son prix d'achat du jour, et décrémente le stock du camion au passage.
+  C'est ce qui fermerait la boucle entre l'inventaire et la marge.
 - **Recouper les courbes livrées** avec la table du fournisseur qu'on utilise,
   fluide par fluide, et cocher chacune dans la réglette. Ce n'est plus un
   préalable — les valeurs sont calculées, et le report est ouvert —, mais un
