@@ -41,6 +41,7 @@ import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.FactureComplete
 import com.frigopro.app.data.LigneFacture
+import com.frigopro.app.data.PenalitesDues
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.RappelsFactures
 import com.frigopro.app.data.StatutFacture
@@ -420,15 +421,8 @@ fun EcranFacture(
                 BoutonContour(texte = "Fermer", onClick = onFermer)
             }
 
-            val retard = document.joursDeRetard(aujourdhui)
-            if (retard != null) {
-                Encart(
-                    texte = "Échue depuis $retard jour${if (retard > 1) "s" else ""}. " +
-                        "Les pénalités courent depuis le lendemain de l'échéance, et la " +
-                        "facture les annonce : les réclamer ne demande pas de rappel " +
-                        "préalable.",
-                    alerte = true,
-                )
+            PenalitesDues.de(document, facture.totalTtc, aujourdhui)?.let { dues ->
+                SectionPenalites(dues)
             }
 
             Section(intitule = "Document") {
@@ -539,6 +533,59 @@ private fun DialogueConfirmationFacture(
         dismissButton = { TextButton(onClick = onFermer) { Text(text = "Revenir") } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
+}
+
+/**
+ * Ce qu'un retard a fait courir, et ce qu'on peut en réclamer.
+ *
+ * Elle répond à la question qu'on se pose devant une facture échue — « je
+ * réclame combien ? » — et à celle qu'on ne se pose pas : **on ne retouche pas
+ * la facture**. Une facture émise ne bouge plus, c'est ce qui tient toute la
+ * numérotation ; les pénalités sont dues *en plus*, de plein droit, sans rappel
+ * préalable. Le montant grandit chaque jour, donc rien n'en est stocké.
+ *
+ * Sans taux convenu, les intérêts ne sont pas chiffrés. Ce n'est pas une lacune
+ * de l'écran : le taux légal est celui de la BCE majoré de dix points, il varie
+ * dans le temps et n'est pas dans le téléphone. Annoncer un chiffre inventé
+ * serait le réclamer à un vrai client.
+ */
+@Composable
+private fun SectionPenalites(dues: PenalitesDues) {
+    val jours = dues.joursDeRetard
+    Section(intitule = "Retard de paiement") {
+        Text(
+            text = "Échue depuis $jours jour${if (jours > 1) "s" else ""}.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = LocalStatuts.current.urgence,
+        )
+        val interets = dues.interets
+        if (interets != null && dues.tauxAnnuel != null) {
+            LigneInfoFacture(
+                "Intérêts (${Nombres.enTexte(dues.tauxAnnuel)} % l'an)",
+                Nombres.enEuros(interets),
+            )
+        } else {
+            Text(
+                text = "Aucun taux de pénalités n'est fixé dans les Réglages. Le taux légal " +
+                    "s'applique alors de plein droit — celui de la BCE majoré de dix points —, " +
+                    "mais il change dans le temps et n'est pas connu de l'application : les " +
+                    "intérêts ne sont donc pas chiffrés ici.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LigneInfoFacture(
+            "Indemnité de recouvrement",
+            Nombres.enEuros(dues.indemnite),
+        )
+        dues.total?.let { LigneInfoFacture("Dû en plus de la facture", Nombres.enEuros(it)) }
+        Text(
+            text = "À réclamer en plus du montant facturé : une facture émise ne se retouche " +
+                "pas, et les pénalités n'ont pas à y figurer pour être exigibles.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

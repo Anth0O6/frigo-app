@@ -77,6 +77,8 @@ fun ReglagesRoute(
         onAttestation = viewModel::onAttestation,
         onTauxHoraire = viewModel::onTauxHoraire,
         onTauxTva = viewModel::onTauxTva,
+        onDelaiPaiement = viewModel::onDelaiPaiement,
+        onTauxPenalites = viewModel::onTauxPenalites,
         onEntreprise = viewModel::onEntreprise,
         onEntrepriseAdresse = viewModel::onEntrepriseAdresse,
         onEntrepriseTelephone = viewModel::onEntrepriseTelephone,
@@ -156,6 +158,8 @@ fun ReglagesScreen(
     onAttestation: (String) -> Unit,
     onTauxHoraire: (Double) -> Unit,
     onTauxTva: (Double) -> Unit,
+    onDelaiPaiement: (Int) -> Unit,
+    onTauxPenalites: (Double) -> Unit,
     onEntreprise: (String) -> Unit,
     onEntrepriseAdresse: (String) -> Unit,
     onEntrepriseTelephone: (String) -> Unit,
@@ -224,6 +228,8 @@ fun ReglagesScreen(
                     onChronoAuto = onChronoAuto,
                     onTauxHoraire = onTauxHoraire,
                     onTauxTva = onTauxTva,
+                    onDelaiPaiement = onDelaiPaiement,
+                    onTauxPenalites = onTauxPenalites,
                 )
             }
             item {
@@ -376,6 +382,8 @@ private fun ReglagesScreenPreview() {
                 onAttestation = {},
                 onTauxHoraire = {},
                 onTauxTva = {},
+                onDelaiPaiement = {},
+                onTauxPenalites = {},
                 prestations = emptyList(),
                 onEnregistrerPrestation = {},
                 onSupprimerPrestation = {},

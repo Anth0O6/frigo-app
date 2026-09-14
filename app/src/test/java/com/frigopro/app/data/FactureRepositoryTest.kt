@@ -325,6 +325,76 @@ class FactureRepositoryTest {
         assertTrue(facture.tvaOfferte)
     }
 
+    /**
+     * Ce qu'un retard fait courir, et ce qu'il ne fait pas.
+     *
+     * Le montant grandit chaque jour : il ne peut donc pas être stocké, et c'est
+     * la même règle que « en retard » ou que les échéances F-Gas.
+     */
+    @Test
+    fun `les penalites se calculent sur le ttc et le nombre de jours`() {
+        val facture = Facture(
+            statut = StatutFacture.EMISE,
+            echeanceLe = LocalDate.of(2026, 3, 1),
+            tauxPenalites = 12.0,
+        )
+
+        val dues = PenalitesDues.de(facture, totalTtc = 1200.0, aujourdhui = LocalDate.of(2026, 4, 1))!!
+
+        assertEquals(31L, dues.joursDeRetard)
+        // 1 200 € × 12 % × 31 / 365 = 12,23 €.
+        assertEquals(12.23, dues.interets!!, 0.005)
+        assertEquals(Facture.INDEMNITE_RECOUVREMENT, dues.indemnite, 0.001)
+        assertEquals(52.23, dues.total!!, 0.005)
+    }
+
+    /**
+     * Sans taux convenu, les intérêts ne sont pas chiffrés — et l'indemnité
+     * reste due.
+     *
+     * Le taux légal s'applique alors de plein droit, mais c'est celui de la BCE
+     * majoré de dix points : il varie dans le temps et n'est pas dans le
+     * téléphone. Inventer le chiffre reviendrait à le réclamer à un vrai client.
+     */
+    @Test
+    fun `sans taux convenu, les interets ne sont pas devines`() {
+        val facture = Facture(
+            statut = StatutFacture.EMISE,
+            echeanceLe = LocalDate.of(2026, 3, 1),
+        )
+
+        val dues = PenalitesDues.de(facture, totalTtc = 1200.0, aujourdhui = LocalDate.of(2026, 4, 1))!!
+
+        assertNull("aucun taux, aucun intérêt chiffré", dues.tauxAnnuel)
+        assertNull(dues.interets)
+        assertNull("ni de total, donc", dues.total)
+        assertEquals(
+            "mais l'indemnité forfaitaire, elle, est fixée par la loi",
+            40.0,
+            dues.indemnite,
+            0.001,
+        )
+    }
+
+    /** Une facture payée, ou pas encore échue, ne fait courir aucune pénalité. */
+    @Test
+    fun `rien ne court sur une facture qui n'est pas en retard`() {
+        val payee = Facture(
+            statut = StatutFacture.PAYEE,
+            echeanceLe = LocalDate.of(2026, 3, 1),
+            tauxPenalites = 12.0,
+        )
+        val aEcheoir = Facture(
+            statut = StatutFacture.EMISE,
+            echeanceLe = LocalDate.of(2026, 4, 30),
+            tauxPenalites = 12.0,
+        )
+        val avril = LocalDate.of(2026, 4, 1)
+
+        assertNull(PenalitesDues.de(payee, 1200.0, avril))
+        assertNull(PenalitesDues.de(aEcheoir, 1200.0, avril))
+    }
+
     private fun intervention(id: String = "int-1", secondes: Long = 6420L) = Intervention(
         id = id,
         date = LocalDate.of(2026, 3, 12),

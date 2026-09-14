@@ -178,5 +178,28 @@ data class Parametres(
          * impôts. L'omettre est un manquement ; l'écrire autrement aussi.
          */
         const val MENTION_FRANCHISE = "TVA non applicable, art. 293 B du CGI"
+
+        /**
+         * Le délai de paiement le plus long qu'on puisse convenir, en jours.
+         *
+         * Soixante jours à compter de la date de facture, plafond de l'article
+         * L. 441-10 du code de commerce. Ce n'est pas un garde-fou de confort :
+         * une échéance au-delà est nulle, et l'entreprise qui l'accorde s'expose
+         * à une amende administrative — c'est *elle* qui est sanctionnée, pas le
+         * client qui paie tard.
+         */
+        const val DELAI_MAXIMUM_JOURS = 60
+
+        /**
+         * Le plancher légal des pénalités de retard, en multiple du taux
+         * d'intérêt légal.
+         *
+         * Un taux convenu en dessous est inopposable, et c'est le taux BCE
+         * majoré de dix points qui reprend sa place. L'écran s'en sert pour
+         * avertir plutôt que pour corriger : c'est une clause commerciale, et la
+         * réécrire dans le dos de celui qui la saisit serait pire que de le
+         * prévenir.
+         */
+        const val PLANCHER_PENALITES = 3
     }
 }

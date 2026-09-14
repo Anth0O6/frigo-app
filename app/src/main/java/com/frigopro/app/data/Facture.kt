@@ -139,6 +139,59 @@ data class Facture(
          * est obligatoire sur toute facture entre professionnels.
          */
         const val INDEMNITE_RECOUVREMENT = 40.0
+
+        /** Les pénalités courent sur une année de 365 jours. */
+        const val JOURS_PAR_AN = 365.0
+    }
+}
+
+/**
+ * Ce qu'un retard de paiement a fait courir, à une date donnée.
+ *
+ * **Rien de tout cela n'est stocké**, et c'est la seule façon que ce soit juste :
+ * le montant grandit d'un jour à l'autre, si bien qu'un chiffre écrit en base
+ * serait faux le lendemain matin. Même règle que « en retard », que les échéances
+ * F-Gas, et pour la même raison.
+ *
+ * Ce n'est pas non plus une modification de la facture. Une facture émise ne
+ * bouge plus — c'est la règle qui tient toute la numérotation —, et les pénalités
+ * ne s'y ajoutent pas : elles sont **dues en plus**, de plein droit, sans avoir à
+ * être rappelées. Ce type dit ce qu'il y a à réclamer ; il ne retouche rien.
+ *
+ * @param interets `null` quand aucun taux n'a été convenu. Le taux légal
+ *   s'applique alors — taux de refinancement de la BCE majoré de dix points —,
+ *   mais ce taux-là n'est pas dans le téléphone et varie dans le temps. Le dire
+ *   inconnu vaut mieux que d'inventer le chiffre qu'on réclamerait à un client.
+ */
+data class PenalitesDues(
+    val joursDeRetard: Long,
+    val tauxAnnuel: Double?,
+    val interets: Double?,
+    val indemnite: Double = Facture.INDEMNITE_RECOUVREMENT,
+) {
+
+    /** Le total réclamable, `null` tant que les intérêts ne sont pas chiffrables. */
+    val total: Double? get() = interets?.let { (it + indemnite).auCentime() }
+
+    companion object {
+
+        /**
+         * Ce qui est dû sur cette facture, ou `null` si elle n'est pas en retard.
+         *
+         * Les intérêts se calculent sur le montant **TTC**, et non sur le hors
+         * taxes : c'est la somme que le client devait verser et n'a pas versée.
+         */
+        fun de(facture: Facture, totalTtc: Double, aujourdhui: LocalDate): PenalitesDues? {
+            val jours = facture.joursDeRetard(aujourdhui) ?: return null
+            val taux = facture.tauxPenalites.takeIf { it > 0.0 }
+            return PenalitesDues(
+                joursDeRetard = jours,
+                tauxAnnuel = taux,
+                interets = taux?.let {
+                    (totalTtc * it / 100.0 * jours / Facture.JOURS_PAR_AN).auCentime()
+                },
+            )
+        }
     }
 }
 

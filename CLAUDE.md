@@ -761,10 +761,10 @@ l'APK : un test rouge bloque la publication.
 | `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
-| `DevisViewModelTest` | Quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
+| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
-| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent |
+| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées |
 | `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture |
 | `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
@@ -1028,6 +1028,52 @@ pénalités de retard, indemnité forfaitaire de quarante euros (art. D. 441-5),
 absence d'escompte. Faute de taux de pénalités convenu, le document renvoie au
 taux légal plutôt que d'imprimer « 0 % », qui serait faux **et** vaudrait
 renonciation au recours.
+
+### Ce qu'un devis devient
+
+Un devis qui a produit une facture **se replie** en bas de la liste, sous un
+en-tête qui les compte. Ni supprimé ni relégué derrière un filtre : c'est la
+pièce qui dit ce que le client a accepté, celle qu'on ressort quand il conteste
+la facture. Mais c'est une affaire close, et la laisser au milieu de ce qui
+attend encore une réponse noie la seule question à laquelle l'écran doit
+répondre d'un coup d'œil. Sur la ligne, le **numéro de la facture** remplace
+alors le statut du devis : « Accepté » ne dit plus rien d'utile une fois la
+facture partie, et le numéro permet de la retrouver dans l'autre vue.
+
+Le lien passe par `DevisFacture`, une **projection de trois colonnes** — devis,
+numéro, statut — et non par la facture entière : charger tout ce que
+l'entreprise a jamais émis pour n'en lire que le numéro aurait fait payer
+l'ouverture de l'onglet. Le statut en fait partie parce qu'une facture **annulée**
+garde son numéro et son lien, et qu'un devis dans ce cas n'est pas dans la même
+situation qu'un devis facturé pour de bon.
+
+### Le retard, et ce qu'il fait courir
+
+`PenalitesDues` dit ce qu'une facture échue a fait courir à une date donnée :
+les intérêts, et l'indemnité forfaitaire de quarante euros. **Rien n'en est
+stocké** — le montant grandit d'un jour à l'autre, et un chiffre en base serait
+faux le lendemain matin. Même règle que « en retard » et que les échéances F-Gas.
+
+Ce n'est pas une modification de la facture, et c'est le point : une facture
+émise ne bouge plus, c'est ce qui tient toute la numérotation. Les pénalités sont
+dues **en plus**, de plein droit, sans rappel préalable — l'écran les affiche
+pour qu'on sache quoi réclamer, il ne retouche rien.
+
+Sans taux convenu, les intérêts ne sont **pas chiffrés**. Le taux légal
+s'applique alors de plein droit, mais c'est celui de la BCE majoré de dix points :
+il varie dans le temps et n'est pas dans le téléphone. Annoncer un chiffre inventé
+reviendrait à le réclamer à un vrai client — c'est la même règle que le GWP d'un
+fluide inconnu. L'indemnité, elle, reste due : elle est fixée par la loi.
+
+Le **délai de paiement** et le **taux de pénalités** se règlent enfin, dans la
+boîte « Tarifs et paiement » des Réglages. Ils y étaient absents depuis leur
+arrivée en base : les deux paraissent en mentions obligatoires sur chaque
+facture, et le taux à zéro — « non fixé » — ne pouvait donc pas être changé.
+Le délai est ramené dans les bornes du code de commerce (`DELAI_MAXIMUM_JOURS`,
+soixante jours : au-delà l'échéance est nulle et c'est *l'entreprise* qui est
+sanctionnée), le taux seulement ramené au positif — un taux sous le plancher
+légal est inopposable, et l'écran le dit plutôt que de le réécrire dans le dos de
+celui qui le saisit.
 
 ### Les relances
 

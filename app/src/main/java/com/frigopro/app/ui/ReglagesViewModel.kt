@@ -70,6 +70,29 @@ class ReglagesViewModel(
 
     fun onTauxTva(taux: Double) = modifier { it.copy(tauxTva = taux) }
 
+    /**
+     * Le délai de paiement accordé, en jours.
+     *
+     * Ramené dans les bornes du code de commerce : soixante jours date de
+     * facture au plus (art. L. 441-10), et jamais moins d'un jour — une échéance
+     * au jour de l'émission serait une facture déjà en retard le jour où elle
+     * part. Le défaut reste trente, le délai supplétif.
+     */
+    fun onDelaiPaiement(jours: Int) =
+        modifier { it.copy(delaiPaiementJours = jours.coerceIn(1, Parametres.DELAI_MAXIMUM_JOURS)) }
+
+    /**
+     * Le taux annuel des pénalités de retard.
+     *
+     * Zéro veut dire « non fixé », et non « pas de pénalités » : faute de taux
+     * convenu, c'est le taux légal qui s'applique de plein droit, et c'est lui
+     * que le document mentionne alors. Le plancher du code de commerce est de
+     * trois fois le taux d'intérêt légal ; un taux plus bas serait inopposable,
+     * et l'écran le dit plutôt que de le corriger en silence.
+     */
+    fun onTauxPenalites(taux: Double) =
+        modifier { it.copy(tauxPenalitesRetard = taux.coerceAtLeast(0.0)) }
+
     // — L'identité de l'entreprise : l'en-tête des documents —————————————————
 
     fun onEntreprise(nom: String) = modifier { it.copy(entreprise = nom) }

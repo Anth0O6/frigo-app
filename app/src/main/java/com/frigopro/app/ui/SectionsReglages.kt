@@ -137,6 +137,8 @@ fun SectionGeneral(
     onChronoAuto: (Boolean) -> Unit,
     onTauxHoraire: (Double) -> Unit,
     onTauxTva: (Double) -> Unit,
+    onDelaiPaiement: (Int) -> Unit,
+    onTauxPenalites: (Double) -> Unit,
 ) {
     var tarifsOuverts by remember { mutableStateOf(false) }
 
@@ -173,10 +175,14 @@ fun SectionGeneral(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "Tarifs", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = "Tarifs et paiement",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                     Text(
                         text = "${Nombres.enEuros(parametres.tauxHoraire)} HT · " +
-                            "TVA ${Nombres.enTexte(parametres.tauxTva)} %",
+                            "TVA ${Nombres.enTexte(parametres.tauxTva)} % · " +
+                            "${parametres.delaiPaiementJours} j",
                         style = StyleChiffrePetit,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -189,9 +195,13 @@ fun SectionGeneral(
     if (tarifsOuverts) {
         var taux by remember { mutableStateOf(Nombres.enTexte(parametres.tauxHoraire)) }
         var tva by remember { mutableStateOf(Nombres.enTexte(parametres.tauxTva)) }
+        var delai by remember { mutableStateOf(parametres.delaiPaiementJours.toString()) }
+        var penalites by remember {
+            mutableStateOf(Nombres.enTexte(parametres.tauxPenalitesRetard))
+        }
         AlertDialog(
             onDismissRequest = { tarifsOuverts = false },
-            title = { Text(text = "Tarifs") },
+            title = { Text(text = "Tarifs et paiement") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ChampTexte(
@@ -212,6 +222,30 @@ fun SectionGeneral(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ChampTexte(
+                        libelle = "Délai de paiement (jours)",
+                        valeur = delai,
+                        onValeur = { delai = it },
+                        clavier = KeyboardType.Number,
+                    )
+                    ChampTexte(
+                        libelle = "Pénalités de retard (% l'an)",
+                        valeur = penalites,
+                        onValeur = { penalites = it },
+                        clavier = KeyboardType.Decimal,
+                    )
+                    // Les deux valeurs paraissent sur chaque facture, et ce sont
+                    // des mentions obligatoires : mieux vaut dire ce qu'elles
+                    // engagent au moment de les saisir qu'après l'envoi.
+                    Text(
+                        text = "Trente jours est le délai qui s'applique faute d'accord, " +
+                            "soixante le maximum légal. Laisser les pénalités à zéro veut " +
+                            "dire « non fixées » et non « aucune » : le taux légal " +
+                            "s'applique alors de plein droit, et la facture le mentionne.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             },
             confirmButton = {
@@ -219,6 +253,8 @@ fun SectionGeneral(
                     onClick = {
                         Nombres.versDecimal(taux)?.let(onTauxHoraire)
                         Nombres.versDecimal(tva)?.let(onTauxTva)
+                        delai.trim().toIntOrNull()?.let(onDelaiPaiement)
+                        Nombres.versDecimal(penalites)?.let(onTauxPenalites)
                         tarifsOuverts = false
                     },
                 ) {
