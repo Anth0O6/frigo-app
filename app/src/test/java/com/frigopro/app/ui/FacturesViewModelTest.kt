@@ -111,6 +111,11 @@ class FacturesViewModelTest {
 
         viewModel.onFacturerIntervention(intervention)
         advanceUntilIdle()
+        // Émise d'abord : une facture sans numéro ne s'exporte pas — un document
+        // non numéroté parti chez un client est une facture irrégulière, et le
+        // ViewModel le revérifie après l'écran.
+        viewModel.onEmettre()
+        advanceUntilIdle()
         viewModel.onExporterPdf()
         advanceUntilIdle()
 
