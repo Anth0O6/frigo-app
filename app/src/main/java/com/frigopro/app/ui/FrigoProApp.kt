@@ -111,7 +111,9 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                     },
                 )
 
-                Onglet.FACTURES -> FacturationRoute()
+                Onglet.FACTURES -> FacturationRoute(
+                    onAllerALaTournee = { onglet = Onglet.TOURNEE },
+                )
                 Onglet.CARNETS -> CarnetsRoute(vue = carnet, onVue = { carnet = it })
                 Onglet.OUTILS -> OutilsRoute()
                 Onglet.REGLAGES -> ReglagesRoute()

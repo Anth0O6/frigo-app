@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.Devis
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
@@ -231,6 +232,49 @@ class InterventionsViewModel(
 
     fun onModifierIntervention(intervention: Intervention) {
         _formulaire.value = EtatFormulaire.depuis(intervention)
+    }
+
+    /**
+     * Ouvre le formulaire pré-rempli depuis un devis accepté.
+     *
+     * Un devis accepté est du travail promis à une date qui reste à poser, et
+     * c'était jusqu'ici le seul endroit du parcours où l'on ressaisissait à la
+     * main ce que l'application savait déjà : le client, sa ville, la machine
+     * visée. Rien n'est **enregistré** ici — le formulaire s'ouvre, et c'est
+     * l'utilisateur qui valide : la date est la vraie question que pose un
+     * chantier accepté, et la poser à sa place aurait planifié une intervention
+     * un jour choisi par personne.
+     *
+     * La **ville** vient de la fiche du client et non du devis, qui ne la porte
+     * pas : c'est elle qui rend l'intervention valide, et sans elle le
+     * formulaire s'ouvrirait sur un champ vide qu'il faudrait remplir en
+     * regardant ailleurs. `client` est en revanche pris sur le devis — c'est le
+     * nom **recopié** au moment du chiffrage, celui que le client a vu sur le
+     * document.
+     *
+     * L'objet du devis devient les **notes**, avec la référence devant. C'est
+     * un point de départ, pas un compte-rendu : le technicien le réécrit sur
+     * place, et il est là pour qu'on sache en arrivant ce qui a été vendu.
+     *
+     * Le devis n'est pas modifié : il reste accepté, et rien ne le marque
+     * « planifié ». Un état de plus aurait demandé une colonne, une migration
+     * et une règle pour le cas où l'intervention est supprimée ensuite — pour
+     * une information que la tournée porte déjà.
+     */
+    fun onPlanifierDepuisDevis(devis: Devis, client: Client?) {
+        _formulaire.value = EtatFormulaire(
+            // La journée consultée, comme pour toute création : c'est celle que
+            // l'utilisateur a sous les yeux, et le sélecteur est juste à côté.
+            date = _jour.value,
+            client = devis.clientNom.ifBlank { client?.nom.orEmpty() },
+            ville = client?.ville.orEmpty(),
+            clientId = devis.clientId,
+            equipementId = devis.equipementId,
+            equipementNom = devis.equipementNom,
+            notes = listOf(devis.numero, devis.objet)
+                .filter { it.isNotBlank() }
+                .joinToString(" — "),
+        )
     }
 
     /**

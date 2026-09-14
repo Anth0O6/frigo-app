@@ -79,8 +79,17 @@ fun DevisRoute(
     modifier: Modifier = Modifier,
     /** Passer aux factures : la bascule de l'onglet, tenue par la coquille. */
     onVoirFactures: () -> Unit = {},
+    /** Passer à la tournée : un autre onglet, donc la coquille seule sait le faire. */
+    onAllerALaTournee: () -> Unit = {},
     viewModel: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
     facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
+    /**
+     * Celui de la tournée, et c'est tout le mécanisme : `viewModel()` rend une
+     * seule instance par classe, si bien que le formulaire ouvert d'ici est
+     * exactement celui que `TourneeRoute` dessine déjà. Rien à transporter d'un
+     * onglet à l'autre — le même motif que la facture créée depuis un devis.
+     */
+    tournee: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
 ) {
     val liste by viewModel.liste.collectAsStateWithLifecycle()
     val carnet by viewModel.carnet.collectAsStateWithLifecycle()
@@ -154,6 +163,15 @@ fun DevisRoute(
             // Facturer bascule l'onglet tout seul : le ViewModel des factures
             // est partagé, et la facture créée devient celle qu'il montre.
             onFacturer = { facturesViewModel.onFacturerDevis(ouvert) },
+            // Pré-remplir puis basculer : la feuille de saisie vit dans l'onglet
+            // Tournée, et c'est là que la date se choisit — devant le planning.
+            onPlanifier = {
+                tournee.onPlanifierDepuisDevis(
+                    devis = ouvert.devis,
+                    client = carnet.firstOrNull { it.id == ouvert.devis.clientId },
+                )
+                onAllerALaTournee()
+            },
             enTete = reglages.entreprisePresentable,
             onSupprimerLigne = viewModel::onSupprimerLigne,
             deplacement = EtatDeplacement(
@@ -557,6 +575,12 @@ fun EcranDevis(
      * approuvé.
      */
     onFacturer: () -> Unit,
+    /**
+     * Planifier le chantier. N'a de sens que sur un devis **accepté** : avant, il
+     * n'y a rien à poser sur un planning, et proposer le bouton sur un brouillon
+     * aurait fait planifier du travail que le client n'a pas commandé.
+     */
+    onPlanifier: () -> Unit,
     /** L'entreprise est renseignée : le PDF portera un en-tête. */
     enTete: Boolean,
     onSupprimerLigne: (String) -> Unit,
@@ -681,6 +705,16 @@ fun EcranDevis(
                 modifier = Modifier.fillMaxWidth(),
             )
             if (devis.devis.statut == StatutDevis.ACCEPTE) {
+                // Planifier avant de facturer, et c'est l'ordre du métier : un
+                // chantier accepté se pose d'abord sur un planning, la facture
+                // ne vient qu'après l'avoir fait. Les deux boutons dans l'autre
+                // sens auraient mis en avant ce qu'on réclame avant ce qu'on
+                // doit encore aller faire.
+                BoutonContour(
+                    texte = "Planifier l'intervention",
+                    onClick = onPlanifier,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 BoutonContour(
                     texte = "Établir la facture",
                     onClick = onFacturer,

@@ -81,6 +81,8 @@ enum class VueFacturation(val libelle: String) {
 @Composable
 fun FacturationRoute(
     modifier: Modifier = Modifier,
+    /** Un devis accepté se planifie, et la tournée est un autre onglet. */
+    onAllerALaTournee: () -> Unit = {},
     facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
 ) {
     var vue by rememberSaveable { mutableStateOf(VueFacturation.DEVIS) }
@@ -94,6 +96,7 @@ fun FacturationRoute(
         VueFacturation.DEVIS -> DevisRoute(
             modifier = modifier,
             onVoirFactures = { vue = VueFacturation.FACTURES },
+            onAllerALaTournee = onAllerALaTournee,
         )
 
         VueFacturation.FACTURES -> FacturesRoute(

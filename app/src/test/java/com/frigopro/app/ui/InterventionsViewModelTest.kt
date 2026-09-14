@@ -3,6 +3,7 @@ package com.frigopro.app.ui
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Chrono
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.Devis
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FauxClientDao
@@ -13,6 +14,7 @@ import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.FauxTechnicienDao
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.TechnicienRepository
@@ -578,4 +580,93 @@ class InterventionsViewModelTest {
         assertEquals("le temps chronométré survit", 5_400L, relue.chrono.cumuleS)
         assertEquals("le numéro attribué survit", "INT-2609-012", relue.numero)
     }
+
+    // — Planifier depuis un devis accepté ————————————————————————————————
+
+    /**
+     * Le devis accepté remplit le formulaire, et **n'enregistre rien**.
+     *
+     * C'est le point : la date est la vraie question que pose un chantier
+     * accepté, et la poser à la place de l'utilisateur aurait planifié une
+     * intervention un jour choisi par personne. Le formulaire s'ouvre, il
+     * valide.
+     */
+    @Test
+    fun `planifier depuis un devis pre-remplit le formulaire sans rien ecrire`() = runTest {
+        val client = Client(nom = "Boucherie Morel", ville = "Lyon")
+        daoClients.enregistrer(client)
+        val viewModel = creerViewModel()
+
+        viewModel.onPlanifierDepuisDevis(devisAccepte(client), client)
+        advanceUntilIdle()
+
+        val formulaire = requireNotNull(viewModel.formulaire.value) { "le formulaire doit s'ouvrir" }
+        assertEquals("Boucherie Morel", formulaire.client)
+        // La ville vient de la fiche : le devis ne la porte pas, et sans elle le
+        // formulaire ne serait pas valide.
+        assertEquals("Lyon", formulaire.ville)
+        assertEquals(client.id, formulaire.clientId)
+        assertEquals("Chambre froide", formulaire.equipementNom)
+        assertTrue("la référence du devis suit", formulaire.notes.contains("DEV-2603-007"))
+        assertTrue("et ce qui a été vendu aussi", formulaire.notes.contains("Remplacement du détendeur"))
+
+        assertTrue("rien n'est enregistré avant validation", dao.contenu.isEmpty())
+    }
+
+    /** Une fois validée, l'intervention est une intervention ordinaire. */
+    @Test
+    fun `le formulaire pre-rempli s'enregistre comme les autres`() = runTest {
+        val client = Client(nom = "Boucherie Morel", ville = "Lyon")
+        daoClients.enregistrer(client)
+        val viewModel = creerViewModel()
+
+        viewModel.onPlanifierDepuisDevis(devisAccepte(client), client)
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(
+                date = LocalDate.of(2026, 3, 18),
+                heure = LocalTime.of(14, 0),
+            ),
+        )
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val posee = dao.contenu.single()
+        assertEquals(LocalDate.of(2026, 3, 18), posee.date)
+        assertEquals(LocalTime.of(14, 0), posee.heure)
+        assertEquals(StatutIntervention.PLANIFIEE, posee.statut)
+        assertEquals(client.id, posee.clientId)
+    }
+
+    /**
+     * Un devis dont le client a disparu du carnet se planifie quand même.
+     *
+     * Le nom est recopié sur le devis — c'est celui que le client a vu sur le
+     * document —, et refuser le geste faute de fiche aurait bloqué le seul cas
+     * où il faut ressaisir la ville de toute façon.
+     */
+    @Test
+    fun `sans fiche client, le nom du devis suffit a ouvrir le formulaire`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onPlanifierDepuisDevis(devisAccepte(null), null)
+        advanceUntilIdle()
+
+        val formulaire = viewModel.formulaire.value!!
+        assertEquals("Boucherie Morel", formulaire.client)
+        // La ville manque, et c'est ce qui rend le formulaire invalide : l'écran
+        // la réclame plutôt que d'en inventer une.
+        assertEquals("", formulaire.ville)
+        assertFalse(formulaire.estValide)
+    }
+
+    private fun devisAccepte(client: Client?) = Devis(
+        id = "d1",
+        numero = "DEV-2603-007",
+        clientId = client?.id,
+        clientNom = "Boucherie Morel",
+        equipementId = "e1",
+        equipementNom = "Chambre froide",
+        objet = "Remplacement du détendeur",
+        statut = StatutDevis.ACCEPTE,
+    )
 }
