@@ -466,6 +466,30 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `initialesDe` est partagée : quatre écrans la dérivaient chacun à sa façon, et
   elles divergeaient déjà — « L'Épicerie du coin » donnait « L » sur l'un et
   « LÉ » sur l'autre.
+  **Supprimer un client** est le seul endroit du projet où deux traitements
+  opposés se croisent dans une même transaction, et c'est ce qui en faisait une
+  décision plutôt qu'un bouton. Ce qui **n'existe que par le client est effacé** :
+  son parc, les photos de ce parc, et ses sites — un site est l'adresse d'une
+  enseigne et n'a pas de sens sans elle, et chaque site repasse par le même
+  chemin, si bien qu'il emporte son propre parc. La récursion s'arrête là : le
+  carnet est un arbre à un seul niveau. Ce qui **raconte ce qui s'est passé est
+  gardé, lien coupé** : interventions, devis, factures. C'est le couple lien /
+  copie du type et de la machine, et il compte double ici — effacer une
+  intervention aurait emporté le temps chronométré, les relevés et la signature
+  du client, et effacer une facture aurait creusé un trou dans une séquence dont
+  la continuité est précisément ce qu'un contrôle vérifie. `ClientDao` est donc
+  devenu une classe abstraite, comme `EquipementDao` et `TypeInterventionDao` et
+  pour la même raison : un client à moitié supprimé serait pire qu'un client
+  qu'on ne peut pas supprimer. Les **fichiers image** ne sont pas du ressort de
+  SQLite — le dépôt les relève avant la transaction, parce qu'après plus aucune
+  ligne ne dit lesquels étaient là, et les efface après, dans l'ordre que tout le
+  projet suit : la base d'abord, les fichiers ensuite.
+  Le geste est sur la **fiche ouverte** et non en appui long sur la carte du
+  carnet, à la différence d'un devis : celle-ci montre déjà le parc et plusieurs
+  boutons, et un appui long y aurait effacé un client pendant qu'on cherchait une
+  machine. La confirmation nomme ce qui part **et ce qui reste**, le second
+  comptant autant — la crainte qui retient le doigt est celle d'effacer une année
+  de tournées, et ce n'est pas ce qui se produit.
   `ClientRepository` tient le carnet. Son tri passe par un `Collator` français
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
@@ -1704,9 +1728,5 @@ place » venant en tête :
   permettrait, l'écran s'y refuse délibérément (voir « Architecture »).
 - Plusieurs relevés horodatés par intervention : la table les accepte déjà
   (`releveLe`), l'écran n'en montre qu'un.
-- Suppression d'un client, qui devra décider du sort du `clientId` des
-  interventions passées — les types et les machines montrent une façon de le
-  faire : couper le lien, garder la copie — et du sort de son parc, qui n'a lui
-  aucune existence sans client.
 - Tests d'UI Compose.
 - Synchronisation serveur, le jour où plusieurs techniciens partagent un planning.
