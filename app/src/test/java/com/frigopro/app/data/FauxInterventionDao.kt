@@ -42,6 +42,8 @@ class FauxInterventionDao : InterventionDao {
 
     override suspend fun toutes(): List<Intervention> = lignes.value
 
+    override fun observerToutes(): Flow<List<Intervention>> = lignes
+
     override suspend fun enregistrer(intervention: Intervention) {
         lignes.update { liste -> liste.filterNot { it.id == intervention.id } + intervention }
     }

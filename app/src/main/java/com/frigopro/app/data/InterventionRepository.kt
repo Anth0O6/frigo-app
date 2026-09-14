@@ -25,6 +25,9 @@ class InterventionRepository(private val dao: InterventionDao) {
     fun observer(id: String): Flow<Intervention?> = dao.observer(id)
 
     /** La semaine du lundi [debut] au dimanche qui suit, pour le planning. */
+    /** Toutes les interventions : le registre des fluides y lit leurs dates. */
+    fun observerToutes(): Flow<List<Intervention>> = dao.observerToutes()
+
     fun observerSemaine(debut: LocalDate): Flow<List<Intervention>> =
         dao.observerPeriode(debut, debut.plusDays(6))
 

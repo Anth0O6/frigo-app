@@ -1,6 +1,13 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.FauxClientDao
+import com.frigopro.app.data.FauxEquipementDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.FauxSuiviDao
+import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.SuiviRepository
 import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.TypeIntervention
@@ -33,6 +40,7 @@ class ReglagesViewModelTest {
 
     private val daoInterventions = FauxInterventionDao()
     private val daoTypes = FauxTypeInterventionDao(daoInterventions)
+    private val daoSuivi = FauxSuiviDao(daoInterventions)
 
     @After
     fun nettoyer() {
@@ -160,6 +168,13 @@ class ReglagesViewModelTest {
             TypeInterventionRepository(daoTypes),
             ParametresRepository(FauxParametresDao(), FauxRangementPhotos()),
             PrestationRepository(daoPrestations),
+            SuiviRepository(daoSuivi, FauxRangementPhotos()),
+            InterventionRepository(daoInterventions),
+            ClientRepository(FauxClientDao()),
+            EquipementRepository(FauxEquipementDao(daoInterventions), FauxRangementPhotos()),
+            // Ce que le registre imprimé dit s'éprouve dans `DocumentRegistreTest` ;
+            // l'écrire demanderait un `Canvas`.
+            ProducteurPdf { null },
         )
     }
 

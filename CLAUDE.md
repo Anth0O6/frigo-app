@@ -65,6 +65,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Photo.kt
 │       │   │   ├── Chrono.kt              # le temps passé, et son arithmétique
 │       │   │   ├── Fluide.kt              # GWP, classe ISO 817, périodicité 517/2014
+│       │   │   ├── RegistreFluides.kt     # ce qu'un contrôle demande à voir
 │       │   │   ├── Conversions.kt         # huit familles d'unités, affines
 │       │   │   ├── PuissanceEchangee.kt   # débit × ρ × cp × Δt, dans les trois sens
 │       │   │   ├── CourbesSaturation.kt   # bulle et rosée, calculées, 23 fluides
@@ -154,6 +155,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── DocumentDevis.kt     # ce que le devis imprimé dit
 │       │       ├── DocumentFacture.kt   # ce que la facture imprimée dit
 │       │       ├── DocumentRapport.kt   # ce que le compte-rendu imprimé dit
+│       │       ├── DocumentRegistre.kt  # ce que le registre des fluides dit
 │       │       ├── EcranFactures.kt     # la liste, la facture, et ses gestes
 │       │       ├── FacturesViewModel.kt
 │       │       ├── MiseEnPageDevis.kt   # l'arithmétique de la page A4
@@ -945,6 +947,8 @@ l'APK : un test rouge bloque la publication.
 | `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture |
 | `DocumentRapportTest` | Ce que le compte-rendu imprimé dit : le relevé non pris qui ne s'invente pas, le prix d'achat qui ne sort jamais, chaque mouvement de fluide détaillé, le point non fait qui se voit, l'export avant clôture qui dit ce qui lui manque |
 | `MiseEnPageRapportTest` | La page du compte-rendu : rien de perdu, un bloc coupé qui reprend son titre, aucun titre orphelin, la signature jamais séparée de ce qu'elle signe, le texte libre enveloppé sur les mots |
+| `RegistreFluidesTest` | Le registre : la date du chantier et non celle de la saisie, un mouvement orphelin qui ne disparaît pas, le net négatif d'un démantèlement, l'équivalent CO₂ calculé sur l'ajouté et jamais deviné |
+| `DocumentRegistreTest` | Ce que le registre imprimé dit : le bilan avant le détail, le sens en toutes lettres, l'année sans mouvement qui produit quand même un document |
 | `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
@@ -1405,6 +1409,68 @@ découpage. L'estimation est volontairement **prudente** — sous-estimer fait
 perdre un peu de place à droite, surestimer ferait déborder le texte hors de la
 page, où il ne se voit pas du tout.
 
+## Le registre des fluides
+
+**La traçabilité des fluides frigorigènes est une obligation** (règlement (UE)
+n° 517/2014, art. 6), et la table se remplissait depuis le début à chaque
+mouvement : il ne manquait que la **sortie**. C'est le quatrième document de la
+chaîne, et le seul qui ne s'adresse pas à un client — un registre est tenu par
+l'entreprise, pour elle-même, et c'est la pièce qu'on pose sur la table quand un
+inspecteur la demande. Il n'a donc **pas de destinataire**, et **pas de
+numéro** : ce n'est pas une facture, c'est une tenue de comptes, et l'année suffit
+à le désigner. Le fichier, lui, porte l'année — « 2026.pdf » dans un dossier de
+téléchargements ne dirait rien.
+
+Rien n'en est stocké : le registre se recompose à chaque export, et un document
+figé en base aurait cessé d'être juste au premier mouvement corrigé. Même règle
+que les pénalités de retard et que les échéances F-Gas.
+
+**La date d'une ligne est celle de l'intervention, pas celle de la saisie.**
+C'est le point le plus facile à rater : `MouvementFluide.le` est posé par le
+dépôt au moment d'écrire, et consigner sa tournée le soir daterait le mouvement
+du lendemain. Un contrôle rapproche le registre des fiches d'intervention, et
+deux dates qui ne se répondent pas font ouvrir le dossier en grand. C'est pour
+cette seule raison que `InterventionDao.observerToutes` existe. L'horodatage de
+saisie reste le **recours** : un mouvement dont l'intervention a disparu — une
+sauvegarde restaurée à moitié — garde une date plutôt que de sortir du registre.
+Une ligne qui s'efface parce qu'un lien est cassé est plus grave qu'une ligne
+imprécise, les kilos ayant bougé de toute façon.
+
+**Les lignes sont groupées par fluide**, chronologiques à l'intérieur de chaque
+groupe, et ce n'est pas l'ordre qu'on attendrait d'un journal. Un contrôle pose
+deux questions — « quelles quantités de tel fluide » et « d'où vient ce kilo-là »
+— et le groupement répond à la première d'un coup d'œil, la seconde restant
+entière puisque chaque ligne nomme sa date, son intervention, son client et sa
+machine. L'ordre purement chronologique aurait obligé à additionner à la main
+sur un document dont c'est l'usage principal.
+
+Le **bilan vient en tête**, avant le détail : c'est le chiffre qu'on demande en
+premier, et le faire chercher au bout de quatre pages aurait inversé l'ordre de
+la conversation. Il sépare ce qui entre de ce qui sort, et le **net peut être
+négatif** — plus de fluide récupéré qu'ajouté, c'est un démantèlement, et le
+ramener à zéro aurait effacé précisément ce qu'un contrôle cherche. L'équivalent
+CO₂ porte sur ce qui a été **ajouté**, parce que c'est ce qui a été mis en
+circulation ; l'additionner au récupéré compterait deux fois le même kilo. Il
+vaut `null` pour un fluide hors catalogue et le document le dit — jamais zéro :
+ce chiffre sert à se situer sous un seuil réglementaire, et un zéro inventé y
+placerait l'entreprise à tort.
+
+**Le registre ne se tait jamais.** Une année sans mouvement produit quand même un
+document, qui dit qu'aucun fluide n'a bougé : « rien à montrer » et « rien ne
+s'est passé » ne valent pas la même chose devant un contrôle, et seul le second
+est une réponse. Il **ne se signe pas** non plus — un registre n'est pas un
+engagement pris devant quelqu'un, et un cadre de signature aurait suggéré qu'il
+vaut attestation.
+
+Il vit dans les **Réglages**, à côté de la sauvegarde : ni dans Outils, qui ne
+regarde aucune donnée de l'application, ni sur une fiche machine, qui n'en
+montrerait qu'une. Les années proposées sont **dérivées des mouvements** — offrir
+trois années dont deux sont vides ferait ouvrir deux registres blancs — et
+observées plutôt que lues une fois, pour que le premier mouvement d'une
+installation neuve fasse apparaître l'année sans relancer l'application. Le flux
+des interventions est le plus lourd du projet, mais il ne coule que tant que
+l'onglet est ouvert, et les Réglages sont l'onglet qu'on ouvre le moins.
+
 ## Icône
 
 Le logo vit dans `design/logo-frigopro.png`, et `design/genere-icones.py` en tire
@@ -1573,8 +1639,6 @@ dans le journal du build, où elle doit rester identique d'une build à l'autre.
 Dans l'ordre souhaité par l'utilisateur, « ce qui s'est vraiment passé sur
 place » venant en tête :
 
-- **Export du registre des fluides.** La table existe et se remplit à chaque
-  mouvement ; il manque la sortie exigible lors d'un contrôle.
 - **Optimisation des trajets** depuis la vue semaine. Le calcul d'itinéraire est
   désormais là (`ServiceItineraire`) ; il manque l'ordonnancement d'une journée,
   qui est un problème d'un autre ordre — et la question de ce qu'il coûte en appels

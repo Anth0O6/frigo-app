@@ -840,3 +840,59 @@ fun SectionDeplacementReglages(
         }
     }
 }
+
+/**
+ * Le registre des fluides, et le geste qui le sort.
+ *
+ * Un objet plutôt que deux paramètres de plus : `ReglagesScreen` en portait déjà
+ * trente, et c'est le même regroupement que celui du tarif de déplacement.
+ */
+data class ActionsRegistre(
+    /** Les années où du fluide a bougé, la plus récente d'abord. */
+    val annees: List<Int> = emptyList(),
+    val onExporter: (Int) -> Unit = {},
+)
+
+/**
+ * Le registre des fluides, dans les Réglages.
+ *
+ * Il est ici et non dans l'onglet Outils — qui ne regarde aucune donnée de
+ * l'application — ni sur une fiche machine, qui n'en montrerait qu'une. Un
+ * registre est un document **de l'entreprise**, au même titre que la
+ * sauvegarde : c'est la pièce qu'on sort quand un contrôle la demande, et c'est
+ * là qu'on va la chercher.
+ *
+ * Les années sont **dérivées des mouvements** et non listées d'avance : proposer
+ * trois années dont deux sont vides ferait ouvrir deux registres pour rien. Une
+ * application qui n'a encore rien consigné le dit, plutôt que d'offrir un bouton
+ * qui produirait une page blanche.
+ */
+@Composable
+fun SectionRegistre(actions: ActionsRegistre) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        IntituleSection(texte = "Registre des fluides")
+        Carte(contour = true) {
+            Text(
+                text = "La traçabilité des fluides frigorigènes est exigible lors d'un " +
+                    "contrôle (règlement UE 517/2014). Le registre reprend les mouvements " +
+                    "consignés sur les interventions, groupés par fluide.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (actions.annees.isEmpty()) {
+                Text(
+                    text = "Aucun mouvement consigné pour l'instant.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                actions.annees.forEach { annee ->
+                    BoutonContour(
+                        texte = "Registre $annee",
+                        onClick = { actions.onExporter(annee) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}

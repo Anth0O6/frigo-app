@@ -40,6 +40,18 @@ interface InterventionDao {
     @Query("SELECT * FROM interventions")
     suspend fun toutes(): List<Intervention>
 
+    /**
+     * Toutes les interventions, observées.
+     *
+     * C'est le registre des fluides qui en a besoin : un mouvement porte la date
+     * de sa *saisie*, et c'est celle de l'intervention qui doit paraître au
+     * registre (voir [RegistreFluides]). Tout charger se paierait sur un écran
+     * qu'on ouvre souvent — ce n'est pas le cas des Réglages, et le flux ne coule
+     * que tant que quelqu'un l'écoute.
+     */
+    @Query("SELECT * FROM interventions")
+    fun observerToutes(): Flow<List<Intervention>>
+
     @Upsert
     suspend fun enregistrer(intervention: Intervention)
 

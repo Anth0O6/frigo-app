@@ -33,9 +33,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,10 @@ fun ReglagesRoute(
     val parametres by viewModel.parametres.collectAsStateWithLifecycle()
     val prestations by viewModel.prestations.collectAsStateWithLifecycle()
     val paliers by viewModel.paliers.collectAsStateWithLifecycle()
+    val anneesRegistre by viewModel.anneesRegistre.collectAsStateWithLifecycle()
+    val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
+    val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
+    val contexte = LocalContext.current
 
     // Le logo vient de la galerie : aucune permission, le sélecteur du système
     // ne nous donne accès qu'à l'image désignée. Même chemin que les photos de
@@ -65,6 +71,33 @@ fun ReglagesRoute(
     val galerie = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { source -> source?.let(viewModel::onLogoChoisi) }
+
+    // Le partage s'ouvre dès que le PDF est écrit, puis le ViewModel oublie le
+    // document : sans cet oubli, revenir sur l'onglet rouvrirait le sélecteur.
+    LaunchedEffect(documentPret) {
+        val fichier = documentPret ?: return@LaunchedEffect
+        contexte.envoyerDocument(
+            document = fichier,
+            objet = "Registre des fluides",
+            corps = "Registre des mouvements de fluides frigorigènes ci-joint.",
+        )
+        viewModel.onDocumentPartage()
+    }
+
+    if (echecExport) {
+        AlertDialog(
+            onDismissRequest = viewModel::onEchecVu,
+            title = { Text(text = "Export impossible") },
+            text = {
+                Text(
+                    text = "Le registre n'a pas pu être écrit. Il manque peut-être de la " +
+                        "place sur le téléphone : rien de ce qui est consigné n'est perdu, " +
+                        "et le document se refait à l'identique.",
+                )
+            },
+            confirmButton = { TextButton(onClick = viewModel::onEchecVu) { Text(text = "Fermer") } },
+        )
+    }
 
     ReglagesScreen(
         types = types,
@@ -105,6 +138,10 @@ fun ReglagesRoute(
             onPrixHeure = viewModel::onPrixHeureTrajet,
             onMinimum = viewModel::onMinimumDeplacement,
             onRefacturerPeages = viewModel::onRefacturerPeages,
+        ),
+        registre = ActionsRegistre(
+            annees = anneesRegistre,
+            onExporter = viewModel::onExporterRegistre,
         ),
         modifier = modifier,
     )
@@ -188,6 +225,8 @@ fun ReglagesScreen(
      * déplacement dans un devis.
      */
     tarifDeplacement: ActionsTarifDeplacement,
+    /** Le registre des fluides : les années disponibles, et l'export. */
+    registre: ActionsRegistre = ActionsRegistre(),
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -259,6 +298,12 @@ fun ReglagesScreen(
                     parametres = parametres,
                     actions = tarifDeplacement,
                 )
+            }
+            item {
+                // Après l'entreprise et le déplacement, avant le catalogue : le
+                // registre est un document qu'on sort, pas un réglage qu'on
+                // ajuste, et il se range donc avec ce qui identifie l'entreprise.
+                SectionRegistre(actions = registre)
             }
             item {
                 SectionCatalogue(

@@ -7,18 +7,25 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.PalierPrestation
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
+import com.frigopro.app.data.RegistreFluides
+import com.frigopro.app.data.SuiviRepository
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.data.TypeInterventionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -47,7 +54,79 @@ class ReglagesViewModel(
     private val typeRepository: TypeInterventionRepository,
     private val parametresRepository: ParametresRepository,
     private val prestationRepository: PrestationRepository,
+    /**
+     * Ce qu'il faut pour sortir le registre des fluides.
+     *
+     * Quatre dépôts pour un seul bouton, et c'est le prix d'un document qui
+     * traverse toute l'application : un mouvement ne porte ni la date de
+     * l'intervention, ni le nom du client, ni celui de la machine — et une ligne
+     * de registre sans ces trois-là n'est pas une trace (voir [RegistreFluides]).
+     */
+    private val suivi: SuiviRepository,
+    private val interventions: InterventionRepository,
+    private val clients: ClientRepository,
+    private val equipements: EquipementRepository,
+    /** Même interface, et même raison, que dans [DevisViewModel]. */
+    private val pdf: ProducteurPdf,
 ) : ViewModel() {
+
+    /**
+     * Les années où du fluide a bougé, la plus récente d'abord.
+     *
+     * Observées plutôt que lues une fois : le premier mouvement d'une
+     * installation neuve doit faire apparaître l'année sans qu'on ait à
+     * relancer l'application. Le flux des interventions est le plus lourd du
+     * projet, mais il ne coule que tant que l'onglet est ouvert — et les
+     * Réglages sont l'onglet qu'on ouvre le moins.
+     */
+    val anneesRegistre: StateFlow<List<Int>> =
+        combine(suivi.observerRegistre(), interventions.observerToutes()) { mouvements, tournees ->
+            RegistreFluides.annees(mouvements, tournees)
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
+    private val _documentPret = MutableStateFlow<Uri?>(null)
+
+    /** Le PDF écrit, tant que l'écran ne l'a pas partagé. Même motif qu'ailleurs. */
+    val documentPret: StateFlow<Uri?> = _documentPret.asStateFlow()
+
+    private val _echecExport = MutableStateFlow(false)
+
+    val echecExport: StateFlow<Boolean> = _echecExport.asStateFlow()
+
+    /**
+     * Sort le registre d'une année.
+     *
+     * Les quatre listes sont prises **au moment de l'export** et non observées
+     * en permanence : un registre est une photographie datée, et l'écran n'a
+     * rien à afficher d'elles entre deux exports.
+     */
+    fun onExporterRegistre(annee: Int) {
+        viewModelScope.launch {
+            val registre = RegistreFluides.pour(
+                annee = annee,
+                mouvements = suivi.observerRegistre().first(),
+                interventions = interventions.observerToutes().first(),
+                clients = clients.clients.first(),
+                equipements = equipements.equipements.first(),
+            )
+            val document = DocumentRegistre.de(registre, parametres.value)
+            val produit = pdf.produire(document)
+            if (produit != null) _documentPret.value = produit else _echecExport.value = true
+        }
+    }
+
+    /** L'écran a ouvert le partage : le document n'a plus à être annoncé. */
+    fun onDocumentPartage() {
+        _documentPret.value = null
+    }
+
+    fun onEchecVu() {
+        _echecExport.value = false
+    }
 
     /** Les réglages, jamais `null` : voir [ParametresRepository]. */
     val parametres: StateFlow<Parametres> = parametresRepository.parametres
@@ -294,6 +373,11 @@ class ReglagesViewModel(
                     conteneur.typesIntervention,
                     conteneur.parametres,
                     conteneur.prestations,
+                    conteneur.suivi,
+                    conteneur.interventions,
+                    conteneur.clients,
+                    conteneur.equipements,
+                    ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                 )
             }
         }
