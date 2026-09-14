@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.PublishedWithChanges
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -54,7 +55,7 @@ enum class Outil(
 ) {
     REGLETTE(
         "Réglette pression / température",
-        "Surchauffe et sous-refroidissement, dix-sept fluides",
+        "Surchauffe et sous-refroidissement, vingt-trois fluides",
         Icons.Filled.Straighten,
     ),
     CONVERTISSEUR(
@@ -76,6 +77,11 @@ enum class Outil(
         "Fiche fluide",
         "GWP, classe de sécurité, glissement",
         Icons.Filled.Warning,
+    ),
+    SUBSTITUTION(
+        "Remplacer un fluide",
+        "Par quoi, et ce que la conversion demande",
+        Icons.Filled.PublishedWithChanges,
     ),
 }
 
@@ -118,6 +124,7 @@ fun OutilsRoute(
             Outil.BILAN -> OutilBilanPuissance()
             Outil.FGAS -> OutilControleEtancheite()
             Outil.FICHE_FLUIDE -> OutilFicheFluide(verifies = verifies)
+            Outil.SUBSTITUTION -> OutilSubstitution()
         }
     }
 }

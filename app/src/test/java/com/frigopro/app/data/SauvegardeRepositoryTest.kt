@@ -558,6 +558,19 @@ class SauvegardeRepositoryTest {
      * excluait une clé d'API du fichier ; celle-ci n'en a plus du tout, la clé
      * vivant dans le relais. Le test reste, pour que la propriété ne se reperde
      * pas le jour où un champ de ce genre reviendrait.
+     *
+     * **Il cherche un nom de champ, et non une sous-chaîne**, et il a fallu s'y
+     * reprendre : la première version balayait le fichier entier à la recherche
+     * de « cle », ce qui a fini par mordre le jour où le magasin a ajouté une
+     * liste `articles` — qui contient les trois lettres. Un test qui échoue sur
+     * un mot français ordinaire ne survit pas longtemps : il finit désactivé, et
+     * la propriété qu'il gardait avec lui. Il découpe donc les noms de champ en
+     * mots et compare mot à mot, ce qui attrape toujours `cleApi` ou
+     * `tokenItineraire` sans se déclencher sur `articles`.
+     *
+     * Les mots sans ambiguïté — `token`, `secret` — restent cherchés **partout**,
+     * valeurs comprises : un secret rangé sous un nom de champ anodin ne se
+     * repère qu'ainsi.
      */
     @Test
     fun `le fichier ne transporte aucun secret`() = runTest {
@@ -565,9 +578,26 @@ class SauvegardeRepositoryTest {
 
         val contenu = repository.exporter().contenu
 
-        listOf("cle", "clé", "apiKey", "api_key", "token", "secret").forEach { suspect ->
+        val nomsDeChamp = Regex("\"([A-Za-z0-9_]+)\"\\s*:").findAll(contenu)
+            .map { it.groupValues[1] }
+            .toSet()
+        val motsSuspects = listOf("cle", "clé", "key", "apikey", "api", "token", "secret", "motdepasse")
+        nomsDeChamp.forEach { champ ->
+            // « cleApi » et « api_key » se découpent tous deux en mots ; le nom
+            // entier est comparé aussi, pour un champ qui serait juste « cle ».
+            val mots = champ.split(Regex("(?=[A-Z])|_")).map { it.lowercase() }.filter { it.isNotBlank() }
+            (mots + champ.lowercase()).forEach { mot ->
+                assertTrue(
+                    "le champ « $champ » porte le mot « $mot » : un secret ne doit " +
+                        "jamais entrer dans une sauvegarde",
+                    mot !in motsSuspects,
+                )
+            }
+        }
+
+        listOf("token", "secret").forEach { suspect ->
             assertTrue(
-                "le fichier ne devrait pas contenir « $suspect »",
+                "le fichier ne devrait nulle part contenir « $suspect »",
                 !contenu.contains(suspect, ignoreCase = true),
             )
         }
