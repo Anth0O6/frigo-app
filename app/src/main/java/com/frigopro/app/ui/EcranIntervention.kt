@@ -70,6 +70,15 @@ data class ActionsIntervention(
     val onChoisirImage: (CategoriePhoto) -> Unit = {},
     val onAgrandir: (Photo) -> Unit = {},
     val onTravaux: (String) -> Unit = {},
+    /**
+     * Envoyer le compte-rendu au client.
+     *
+     * Il part d'ici et non de l'onglet Facturation, parce qu'on le remet **sur
+     * place** : le client vient de signer, il est devant vous, et lui envoyer le
+     * document depuis un autre onglet deux jours plus tard n'est pas le même
+     * geste.
+     */
+    val onEnvoyerRapport: () -> Unit = {},
     val onSigner: () -> Unit = {},
     val onEffacerSignature: () -> Unit = {},
     val onCloturer: () -> Unit = {},

@@ -47,8 +47,17 @@ class ProducteurPdfAndroid(
 
     override suspend fun produire(document: DocumentImprime): Uri? {
         val logo = document.logoFichier?.let { photos.charger(it, MiseEnPageDevis.COTE_LOGO * 4) }
+        // La signature est décodée large pour la même raison que le logo : un
+        // trait rasterisé pile à sa taille d'impression baverait au premier zoom,
+        // et c'est précisément ce qu'on regarde de près sur un document signé.
+        val signature = document.signatureFichier?.let { photos.charger(it, LARGEUR_SIGNATURE * 4) }
         val cible = documents.fichier(document.nomFichier)
-        return if (PdfDevis.ecrire(document, logo, cible)) documents.uri(cible) else null
+        return if (PdfDevis.ecrire(document, logo, signature, cible)) documents.uri(cible) else null
+    }
+
+    private companion object {
+
+        const val LARGEUR_SIGNATURE = 200
     }
 }
 
@@ -80,16 +89,31 @@ object PdfDevis {
     suspend fun ecrire(
         document: DocumentImprime,
         logo: Bitmap?,
+        signature: Bitmap?,
         cible: File,
     ): Boolean = withContext(Dispatchers.IO) {
         val pdf = PdfDocument()
         try {
-            val pages = MiseEnPageDevis.paginer(
-                lignes = document.lignes,
-                totaux = document.totaux,
-                mentions = document.mentions,
-            )
-            pages.forEach { page -> dessiner(pdf, document, logo, page) }
+            // Le seul embranchement de toute la chaîne d'impression : un document
+            // chiffré se pagine en lignes de tableau, un compte-rendu en blocs.
+            // Tout le reste — en-tête, pied, encres, nom de fichier — est commun.
+            if (document.enBlocs) {
+                MiseEnPageRapport
+                    .paginer(
+                        blocs = document.blocs,
+                        mentions = document.mentions,
+                        avecSignature = document.mentionSignature.isNotBlank(),
+                    )
+                    .forEach { page -> dessinerRapport(pdf, document, logo, signature, page) }
+            } else {
+                MiseEnPageDevis
+                    .paginer(
+                        lignes = document.lignes,
+                        totaux = document.totaux,
+                        mentions = document.mentions,
+                    )
+                    .forEach { page -> dessiner(pdf, document, logo, page) }
+            }
             cible.parentFile?.mkdirs()
             cible.outputStream().use { pdf.writeTo(it) }
             true
@@ -127,6 +151,135 @@ object PdfDevis {
         pied(toile, document, page)
 
         pdf.finishPage(feuille)
+    }
+
+    /**
+     * Une page de compte-rendu : l'en-tête, les blocs, puis la signature.
+     *
+     * Le pied et l'en-tête sont ceux du devis, appelés tels quels : c'est tout
+     * l'intérêt d'avoir gardé un seul [DocumentImprime]. Seul le corps change.
+     */
+    private fun dessinerRapport(
+        pdf: PdfDocument,
+        document: DocumentImprime,
+        logo: Bitmap?,
+        signature: Bitmap?,
+        page: PageRapport,
+    ) {
+        val info = PdfDocument.PageInfo.Builder(
+            MiseEnPageDevis.LARGEUR_PAGE,
+            MiseEnPageDevis.TOTAL_HAUTEUR_PAGE,
+            page.numero,
+        ).create()
+        val feuille = pdf.startPage(info)
+        val toile = feuille.canvas
+        val premiere = page.numero == 1
+
+        if (premiere) enTete(toile, document, logo)
+        var y = MiseEnPageRapport.hautDesBlocs(premiere)
+        page.blocs.forEach { bloc -> y = blocRapport(toile, bloc, y) }
+        y = mentionsRapport(toile, page.mentions, y)
+        if (page.signature) cadreSignature(toile, document, signature, y)
+        piedRapport(toile, document, page)
+
+        pdf.finishPage(feuille)
+    }
+
+    /** Un bloc : son titre souligné, puis ses lignes. Rend l'ordonnée du suivant. */
+    private fun blocRapport(toile: Canvas, bloc: BlocImprime, haut: Int): Int {
+        val gauche = MiseEnPageDevis.MARGE.toFloat()
+        val droite = (MiseEnPageDevis.LARGEUR_PAGE - MiseEnPageDevis.MARGE).toFloat()
+        val titre = if (bloc.suite) "${bloc.intitule} (suite)" else bloc.intitule
+        toile.drawText(titre, gauche, haut + 14f, TITRE_BLOC)
+        toile.drawLine(gauche, haut + 19f, droite, haut + 19f, FILET_LEGER)
+
+        var y = haut + MiseEnPageRapport.HAUTEUR_TITRE
+        bloc.lignes.forEach { ligne ->
+            val base = y + 11f
+            if (ligne.valeur.isBlank()) {
+                // Une ligne sans valeur est du texte libre : elle prend toute la
+                // largeur plutôt que la colonne de gauche, sans quoi un
+                // compte-rendu de travaux s'imprimerait sur un tiers de page.
+                toile.drawText(ligne.intitule, gauche, base, CORPS)
+            } else {
+                val place = droite - gauche - LARGEUR_VALEUR
+                toile.drawText(rogner(ligne.intitule, place, CORPS), gauche, base, CORPS)
+                toile.drawText(ligne.valeur, droite, base, CORPS_DROITE_FORT)
+            }
+            y += MiseEnPageRapport.HAUTEUR_LIGNE
+        }
+        return y + MiseEnPageRapport.ESPACE_ENTRE_BLOCS
+    }
+
+    private fun mentionsRapport(toile: Canvas, mentions: List<String>, haut: Int): Int {
+        var y = haut
+        mentions.forEach { mention ->
+            toile.drawText(mention, MiseEnPageDevis.MARGE.toFloat(), y + 10f, CORPS_PETIT)
+            y += MiseEnPageRapport.HAUTEUR_LIGNE
+        }
+        return y
+    }
+
+    /**
+     * Le cadre de signature, et la signature dedans quand il y en a une.
+     *
+     * Le cadre est dessiné même sans signature : un compte-rendu qu'on imprime
+     * pour le faire signer au stylo est un usage normal, et un document sans
+     * emplacement prévu se fait signer dans la marge.
+     */
+    private fun cadreSignature(
+        toile: Canvas,
+        document: DocumentImprime,
+        signature: Bitmap?,
+        haut: Int,
+    ) {
+        val gauche = MiseEnPageDevis.MARGE.toFloat()
+        var y = haut + 14f
+        toile.drawText(document.mentionSignature, gauche, y, CORPS)
+        y += 12f
+        toile.drawText("Signature du client", gauche, y, CORPS_PETIT)
+        val cadre = Rect(
+            gauche.toInt(),
+            (y + 4).toInt(),
+            gauche.toInt() + LARGEUR_CADRE_SIGNATURE,
+            (y + 4).toInt() + HAUTEUR_CADRE_SIGNATURE,
+        )
+        toile.drawRect(
+            cadre.left.toFloat(),
+            cadre.top.toFloat(),
+            cadre.right.toFloat(),
+            cadre.bottom.toFloat(),
+            FILET,
+        )
+        if (signature != null) {
+            // Contenue et non étirée, comme le logo : une signature déformée
+            // n'est plus la signature de personne.
+            val echelle = minOf(
+                (LARGEUR_CADRE_SIGNATURE - 8f) / signature.width,
+                (HAUTEUR_CADRE_SIGNATURE - 8f) / signature.height,
+            )
+            val large = (signature.width * echelle).toInt()
+            val hautImage = (signature.height * echelle).toInt()
+            toile.drawBitmap(
+                signature,
+                null,
+                Rect(
+                    cadre.left + 4,
+                    cadre.top + 4,
+                    cadre.left + 4 + large,
+                    cadre.top + 4 + hautImage,
+                ),
+                ENCRE_IMAGE,
+            )
+        }
+    }
+
+    private fun piedRapport(toile: Canvas, document: DocumentImprime, page: PageRapport) {
+        val y = MiseEnPageDevis.hautDuPied + 18f
+        val droite = (MiseEnPageDevis.LARGEUR_PAGE - MiseEnPageDevis.MARGE).toFloat()
+        toile.drawLine(MiseEnPageDevis.MARGE.toFloat(), y - 14f, droite, y - 14f, FILET_LEGER)
+        toile.drawText(document.emetteur.first(), MiseEnPageDevis.MARGE.toFloat(), y, CORPS_PETIT)
+        toile.drawText("Page ${page.numero} / ${page.total}", droite, y, PIED_DROITE)
     }
 
     /**
@@ -298,6 +451,13 @@ object PdfDevis {
 
     private val CORPS_DROITE = Paint(CORPS).apply { textAlign = Paint.Align.RIGHT }
 
+    /** La place réservée à la valeur d'une ligne de bloc, à droite. */
+    private const val LARGEUR_VALEUR = 150f
+
+    private const val LARGEUR_CADRE_SIGNATURE = 200
+
+    private const val HAUTEUR_CADRE_SIGNATURE = 70
+
     private val CORPS_DROITE_FORT = Paint(CORPS_DROITE).apply {
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
@@ -316,6 +476,11 @@ object PdfDevis {
     private val TITRE_EMETTEUR = Paint(CORPS).apply {
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textSize = 13f
+    }
+
+    private val TITRE_BLOC = Paint(CORPS).apply {
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textSize = 11f
     }
 
     private val TITRE_COLONNE = Paint(CORPS).apply {

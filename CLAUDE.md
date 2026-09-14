@@ -153,6 +153,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── DocumentImprime.kt   # un document imprimable, quel qu'il soit
 │       │       ├── DocumentDevis.kt     # ce que le devis imprimé dit
 │       │       ├── DocumentFacture.kt   # ce que la facture imprimée dit
+│       │       ├── DocumentRapport.kt   # ce que le compte-rendu imprimé dit
 │       │       ├── EcranFactures.kt     # la liste, la facture, et ses gestes
 │       │       ├── FacturesViewModel.kt
 │       │       ├── MiseEnPageDevis.kt   # l'arithmétique de la page A4
@@ -942,6 +943,8 @@ l'APK : un test rouge bloque la publication.
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
 | `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées |
 | `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture |
+| `DocumentRapportTest` | Ce que le compte-rendu imprimé dit : le relevé non pris qui ne s'invente pas, le prix d'achat qui ne sort jamais, chaque mouvement de fluide détaillé, le point non fait qui se voit, l'export avant clôture qui dit ce qui lui manque |
+| `MiseEnPageRapportTest` | La page du compte-rendu : rien de perdu, un bloc coupé qui reprend son titre, aucun titre orphelin, la signature jamais séparée de ce qu'elle signe, le texte libre enveloppé sur les mots |
 | `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
@@ -1334,6 +1337,74 @@ rend une seule instance par classe, si bien que la facture créée ailleurs est
 déjà celle que l'onglet montre. C'est le même mécanisme que le formulaire
 d'intervention partagé entre l'accueil et le planning.
 
+## Le compte-rendu imprimé
+
+**Une intervention laisse une trace chez le client, et ce n'est ni un devis ni
+une facture.** Le devis dit ce qu'on propose, la facture ce qu'on réclame ; le
+compte-rendu dit **ce qui s'est passé**. C'est la pièce qu'on tend au gérant
+avant de repartir, celle qu'il ressort quand la même panne revient en août, et
+celle qu'un contrôle rapproche du registre des fluides.
+
+Il réutilise toute la chaîne du devis — `DocumentImprime`, l'en-tête, le pied,
+le nom du fichier, `ProducteurPdf`, `Context.envoyerDocument` — et n'en diffère
+que par une chose : **il ne chiffre rien**. Un devis et une facture sont des
+tableaux à quatre colonnes dont trois portent des euros ; un compte-rendu est
+une suite de **blocs** dont le nombre et la longueur varient d'une intervention
+à l'autre. C'est le seul endroit où la chaîne se sépare, au moment de paginer
+(`DocumentImprime.enBlocs`), et c'est délibéré : une seconde chaîne d'impression
+aurait fait diverger les deux en-têtes au premier ajustement de maquette, et
+forcer les blocs dans le tableau du devis aurait imprimé trois colonnes vides
+sur un document qui ne parle pas d'argent.
+
+Trois règles le gouvernent, et chacune répare une façon de mentir :
+
+- **Il n'invente rien.** Un relevé non pris ne produit pas de ligne, et le bloc
+  disparaît entièrement plutôt que d'aligner des tirets : une case vide sur un
+  document signé se lit « rien à signaler », ce qui n'est pas « pas mesuré ».
+  Même règle que le GWP d'un fluide hors catalogue.
+- **Il ne laisse filtrer aucun prix.** `PiecePosee.prixAchat` est sur la ligne en
+  base — il sert à la marge — et ne sort nulle part sur le document du client. Un
+  test cherche le symbole « € » et le montant exact plutôt qu'un nombre : un
+  contrôle qui mord sur un chiffre ordinaire finit désactivé, et la propriété
+  part avec lui (voir la leçon du test de secret).
+- **Il ne dit pas « conforme ».** Les points de la checklist sont rapportés tels
+  quels, et un point non fait se voit. C'est un relevé de ce qui a été vérifié,
+  pas un certificat, et l'application n'a pas qualité à en délivrer un.
+
+Le fluide est détaillé **mouvement par mouvement**, et les totaux ne viennent
+qu'après : « 2 kg ajoutés » et « 3 kg ajoutés puis 1 kg récupéré » ne racontent
+pas la même intervention, et c'est la seconde qu'un contrôle veut lire. Le
+document renvoie alors au registre du règlement 517/2014, et signale une
+attestation de capacité non renseignée — à l'utilisateur, pas au client, et
+seulement quand du fluide a bougé : un avertissement qui se déclenche toujours
+est un avertissement qu'on cesse de lire.
+
+**Il s'exporte avant la clôture**, sans numéro et sans signature, et c'est le
+seul usage qui le demande vraiment : on fait signer sur place, parfois sur une
+copie imprimée. Le document dit alors ce qui lui manque — « référence attribuée
+à la clôture » — plutôt que de refuser. Le fichier s'appelle `compte-rendu.pdf`
+tant qu'il n'a pas de référence. En **sous-traitance**, il va à celui chez qui on
+est allé et non au donneur d'ordre : c'est la personne qui a vu les travaux qui
+signe, et elle n'est pas celle qui paie — l'inverse exact de la facture.
+
+`MiseEnPageRapport` porte l'arithmétique de sa page, et partage toute la
+géométrie de `MiseEnPageDevis` — format, marges, en-tête, pied — pour que les
+deux documents ne divergent pas d'un millimètre à chaque retouche. Trois règles
+de pagination, et chacune répare un défaut qui ne se verrait qu'en ouvrant le
+PDF : **aucun titre orphelin** (un bloc ne commence que si une de ses lignes
+suit), **un bloc trop long se coupe et reprend son titre** — même raison que la
+ligne de titres du devis, répétée à chaque page —, et **la signature ne se coupe
+pas**, partant sur une page à elle avec les mentions qui disent ce qu'on signe.
+Les séparer ferait signer une page blanche.
+
+Le texte libre des travaux est **enveloppé sur les mots avant la pagination**,
+sur un budget de caractères (`CARACTERES_PAR_LIGNE`) et non sur une largeur
+mesurée : la vraie largeur demande un `Paint`, c'est-à-dire un téléphone, or
+c'est ici que le nombre de lignes se décide et c'est de lui que dépend le
+découpage. L'estimation est volontairement **prudente** — sous-estimer fait
+perdre un peu de place à droite, surestimer ferait déborder le texte hors de la
+page, où il ne se voit pas du tout.
+
 ## Icône
 
 Le logo vit dans `design/logo-frigopro.png`, et `design/genere-icones.py` en tire
@@ -1502,9 +1573,6 @@ dans le journal du build, où elle doit rester identique d'une build à l'autre.
 Dans l'ordre souhaité par l'utilisateur, « ce qui s'est vraiment passé sur
 place » venant en tête :
 
-- **Export PDF du compte-rendu**, sur le modèle du devis : la mise en page et le
-  partage sont écrits (`MiseEnPageDevis`, `PdfDevis`, `Context.envoyerDocument`),
-  il reste à décrire le document — relevés, travaux, signature du client.
 - **Export du registre des fluides.** La table existe et se remplit à chaque
   mouvement ; il manque la sortie exigible lors d'un contrôle.
 - **Optimisation des trajets** depuis la vue semaine. Le calcul d'itinéraire est

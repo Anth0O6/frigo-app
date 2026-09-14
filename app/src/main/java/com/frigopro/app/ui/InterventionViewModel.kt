@@ -169,6 +169,14 @@ class InterventionViewModel(
      * et la rentabilité d'une intervention ne comptait que le temps.
      */
     private val materiel: MaterielRepository,
+    /**
+     * L'écriture du compte-rendu en PDF.
+     *
+     * Une interface, et pour la même raison que dans [DevisViewModel] : le
+     * `PdfDocument` et le `Canvas` d'Android empêcheraient ce ViewModel de se
+     * construire dans un test JVM. Voir [ProducteurPdf].
+     */
+    private val pdf: ProducteurPdf,
 ) : ViewModel() {
 
     private val _ouverte = MutableStateFlow<String?>(null)
@@ -411,6 +419,54 @@ class InterventionViewModel(
         viewModelScope.launch { suivi.supprimerPiece(id) }
     }
 
+    // — Le compte-rendu, en PDF ——————————————————————————————————————————
+
+    private val _documentPret = MutableStateFlow<Uri?>(null)
+
+    /**
+     * Le PDF écrit, tant que l'écran ne l'a pas partagé.
+     *
+     * Même motif que pour le devis : le ViewModel annonce un fichier, l'écran
+     * ouvre le sélecteur, puis l'oublie. Sans cet oubli, revenir sur l'onglet
+     * rouvrirait le partage tout seul.
+     */
+    val documentPret: StateFlow<Uri?> = _documentPret.asStateFlow()
+
+    private val _echecExport = MutableStateFlow(false)
+
+    val echecExport: StateFlow<Boolean> = _echecExport.asStateFlow()
+
+    /**
+     * Écrit le compte-rendu de l'intervention ouverte.
+     *
+     * Il s'exporte **à tout moment**, y compris avant la clôture et sans
+     * signature : un technicien fait souvent signer sur une copie imprimée, et
+     * exiger une intervention close aurait interdit le seul usage qui le demande.
+     * Le document dit alors ce qui lui manque — la référence attribuée à la
+     * clôture — plutôt que de refuser.
+     *
+     * Exporter ne clôt rien et ne change aucun statut, exactement comme exporter
+     * un devis ne l'envoie pas.
+     */
+    fun onExporterRapport() {
+        val courant = etat.value ?: return
+        val passe = ecoule.value
+        viewModelScope.launch {
+            val document = DocumentRapport.de(etat = courant, ecoule = passe)
+            val produit = pdf.produire(document)
+            if (produit != null) _documentPret.value = produit else _echecExport.value = true
+        }
+    }
+
+    /** L'écran a ouvert le partage : le document n'a plus à être annoncé. */
+    fun onDocumentPartage() {
+        _documentPret.value = null
+    }
+
+    fun onEchecVu() {
+        _echecExport.value = false
+    }
+
     // — Photos —————————————————————————————————————————————————————————————
 
     fun preparerCapture(): Capture = suivi.preparerCapture()
@@ -554,6 +610,7 @@ class InterventionViewModel(
                     conteneur.verificationsFluide,
                     conteneur.factures,
                     conteneur.materiel,
+                    ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                 )
             }
         }

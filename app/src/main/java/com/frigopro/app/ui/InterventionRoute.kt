@@ -4,13 +4,18 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Capture
@@ -48,6 +53,9 @@ fun InterventionRoute(
     val agrandie by viewModel.agrandie.collectAsStateWithLifecycle()
     val fluidesVerifies by viewModel.fluidesVerifies.collectAsStateWithLifecycle()
     val magasin by viewModel.magasin.collectAsStateWithLifecycle()
+    val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
+    val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
+    val contexte = LocalContext.current
     val portee = rememberCoroutineScope()
 
     // La prise de vue quitte l'application : la catégorie visée et le fichier à
@@ -70,6 +78,37 @@ fun InterventionRoute(
     }
 
     var signatureOuverte by remember { mutableStateOf(false) }
+
+    // Posés **avant** les retours anticipés : l'aide au dépannage recouvre
+    // l'intervention, et un export lancé juste avant de l'ouvrir doit quand même
+    // aboutir à une feuille de partage.
+    LaunchedEffect(documentPret) {
+        val fichier = documentPret ?: return@LaunchedEffect
+        val intervention = etat?.intervention
+        contexte.envoyerDocument(
+            document = fichier,
+            objet = listOf("Compte-rendu", intervention?.numero.orEmpty())
+                .filter { it.isNotBlank() }
+                .joinToString(" "),
+            corps = corpsDuCompteRendu(etat),
+        )
+        viewModel.onDocumentPartage()
+    }
+
+    if (echecExport) {
+        AlertDialog(
+            onDismissRequest = viewModel::onEchecVu,
+            title = { Text(text = "Export impossible") },
+            text = {
+                Text(
+                    text = "Le compte-rendu n'a pas pu être écrit. Il manque peut-être de la " +
+                        "place sur le téléphone : le document se reconstruit à l'identique, " +
+                        "rien de ce qui a été saisi n'est perdu.",
+                )
+            },
+            confirmButton = { TextButton(onClick = viewModel::onEchecVu) { Text(text = "Fermer") } },
+        )
+    }
 
     val courant = etat ?: return
 
@@ -126,6 +165,7 @@ fun InterventionRoute(
             },
             onAgrandir = viewModel::onAgrandir,
             onTravaux = viewModel::onTravaux,
+            onEnvoyerRapport = viewModel::onExporterRapport,
             onSigner = { signatureOuverte = true },
             onEffacerSignature = viewModel::onEffacerSignature,
             onCloturer = viewModel::onCloturer,
@@ -167,5 +207,23 @@ fun InterventionRoute(
             },
             onFermer = { signatureOuverte = false },
         )
+    }
+}
+
+/**
+ * Le corps du message qui accompagne le compte-rendu.
+ *
+ * Court, et sans rien répéter de ce qui est dans le PDF : c'est un message, pas
+ * un second document. Il nomme le client et la date, de quoi retrouver la pièce
+ * jointe dans une boîte mail six mois plus tard.
+ */
+private fun corpsDuCompteRendu(etat: EtatIntervention?): String {
+    val intervention = etat?.intervention ?: return "Compte-rendu d'intervention ci-joint."
+    return buildString {
+        append("Bonjour,\n\nVous trouverez ci-joint le compte-rendu de l'intervention")
+        if (intervention.typeLibelle.isNotBlank()) append(" (${intervention.typeLibelle})")
+        append(" du ${intervention.date.format(FORMAT_DATE_DOCUMENT)}")
+        if (intervention.equipementNom.isNotBlank()) append(" sur ${intervention.equipementNom}")
+        append(".\n\nCordialement,")
     }
 }

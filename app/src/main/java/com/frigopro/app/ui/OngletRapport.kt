@@ -156,6 +156,15 @@ fun OngletRapport(
 
         SectionSignature(etat = etat, actions = actions, chargerPhoto = chargerPhoto)
 
+        // Sous la signature, parce que c'est l'ordre du geste : on fait signer,
+        // puis on envoie. Au-dessus, il aurait invité à envoyer un document non
+        // signé, qui ne vaut pas grand-chose comme preuve de passage.
+        BoutonContour(
+            texte = "Envoyer le compte-rendu",
+            onClick = actions.onEnvoyerRapport,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         if (etat.intervention.numero.isEmpty()) {
             Encart(
                 texte = "Le compte-rendu recevra sa référence à la clôture de l'intervention.",

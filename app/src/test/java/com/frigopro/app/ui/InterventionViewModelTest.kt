@@ -421,6 +421,9 @@ class InterventionViewModelTest {
             VerificationFluideRepository(daoVerifications),
             FactureRepository(FauxFactureDao()),
             MaterielRepository(daoMateriel),
+            // Le PDF n'a rien à faire ici : ce qu'il dit s'éprouve dans
+            // `DocumentRapportTest`, et l'écrire demanderait un `Canvas`.
+            ProducteurPdf { null },
         )
         backgroundScope.launch(ordonnanceur) { viewModel.etat.collect { } }
         backgroundScope.launch(ordonnanceur) { viewModel.fluidesVerifies.collect { } }
