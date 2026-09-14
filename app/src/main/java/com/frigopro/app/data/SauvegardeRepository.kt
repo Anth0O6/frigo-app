@@ -71,6 +71,7 @@ class SauvegardeRepository(
     private val prestationDao: PrestationDao,
     private val verificationFluideDao: VerificationFluideDao,
     private val factureDao: FactureDao,
+    private val materielDao: MaterielDao,
     private val maintenant: () -> Instant = { Instant.now() },
 ) {
 
@@ -93,6 +94,9 @@ class SauvegardeRepository(
         val trajets = devisDao.tousLesTrajets()
         val factures = factureDao.toutes()
         val lignesFacture = factureDao.toutesLesLignes()
+        val fournisseurs = materielDao.tousLesFournisseurs()
+        val articles = materielDao.tousLesArticles()
+        val stocks = materielDao.tousLesStocks()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -114,6 +118,9 @@ class SauvegardeRepository(
             trajets = trajets.map { it.versSauvegarde() },
             factures = factures.map { it.versSauvegarde() },
             lignesFacture = lignesFacture.map { it.versSauvegarde() },
+            fournisseurs = fournisseurs.map { it.versSauvegarde() },
+            articles = articles.map { it.versSauvegarde() },
+            stocks = stocks.map { it.versSauvegarde() },
         )
 
         // Les signatures sont des images comme les autres, rangées au même
@@ -166,6 +173,10 @@ class SauvegardeRepository(
         if (trajets.any { it == null }) return ResultatRestauration.Illisible
         val factures = sauvegarde.factures.map { it.versFacture() }
         if (factures.any { it == null }) return ResultatRestauration.Illisible
+        val fournisseurs = sauvegarde.fournisseurs.map { it.versFournisseur() }
+        if (fournisseurs.any { it == null }) return ResultatRestauration.Illisible
+        val stocks = sauvegarde.stocks.map { it.versStock() }
+        if (stocks.any { it == null }) return ResultatRestauration.Illisible
 
         val reglages = sauvegarde.parametres?.versParametres()
         if (sauvegarde.parametres != null && reglages == null) {
@@ -205,6 +216,12 @@ class SauvegardeRepository(
         // ligne que la base ne contient pas encore.
         factureDao.enregistrerToutes(factures.filterNotNull())
         factureDao.enregistrerLignes(sauvegarde.lignesFacture.map { it.versLigne() })
+        // Le magasin : les fournisseurs avant les articles, qui les désignent, et
+        // les stocks en dernier, qui désignent les articles. Même règle que
+        // partout — rien ne doit pointer sur une ligne que la base n'a pas encore.
+        materielDao.enregistrerFournisseurs(fournisseurs.filterNotNull())
+        materielDao.enregistrerArticles(sauvegarde.articles.map { it.versArticle() })
+        materielDao.enregistrerStocks(stocks.filterNotNull())
         reglages?.let { parametresDao.enregistrer(it) }
 
         return ResultatRestauration.Reussie(

@@ -41,6 +41,71 @@ data class Sauvegarde(
     val trajets: List<TrajetSauvegarde> = emptyList(),
     val factures: List<FactureSauvegarde> = emptyList(),
     val lignesFacture: List<LigneFactureSauvegarde> = emptyList(),
+    val fournisseurs: List<FournisseurSauvegarde> = emptyList(),
+    val articles: List<ArticleSauvegarde> = emptyList(),
+    val stocks: List<StockSauvegarde> = emptyList(),
+)
+
+/**
+ * Un fournisseur du carnet.
+ *
+ * Il part dans la sauvegarde pour la même raison que le carnet de clients : ce
+ * sont des coordonnées qu'on a saisies une fois et qu'on ne retrouverait pas
+ * ailleurs. Le lien du catalogue en fait partie — c'est souvent la page d'un
+ * espace professionnel, qu'aucune recherche ne redonne.
+ */
+@Serializable
+data class FournisseurSauvegarde(
+    val id: String,
+    val nom: String,
+    val categorie: String,
+    val telephone: String = "",
+    val email: String = "",
+    val adresse: String = "",
+    val ville: String = "",
+    val siteCatalogue: String = "",
+    val prefere: Boolean = false,
+    val notes: String = "",
+    val modifieLe: Long = 0L,
+)
+
+/**
+ * Un article du magasin.
+ *
+ * Le **prix d'achat** part avec, et c'est ce qui justifie de sauvegarder cette
+ * table : c'est une donnée qu'on a relevée sur une facture fournisseur, pas un
+ * chiffre qu'on retrouve. Sans lui, une restauration rendrait toutes les marges
+ * incalculables.
+ */
+@Serializable
+data class ArticleSauvegarde(
+    val id: String,
+    val reference: String = "",
+    val designation: String,
+    val fournisseurId: String? = null,
+    val fournisseurNom: String = "",
+    val prixAchat: Double = 0.0,
+    val prixVente: Double = 0.0,
+    val unite: String = "u",
+    val modifieLe: Long = 0L,
+)
+
+/**
+ * Ce qu'on a d'un article, à un endroit.
+ *
+ * Le **seuil** part avec la quantité, et c'est le plus important des deux : une
+ * quantité se recompte en ouvrant une armoire, un seuil est un jugement qu'on a
+ * porté sur son propre métier — « en dessous de trois, je suis en panne ». Le
+ * perdre rendrait toutes les alertes muettes sans que rien ne le signale.
+ */
+@Serializable
+data class StockSauvegarde(
+    val id: String,
+    val articleId: String,
+    val lieu: String,
+    val quantite: Double = 0.0,
+    val minimum: Double = 0.0,
+    val modifieLe: Long = 0L,
 )
 
 /**
@@ -430,7 +495,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 9
+const val FORMAT_COURANT: Int = 10
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -591,6 +656,91 @@ internal fun EquipementSauvegarde.versEquipement(): Equipement = Equipement(
  * archive bricolée. Dans les deux cas le fichier entier sera refusé, ce qui
  * vaut mieux qu'une photo rangée hors de son dossier.
  */
+internal fun Fournisseur.versSauvegarde(): FournisseurSauvegarde = FournisseurSauvegarde(
+    id = id,
+    nom = nom,
+    categorie = categorie.name,
+    telephone = telephone,
+    email = email,
+    adresse = adresse,
+    ville = ville,
+    siteCatalogue = siteCatalogue,
+    prefere = prefere,
+    notes = notes,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/**
+ * `null` sur une catégorie inconnue, ce qui fait refuser le fichier entier.
+ *
+ * C'est la règle du projet, et elle vaut ici comme pour un statut : une
+ * catégorie est une valeur **fixe de l'application**, au contraire d'un intitulé
+ * de type, qui est libre par nature. En deviner une reviendrait à ranger un
+ * fournisseur de fluides parmi les outilleurs sans que rien ne le dise.
+ */
+internal fun FournisseurSauvegarde.versFournisseur(): Fournisseur? {
+    val famille = CategorieFournisseur.entries.firstOrNull { it.name == categorie } ?: return null
+    return Fournisseur(
+        id = id,
+        nom = nom,
+        categorie = famille,
+        telephone = telephone,
+        email = email,
+        adresse = adresse,
+        ville = ville,
+        siteCatalogue = siteCatalogue,
+        prefere = prefere,
+        notes = notes,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun Article.versSauvegarde(): ArticleSauvegarde = ArticleSauvegarde(
+    id = id,
+    reference = reference,
+    designation = designation,
+    fournisseurId = fournisseurId,
+    fournisseurNom = fournisseurNom,
+    prixAchat = prixAchat,
+    prixVente = prixVente,
+    unite = unite,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun ArticleSauvegarde.versArticle(): Article = Article(
+    id = id,
+    reference = reference,
+    designation = designation,
+    fournisseurId = fournisseurId,
+    fournisseurNom = fournisseurNom,
+    prixAchat = prixAchat,
+    prixVente = prixVente,
+    unite = unite,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+internal fun Stock.versSauvegarde(): StockSauvegarde = StockSauvegarde(
+    id = id,
+    articleId = articleId,
+    lieu = lieu.name,
+    quantite = quantite,
+    minimum = minimum,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/** `null` sur un lieu inconnu : même règle que la catégorie d'un fournisseur. */
+internal fun StockSauvegarde.versStock(): Stock? {
+    val endroit = LieuStock.entries.firstOrNull { it.name == lieu } ?: return null
+    return Stock(
+        id = id,
+        articleId = articleId,
+        lieu = endroit,
+        quantite = quantite,
+        minimum = minimum,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
 internal fun PhotoSauvegarde.versPhoto(): Photo? {
     val rangement = CategoriePhoto.entries.firstOrNull { it.name == categorie } ?: return null
     val nom = StockagePhotos.nomSur(fichier) ?: return null

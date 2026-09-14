@@ -26,6 +26,7 @@ class SauvegardeRepositoryTest {
     private val daoPrestations = FauxPrestationDao()
     private val daoVerifications = FauxVerificationFluideDao()
     private val daoFactures = FauxFactureDao()
+    private val daoMateriel = FauxMaterielDao()
     private val repository =
         SauvegardeRepository(
             daoInterventions,
@@ -39,6 +40,7 @@ class SauvegardeRepositoryTest {
             daoPrestations,
             daoVerifications,
             daoFactures,
+            daoMateriel,
         )
 
     @Test
@@ -89,6 +91,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         ).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())
@@ -120,6 +123,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         ).restaurer(contenu)
 
         assertEquals(EQUIPEMENT, autreEquipements.contenu.single())
@@ -165,6 +169,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -365,6 +370,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -415,6 +421,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         ).restaurer(export.contenu)
 
         assertEquals(2, export.types)
@@ -611,6 +618,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         )
     }
 
@@ -628,6 +636,7 @@ class SauvegardeRepositoryTest {
             FauxPrestationDao(),
             FauxVerificationFluideDao(),
             FauxFactureDao(),
+            FauxMaterielDao(),
         )
     }
 

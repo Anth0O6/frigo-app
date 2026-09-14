@@ -673,3 +673,73 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
         )
     }
 }
+
+/**
+ * Le magasin : fournisseurs, articles, et les deux stocks.
+ *
+ * Trois tables neuves, aucune reconstruction — mais **cinq index**, et ils sont
+ * aussi obligatoires que les tables : Room valide le schéma entier à
+ * l'ouverture, et une migration qui passe sans eux fait échouer le démarrage
+ * suivant.
+ *
+ * L'index de `stocks` est le seul **unique** du projet, et il porte une règle
+ * plutôt qu'une optimisation : un article n'a qu'une ligne par lieu. Deux lignes
+ * « atelier » pour le même article donneraient deux comptes contradictoires, et
+ * rien à l'écran ne dirait lequel est le bon. La base le refuse donc, plutôt que
+ * de compter sur le dépôt pour n'en créer qu'une.
+ *
+ * Les prix arrivent à **zéro**, comme le catalogue de prestations et les tarifs
+ * de déplacement, et pour la même raison : un prix inventé partirait chez un
+ * vrai client sans que personne ne l'ait relu. Zéro se voit et appelle une
+ * correction. Le `minimum` d'un stock à zéro veut dire « pas de seuil » et non
+ * « seuil à zéro » — sans quoi tout article épuisé alerterait, y compris celui
+ * qu'on ne tient délibérément pas en stock.
+ */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `fournisseurs` (" +
+                "`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `categorie` TEXT NOT NULL, " +
+                "`telephone` TEXT NOT NULL, `email` TEXT NOT NULL, " +
+                "`adresse` TEXT NOT NULL, `ville` TEXT NOT NULL, " +
+                "`siteCatalogue` TEXT NOT NULL, `prefere` INTEGER NOT NULL, " +
+                "`notes` TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_fournisseurs_categorie` " +
+                "ON `fournisseurs` (`categorie`)",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `articles` (" +
+                "`id` TEXT NOT NULL, `reference` TEXT NOT NULL, " +
+                "`designation` TEXT NOT NULL, `fournisseurId` TEXT, " +
+                "`fournisseurNom` TEXT NOT NULL, `prixAchat` REAL NOT NULL, " +
+                "`prixVente` REAL NOT NULL, `unite` TEXT NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_articles_fournisseurId` " +
+                "ON `articles` (`fournisseurId`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_articles_reference` " +
+                "ON `articles` (`reference`)",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `stocks` (" +
+                "`id` TEXT NOT NULL, `articleId` TEXT NOT NULL, `lieu` TEXT NOT NULL, " +
+                "`quantite` REAL NOT NULL, `minimum` REAL NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_stocks_articleId_lieu` " +
+                "ON `stocks` (`articleId`, `lieu`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_stocks_articleId` ON `stocks` (`articleId`)",
+        )
+    }
+}

@@ -9,6 +9,7 @@ import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.ItineraireRelais
+import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.TechnicienRepository
@@ -60,6 +61,9 @@ class ConteneurApp(private val contexte: Context) {
     /** Le catalogue de prestations, d'où se construisent les devis. */
     val prestations: PrestationRepository by lazy { PrestationRepository(base.prestationDao()) }
 
+    /** Le magasin : fournisseurs, articles, et les stocks de l'atelier et du camion. */
+    val materiel: MaterielRepository by lazy { MaterielRepository(base.materielDao()) }
+
     /**
      * Le calcul d'itinéraire, pour la facturation du déplacement.
      *
@@ -88,6 +92,7 @@ class ConteneurApp(private val contexte: Context) {
             base.prestationDao(),
             base.verificationFluideDao(),
             base.factureDao(),
+            base.materielDao(),
         )
     }
 
