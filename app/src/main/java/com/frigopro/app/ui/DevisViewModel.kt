@@ -368,9 +368,20 @@ class DevisViewModel(
         viewModelScope.launch { devis.supprimerLigne(id) }
     }
 
-    fun onSupprimer() {
-        val id = _ouvert.value ?: return
-        _ouvert.value = null
+    /**
+     * Supprime un devis, ouvert ou non.
+     *
+     * L'identifiant est passé plutôt que pris sur le devis ouvert : la liste
+     * supprime aussi, et c'est même de là que le geste sert le plus — une fausse
+     * manœuvre crée un devis vide qu'on voit dans la liste, et l'obliger à
+     * l'ouvrir pour l'effacer aurait ajouté deux gestes au rattrapage d'un seul.
+     *
+     * La feuille se referme quand c'est elle qu'on efface, et seulement alors :
+     * remettre `_ouvert` à `null` sans regarder aurait fermé le devis en cours
+     * de saisie parce qu'on en a supprimé un autre.
+     */
+    fun onSupprimer(id: String) {
+        if (_ouvert.value == id) _ouvert.value = null
         viewModelScope.launch { devis.supprimer(id) }
     }
 

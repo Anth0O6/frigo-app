@@ -96,6 +96,12 @@ fun DevisRoute(
     val echecItineraire by viewModel.echecItineraire.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
+    // Le devis dont on vient de demander la suppression, en attente de
+    // confirmation. Tenu par la route et non par chaque écran : la liste et
+    // la feuille ouverte suppriment toutes deux, et deux boîtes jumelles
+    // auraient fini par ne plus dire la même chose.
+    var aSupprimer by remember { mutableStateOf<Devis?>(null) }
+
     // Le partage s'ouvre dès que le PDF est écrit, puis le ViewModel oublie le
     // document : sans cet oubli, revenir sur l'onglet rouvrirait le sélecteur.
     LaunchedEffect(documentPret) {
@@ -165,7 +171,7 @@ fun DevisRoute(
                 onRetirer = viewModel::onRetirerDeplacement,
                 onOublierEchec = viewModel::onOublierEchec,
             ),
-            onSupprimer = viewModel::onSupprimer,
+            onSupprimer = { aSupprimer = ouvert.devis },
             onFermer = viewModel::onFermer,
             modifier = modifier,
         )
@@ -174,11 +180,69 @@ fun DevisRoute(
             devis = liste,
             compteurs = compteurs,
             onOuvrir = viewModel::onOuvrir,
+            onSupprimer = { aSupprimer = it },
             onNouveau = { viewModel.onNouveau(null) },
             onVoirFactures = onVoirFactures,
             modifier = modifier,
         )
     }
+
+    aSupprimer?.let { condamne ->
+        ConfirmationSuppressionDevis(
+            devis = condamne,
+            onConfirmer = {
+                viewModel.onSupprimer(condamne.id)
+                aSupprimer = null
+            },
+            onFermer = { aSupprimer = null },
+        )
+    }
+}
+
+/**
+ * La confirmation de suppression d'un devis.
+ *
+ * Elle **nomme ce qui disparaît**, comme celle d'une intervention : les lignes
+ * chiffrées, et le trajet si un itinéraire a été calculé — un chiffre venu de
+ * l'extérieur, un jour donné, qui ne se retrouve pas en le redemandant. Le
+ * bouton supprimait jusqu'ici sans rien demander, et une fausse manœuvre sur un
+ * devis de quinze lignes se payait en les ressaisissant toutes.
+ *
+ * Elle ne propose pas d'annuler après coup : garder la ligne en attente quelque
+ * part aurait demandé de décider ce qu'il advient de son numéro, et un devis à
+ * moitié supprimé est pire qu'une question posée avant.
+ */
+@Composable
+private fun ConfirmationSuppressionDevis(
+    devis: Devis,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Supprimer ce devis ?") },
+        text = {
+            Text(
+                text = buildString {
+                    append(devis.objet.ifBlank { "Ce devis" })
+                    if (devis.numero.isNotBlank()) append(" (${devis.numero})")
+                    append(" disparaît avec ses lignes chiffrées")
+                    append(" et le trajet calculé pour le déplacement.")
+                    append(" C'est définitif.")
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmer) {
+                Text(
+                    text = "Supprimer",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
 }
 
 /**
@@ -201,6 +265,13 @@ fun ListeDevis(
     devis: DevisRanges,
     compteurs: CompteursDevis,
     onOuvrir: (Devis) -> Unit,
+    /**
+     * L'appui long sur une ligne. La liste est le seul endroit d'où l'on peut
+     * effacer un devis créé par erreur sans avoir à l'ouvrir d'abord, et c'est
+     * exactement le geste que réclame une fausse manœuvre : le devis de trop se
+     * voit dans la liste, pas dans sa propre feuille.
+     */
+    onSupprimer: (Devis) -> Unit = {},
     onNouveau: () -> Unit,
     onVoirFactures: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -264,6 +335,7 @@ fun ListeDevis(
                     LigneDevisListe(
                         chiffre = document,
                         onClick = { onOuvrir(document.devis) },
+                        onSupprimer = { onSupprimer(document.devis) },
                     )
                 }
                 if (devis.facturés.isNotEmpty()) {
@@ -279,6 +351,9 @@ fun ListeDevis(
                             LigneDevisListe(
                                 chiffre = facturé.chiffre,
                                 onClick = { onOuvrir(facturé.chiffre.devis) },
+                                // Pas d'appui long ici : un devis facturé est la
+                                // pièce qui dit ce que le client a accepté, et
+                                // l'effacer laisserait une facture sans son devis.
                                 facture = facturé.facture,
                             )
                         }
@@ -329,10 +404,13 @@ private fun CompteursEnTete(compteurs: CompteursDevis) {
 private fun LigneDevisListe(
     chiffre: DevisChiffre,
     onClick: () -> Unit,
+    onSupprimer: (() -> Unit)? = null,
     facture: DevisFacture? = null,
 ) {
     val devis = chiffre.devis
-    Carte(onClick = onClick) {
+    // L'appui simple ouvre, l'appui long supprime : la convention du projet,
+    // celle des lignes d'un devis et des interventions de la tournée.
+    Carte(onClick = onClick, onLongClick = onSupprimer) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,

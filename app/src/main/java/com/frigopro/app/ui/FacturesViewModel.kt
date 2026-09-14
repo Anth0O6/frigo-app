@@ -16,7 +16,6 @@ import com.frigopro.app.data.FactureComplete
 import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.LigneFacture
-import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.SuiviRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,11 +63,27 @@ class FacturesViewModel(
     private val pdf: ProducteurPdf,
 ) : ViewModel() {
 
-    val reglages: StateFlow<Parametres> = parametres.parametres
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), Parametres())
-
-    val carnet: StateFlow<List<Client>> = clients.clients
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), emptyList())
+    /**
+     * Les réglages et le carnet se **lisent au moment de servir**, et ne sont
+     * pas tenus en `StateFlow`.
+     *
+     * Ce n'est pas un détail de style, c'est la réparation d'un défaut qui a
+     * coûté des factures fausses. Les deux vivaient ici en
+     * `stateIn(WhileSubscribed)`, et **aucun écran ne les collectait** : un flux
+     * ainsi démarré ne coule que tant que quelqu'un l'écoute, si bien que
+     * `.value` rendait éternellement la valeur initiale — `Parametres()` et une
+     * liste vide. Le PDF partait donc sans logo et sans en-tête d'entreprise, et
+     * surtout l'émission **figeait sur la facture les réglages par défaut** :
+     * TVA à 20 % sur une entreprise en franchise, délai de paiement supplétif,
+     * taux de pénalités à zéro. Une facture émise ne bouge plus — c'est ce qui
+     * tient la numérotation — donc l'erreur était définitive.
+     *
+     * Une lecture ponctuelle ne peut pas se tromper de la sorte : elle n'a pas
+     * d'abonné à perdre. Et le coût est nul, ces deux lectures n'arrivant qu'aux
+     * quatre gestes qui écrivent un document.
+     */
+    private suspend fun client(id: String?): Client? =
+        id?.let { cherche -> clients.clients.first().firstOrNull { it.id == cherche } }
 
     val liste: StateFlow<List<FactureChiffree>> = factures.facturesChiffrees
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), emptyList())
@@ -145,7 +160,7 @@ class FacturesViewModel(
     fun onEmettre() {
         val courante = complete.value?.facture ?: return
         viewModelScope.launch {
-            factures.emettre(courante, reglages.value)
+            factures.emettre(courante, parametres.lire())
         }
     }
 
@@ -203,8 +218,8 @@ class FacturesViewModel(
         viewModelScope.launch {
             val document = DocumentFacture.de(
                 facture = courante,
-                parametres = reglages.value,
-                client = carnet.value.firstOrNull { it.id == courante.facture.clientId },
+                parametres = parametres.lire(),
+                client = client(courante.facture.clientId),
             )
             val produit = pdf.produire(document)
             if (produit != null) _documentPret.value = produit else _echecExport.value = true
@@ -250,9 +265,7 @@ class FacturesViewModel(
                 parametres = parametres.lire(),
                 // Celui qui paie, et non celui chez qui on est allé : c'est son
                 // adresse qui doit figurer sur la facture.
-                client = carnet.value.firstOrNull {
-                    it.id == (intervention.clientFactureId ?: intervention.clientId)
-                },
+                client = client(intervention.clientFactureId ?: intervention.clientId),
             )
             _ouverte.value = facture.id
         }
@@ -264,7 +277,7 @@ class FacturesViewModel(
             val facture = factures.creerDepuisDevis(
                 devis = devis,
                 parametres = parametres.lire(),
-                client = carnet.value.firstOrNull { it.id == devis.devis.clientId },
+                client = client(devis.devis.clientId),
             )
             _ouverte.value = facture.id
         }
