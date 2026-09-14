@@ -28,6 +28,17 @@ data class EtatFormulaire(
     val ville: String = "",
     /** Renseigné quand le client vient du carnet ; `null` s'il est saisi à la main. */
     val clientId: String? = null,
+    /**
+     * Le donneur d'ordre, en sous-traitance ; `null` quand il n'y en a pas.
+     *
+     * Deux rôles, et l'ordre de saisie dit lequel prime : on saisit d'abord
+     * **où** l'on va — c'est ce qui décide de la tournée, de l'itinéraire et du
+     * parc proposé — et seulement ensuite pour qui, s'il y a lieu. L'inverse
+     * aurait fait poser la question du donneur d'ordre à chaque intervention
+     * ordinaire, où elle n'en est pas une.
+     */
+    val clientFactureId: String? = null,
+    val clientFactureNom: String = "",
     /** Type choisi dans la liste du technicien ; `null` s'il n'en vient pas. */
     val typeId: String? = null,
     /** Intitulé affiché, recopié du type. Vide quand aucun n'est choisi. */
@@ -82,6 +93,8 @@ data class EtatFormulaire(
             typeId = typeId,
             typeLibelle = typeLibelle,
             clientId = clientId,
+            clientFactureId = clientFactureId,
+            clientFactureNom = clientFactureNom,
             equipementId = equipementId,
             equipementNom = equipementNom,
             statut = statut,
@@ -103,6 +116,8 @@ data class EtatFormulaire(
             typeId = intervention.typeId,
             typeLibelle = intervention.typeLibelle,
             clientId = intervention.clientId,
+            clientFactureId = intervention.clientFactureId,
+            clientFactureNom = intervention.clientFactureNom,
             equipementId = intervention.equipementId,
             equipementNom = intervention.equipementNom,
             statut = intervention.statut,

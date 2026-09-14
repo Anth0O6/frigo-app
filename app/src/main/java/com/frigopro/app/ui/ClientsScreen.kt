@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -63,12 +65,14 @@ import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.GroupeClients
 import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.initialesDe
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.theme.FrigoProTheme
+import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
 /**
@@ -87,7 +91,7 @@ fun ClientsRoute(
     viewModel: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
 ) {
-    val clients by viewModel.clients.collectAsStateWithLifecycle()
+    val carnet by viewModel.groupes.collectAsStateWithLifecycle()
     val fiche by viewModel.fiche.collectAsStateWithLifecycle()
     val parc by machines.parc.collectAsStateWithLifecycle()
     val groupes by machines.groupes.collectAsStateWithLifecycle()
@@ -168,10 +172,11 @@ fun ClientsRoute(
         }
     } else {
         ClientsScreen(
-            clients = clients,
+            carnet = carnet,
             groupes = groupes,
             onNouveauClient = viewModel::onNouveauClient,
             onOuvrirFiche = viewModel::onOuvrirFiche,
+            onNouveauSite = viewModel::onNouveauSite,
             onOuvrirMachine = machines::onOuvrir,
             onAjouterMachine = machines::onAjouterMachine,
             modifier = modifier,
@@ -313,7 +318,15 @@ private fun ConfirmationSuppressionMachine(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientsScreen(
-    clients: List<Client>,
+    /**
+     * Le carnet **en groupes** : chaque donneur d'ordre, et ses sites.
+     *
+     * Les sites ne sont pas au premier rang : « Carrefour », « Carrefour
+     * Part-Dieu » et « Carrefour Vaise » côte à côte feraient trois entrées pour
+     * un client. Ils se posent sous le leur, en retrait, et ont sinon exactement
+     * la même carte — un site a son adresse, son téléphone et son parc.
+     */
+    carnet: List<GroupeClients>,
     /**
      * Le parc **par groupe** : un bi-split est un appareil chez le client, pas
      * trois lignes. Compter ses unités comme des machines donnerait un parc faux,
@@ -322,13 +335,28 @@ fun ClientsScreen(
     groupes: List<GroupeMachines>,
     onNouveauClient: () -> Unit,
     onOuvrirFiche: (Client) -> Unit,
+    onNouveauSite: (Client) -> Unit,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val parClient = groupes.groupBy { it.groupe.clientId }
     var recherche by rememberSaveable { mutableStateOf("") }
-    val retenus = clients.filter { correspond(it, parClient[it.id].orEmpty(), recherche) }
+
+    fun correspondant(client: Client) =
+        correspond(client, parClient[client.id].orEmpty(), recherche)
+
+    // Un groupe est retenu si le donneur d'ordre correspond — ses sites suivent
+    // alors tous — ou si l'un de ses sites correspond, auquel cas seuls ceux-là
+    // paraissent, sous leur donneur d'ordre qui les situe.
+    val retenus = carnet.mapNotNull { groupe ->
+        when {
+            correspondant(groupe.donneur) -> groupe
+            else -> groupe.sites.filter(::correspondant)
+                .takeIf { it.isNotEmpty() }
+                ?.let { groupe.copy(sites = it) }
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -361,7 +389,7 @@ fun ClientsScreen(
                 indication = "Nom, ville, machine…",
                 modifier = Modifier.padding(horizontal = MargeEcran),
             )
-            if (clients.isEmpty()) {
+            if (carnet.isEmpty()) {
                 CarnetVide(modifier = Modifier.fillMaxSize())
             } else if (retenus.isEmpty()) {
                 Encart(
@@ -381,7 +409,9 @@ fun ClientsScreen(
                 ) {
                     // Groupé par initiale : dans un carnet qui grossit, c'est
                     // le repère qui évite de faire défiler à l'aveugle.
-                    retenus.groupBy { initiale(it.nom) }.forEach { (lettre, groupe) ->
+                    // L'initiale est celle du **donneur d'ordre** : un site se
+                    // cherche sous son enseigne, pas sous sa propre lettre.
+                    retenus.groupBy { initiale(it.donneur.nom) }.forEach { (lettre, groupe) ->
                         item(key = "lettre-$lettre") {
                             Text(
                                 text = lettre,
@@ -390,14 +420,32 @@ fun ClientsScreen(
                                 modifier = Modifier.padding(start = 2.dp, top = 4.dp),
                             )
                         }
-                        items(items = groupe, key = { it.id }) { client ->
-                            ClientCard(
-                                client = client,
-                                machines = parClient[client.id].orEmpty(),
-                                onClick = { onOuvrirFiche(client) },
-                                onOuvrirMachine = onOuvrirMachine,
-                                onAjouterMachine = { onAjouterMachine(client.id) },
-                            )
+                        groupe.forEach { entree ->
+                            item(key = entree.donneur.id) {
+                                ClientCard(
+                                    client = entree.donneur,
+                                    machines = parClient[entree.donneur.id].orEmpty(),
+                                    onClick = { onOuvrirFiche(entree.donneur) },
+                                    onOuvrirMachine = onOuvrirMachine,
+                                    onAjouterMachine = { onAjouterMachine(entree.donneur.id) },
+                                    onNouveauSite = { onNouveauSite(entree.donneur) },
+                                    nombreSites = entree.nombreSites,
+                                )
+                            }
+                            items(items = entree.sites, key = { it.id }) { site ->
+                                ClientCard(
+                                    client = site,
+                                    machines = parClient[site.id].orEmpty(),
+                                    onClick = { onOuvrirFiche(site) },
+                                    onOuvrirMachine = onOuvrirMachine,
+                                    onAjouterMachine = { onAjouterMachine(site.id) },
+                                    // Le retrait est ce qui dit le rattachement :
+                                    // une carte pleine largeur au même rang que
+                                    // son enseigne se lirait comme un client de
+                                    // plus.
+                                    modifier = Modifier.padding(start = RETRAIT_SITE),
+                                )
+                            }
                         }
                     }
                 }
@@ -449,6 +497,9 @@ fun ClientCard(
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: () -> Unit,
     modifier: Modifier = Modifier,
+    /** `null` sur un site : on n'attache pas un site à un site. */
+    onNouveauSite: (() -> Unit)? = null,
+    nombreSites: Int = 0,
 ) {
     val contexte = LocalContext.current
 
@@ -515,9 +566,56 @@ fun ClientCard(
                 onOuvrirMachine = onOuvrirMachine,
                 onAjouterMachine = onAjouterMachine,
             )
+            if (onNouveauSite != null) {
+                LigneAjoutSite(nombre = nombreSites, onClick = onNouveauSite)
+            }
         }
     }
 }
+
+/**
+ * L'ajout d'un site, au bas de la carte d'un donneur d'ordre.
+ *
+ * Le compte est dit plutôt que déduit d'un coup d'œil aux cartes en retrait :
+ * elles sont filtrées par la recherche, et « 4 sites » quand on en voit un seul
+ * est l'information qui manquerait autrement.
+ */
+@Composable
+private fun LigneAjoutSite(nombre: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = LocalCibles.current.action)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AddLocationAlt,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = when (nombre) {
+                0 -> "Ajouter un site"
+                1 -> "1 site · en ajouter un"
+                else -> "$nombre sites · en ajouter un"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+/**
+ * Le retrait d'une carte de site.
+ *
+ * C'est lui, et rien d'autre, qui dit le rattachement : une carte pleine
+ * largeur au même rang que son enseigne se lirait comme un client de plus.
+ */
+private val RETRAIT_SITE = 20.dp
 
 /** Le parc d'un client, dépliable depuis sa carte. */
 @Composable
@@ -642,20 +740,35 @@ private fun ClientsScreenPreview() {
     FrigoProTheme {
         Surface {
             ClientsScreen(
-                clients = listOf(
-                    Client(
-                        id = "1",
-                        nom = "Boucherie Lemoine",
-                        ville = "Rouen",
-                        adresse = "12 rue des Carmes",
-                        telephone = "02 35 00 00 00",
+                carnet = listOf(
+                    GroupeClients(
+                        Client(
+                            id = "1",
+                            nom = "Boucherie Lemoine",
+                            ville = "Rouen",
+                            adresse = "12 rue des Carmes",
+                            telephone = "02 35 00 00 00",
+                        ),
                     ),
-                    Client(id = "2", nom = "Supérette Val-Fleuri", ville = "Elbeuf"),
-                    Client(
-                        id = "3",
-                        nom = "Traiteur Delaunay",
-                        ville = "Barentin",
-                        adresse = "5 place de la Gare",
+                    GroupeClients(
+                        donneur = Client(id = "2", nom = "Supérette Val-Fleuri", ville = "Elbeuf"),
+                        sites = listOf(
+                            Client(
+                                id = "2a",
+                                nom = "Val-Fleuri Centre",
+                                ville = "Elbeuf",
+                                adresse = "8 rue Henry",
+                                parentId = "2",
+                            ),
+                        ),
+                    ),
+                    GroupeClients(
+                        Client(
+                            id = "3",
+                            nom = "Traiteur Delaunay",
+                            ville = "Barentin",
+                            adresse = "5 place de la Gare",
+                        ),
                     ),
                 ),
                 groupes = listOf(
@@ -670,6 +783,7 @@ private fun ClientsScreenPreview() {
                 ),
                 onNouveauClient = {},
                 onOuvrirFiche = {},
+                onNouveauSite = {},
                 onOuvrirMachine = {},
                 onAjouterMachine = {},
             )

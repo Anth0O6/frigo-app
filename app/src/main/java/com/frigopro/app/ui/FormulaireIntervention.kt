@@ -36,6 +36,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -221,6 +222,12 @@ fun FormulaireIntervention(
                 label = { Text(text = "Ville") },
                 singleLine = true,
                 keyboardOptions = OPTIONS_CLAVIER,
+            )
+
+            ChampDonneurDOrdre(
+                etat = etat,
+                clients = clients,
+                onEtatChange = onEtatChange,
             )
 
             Text(
@@ -512,13 +519,106 @@ fun FormulaireIntervention(
  * courte pour discriminer, ni pour un nom déjà tapé en entier — la suggestion
  * n'apporterait alors rien.
  */
-private fun suggestions(clients: List<Client>, etat: EtatFormulaire): List<Client> {
-    val saisie = etat.client.trim()
-    if (etat.clientId != null || saisie.length < 2) return emptyList()
+private fun suggestions(clients: List<Client>, etat: EtatFormulaire): List<Client> =
+    suggestions(clients, etat.client, etat.clientId)
+
+/** Le même calcul, pour l'un ou l'autre des deux rôles. */
+private fun suggestions(clients: List<Client>, saisi: String, rattacheA: String?): List<Client> {
+    val saisie = saisi.trim()
+    if (rattacheA != null || saisie.length < 2) return emptyList()
 
     return clients
         .filter { it.nom.contains(saisie, ignoreCase = true) && !it.nom.equals(saisie, ignoreCase = true) }
         .take(NOMBRE_SUGGESTIONS)
+}
+
+/**
+ * Le donneur d'ordre, quand le travail est sous-traité.
+ *
+ * **Replié par défaut**, et c'est tout l'enjeu : la sous-traitance est le cas
+ * rare, et un champ « facturé à » toujours visible poserait à chaque
+ * intervention ordinaire une question qui n'en est pas une. L'interrupteur le
+ * fait apparaître ; le refermer efface le rattachement plutôt que de le laisser
+ * traîner invisible dans l'état — une facture partirait alors chez quelqu'un
+ * qu'on ne voit plus à l'écran.
+ *
+ * Il s'ouvre de lui-même sur une intervention qui en porte un : sinon, rouvrir
+ * une sous-traitance pour corriger une heure cacherait ce qu'elle a de
+ * particulier.
+ */
+@Composable
+private fun ChampDonneurDOrdre(
+    etat: EtatFormulaire,
+    clients: List<Client>,
+    onEtatChange: (EtatFormulaire) -> Unit,
+) {
+    var ouvert by rememberSaveable(etat.id) {
+        mutableStateOf(etat.clientFactureId != null || etat.clientFactureNom.isNotBlank())
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Sous-traitance", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = "Le travail se fait ici, la facture part ailleurs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = ouvert,
+            onCheckedChange = { actif ->
+                ouvert = actif
+                if (!actif) {
+                    onEtatChange(etat.copy(clientFactureId = null, clientFactureNom = ""))
+                }
+            },
+        )
+    }
+
+    if (!ouvert) return
+
+    OutlinedTextField(
+        value = etat.clientFactureNom,
+        // Même règle que pour le client : retoucher le nom détache du carnet,
+        // parce que ce n'est plus le même donneur d'ordre.
+        onValueChange = {
+            onEtatChange(etat.copy(clientFactureNom = it, clientFactureId = null))
+        },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(text = "Facturé à") },
+        singleLine = true,
+        keyboardOptions = OPTIONS_CLAVIER,
+        trailingIcon = {
+            if (etat.clientFactureId != null) {
+                Icon(
+                    imageVector = Icons.Filled.ContactPage,
+                    contentDescription = "Donneur d'ordre du carnet",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+    )
+
+    val propositions = suggestions(clients, etat.clientFactureNom, etat.clientFactureId)
+    if (propositions.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            propositions.forEach { donneur ->
+                SuggestionClient(
+                    client = donneur,
+                    onClick = {
+                        onEtatChange(
+                            etat.copy(clientFactureId = donneur.id, clientFactureNom = donneur.nom),
+                        )
+                    },
+                )
+            }
+        }
+    }
 }
 
 /** Au-delà, la feuille de saisie se transforme en liste de clients. */

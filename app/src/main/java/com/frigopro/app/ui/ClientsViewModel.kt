@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.GroupeClients
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,19 @@ class ClientsViewModel(private val repository: ClientRepository) : ViewModel() {
             initialValue = emptyList(),
         )
 
+    /**
+     * Le carnet en groupes : chaque donneur d'ordre, et ses sites repliés
+     * dessous. C'est ce que la liste affiche ; [clients] reste la liste plate,
+     * dont le formulaire d'intervention a besoin pour proposer *tous* les
+     * interlocuteurs, sites compris.
+     */
+    val groupes: StateFlow<List<GroupeClients>> = repository.groupes
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
     private val _fiche = MutableStateFlow<EtatFicheClient?>(null)
 
     /** Fiche ouverte, ou `null` quand l'écran n'affiche que le carnet. */
@@ -38,6 +52,17 @@ class ClientsViewModel(private val repository: ClientRepository) : ViewModel() {
 
     fun onNouveauClient() {
         _fiche.value = EtatFicheClient()
+    }
+
+    /**
+     * Un site neuf, rattaché d'emblée à son donneur d'ordre.
+     *
+     * Le rattachement se décide **ici** et pas dans le formulaire : on ouvre un
+     * site depuis la fiche de l'enseigne, et demander ensuite « à qui
+     * l'attacher ? » serait reposer une question déjà répondue par le geste.
+     */
+    fun onNouveauSite(donneurDOrdre: Client) {
+        _fiche.value = EtatFicheClient(parentId = donneurDOrdre.id, ville = donneurDOrdre.ville)
     }
 
     fun onOuvrirFiche(client: Client) {

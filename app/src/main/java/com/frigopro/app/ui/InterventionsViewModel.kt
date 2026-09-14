@@ -318,7 +318,16 @@ class InterventionsViewModel(
         viewModelScope.launch {
             val clientId = etat.clientId
                 ?: clientRepository.trouverOuCreer(etat.client, etat.ville).id
-            interventionRepository.enregistrer(etat.versIntervention().copy(clientId = clientId))
+            // Le donneur d'ordre entre au carnet par le même chemin : sans cela,
+            // une sous-traitance tapée à la main laisserait un nom sur
+            // l'intervention et rien dans le carnet, et la facture partirait sans
+            // adresse.
+            val donneurId = etat.clientFactureId ?: etat.clientFactureNom.trim()
+                .takeIf { it.isNotBlank() }
+                ?.let { clientRepository.trouverOuCreer(it, etat.ville).id }
+            interventionRepository.enregistrer(
+                etat.versIntervention().copy(clientId = clientId, clientFactureId = donneurId),
+            )
         }
     }
 
