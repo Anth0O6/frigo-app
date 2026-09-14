@@ -82,6 +82,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Parametres.kt          # les réglages, en une seule ligne
 │       │   │   ├── Prestation.kt          # technicien, checklist, catalogue
 │       │   │   ├── Degressif.kt           # un prix par rang d'unité
+│       │   │   ├── Rentabilite.kt         # ce qu'une intervention coûte
 │       │   │   ├── Materiel.kt            # fournisseurs, articles, deux stocks
 │       │   │   ├── MaterielDao.kt
 │       │   │   ├── MaterielRepository.kt
@@ -435,6 +436,25 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   **hausse** de GWP s'affiche comme telle : une conversion de prolongation
   alourdit le bilan, et le taire laisserait croire que toute conversion est un
   progrès.
+  `RentabiliteIntervention` dit ce qu'une intervention a coûté et ce qu'elle
+  rapporte — et **nomme ce qu'elle ignore**, ce qui est le point : c'est une
+  marge sur *coûts directs*, pas un résultat d'exploitation. Le véhicule,
+  l'assurance, l'outillage, le local et les heures de bureau n'y entrent pas,
+  faute d'une clé de répartition que l'application n'a pas à inventer. Le taire
+  serait pire que de le dire : un technicien qui lirait « 256 € de marge » en
+  croyant que c'est ce qui lui reste facturerait trop bas l'année suivante.
+  `Parametres.coutHoraireInterne` est **distinct** de `tauxHoraire` : entre ce
+  qu'une heure coûte et ce qu'elle se facture il y a le salaire chargé, et c'est
+  tout l'écart qu'on mesure. Les intervertir donnerait une marge négative sur une
+  intervention rentable, et un test fige la distinction. Zéro veut dire « non
+  renseigné » : le calcul se déclare alors **non chiffrable** plutôt que
+  d'afficher une marge égale à la recette — un chiffre juste par accident ne se
+  distingue pas d'un vrai. Les prix d'achat sont **recopiés sur la ligne**
+  (`PiecePosee.prixAchat`, `MouvementFluide.prixAchatKg`) et non lus dans le
+  magasin au moment du calcul : une intervention de mars doit rester chiffrable
+  en mars, et sur un fluide dont le tarif a doublé en un an l'écart n'est pas
+  anecdotique. Le fluide **récupéré** ne coûte rien — c'est une reprise, et
+  l'imputer reviendrait à se faire payer deux fois le même kilo.
   `initialesDe` est partagée : quatre écrans la dérivaient chacun à sa façon, et
   elles divergeaient déjà — « L'Épicerie du coin » donnait « L » sur l'un et
   « LÉ » sur l'autre.
@@ -769,6 +789,12 @@ penser. Les prix arrivent à zéro comme partout ailleurs.
 rang 1 est déjà `prestations.prixUnitaire`, et un palier `aPartirDe = 1` aurait
 dupliqué cette valeur pour la faire diverger au premier changement de tarif.
 
+`MIGRATION_15_16` apporte ce qu'une intervention coûte : trois colonnes, aucune
+table. `coutHoraireInterne` arrive à **zéro**, qui veut dire « non renseigné » et
+non « une heure ne coûte rien » — même choix que le taux de pénalités, et pour la
+même raison : un chiffre inventé donnerait une marge fausse, et une marge fausse
+se paie sur la tarification de l'année suivante.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -853,6 +879,7 @@ l'APK : un test rouge bloque la publication.
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
 | `MaterielRepositoryTest` | Les trois façons de dire une marge et leur non-confusion, le manque jugé endroit par endroit, le seuil à zéro qui n'alerte pas, un mouvement qui additionne, un transfert qui ne prend que le disponible |
 | `DegressifTest` | Le prix par rang et non par tranche, le total qui ne décroît jamais quand on ajoute une unité, les rangs au même prix regroupés, la dégression devenue lignes de devis |
+| `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
@@ -902,6 +929,11 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 12 ajoute les deux prix d'achat des lignes d'intervention et le coût
+horaire interne. Les prix d'achat y sont sauvegardés pour la même raison qu'ils
+sont recopiés en base : ce sont les prix **du jour de l'intervention**, et rien ne
+les retrouve.
 
 Le format 11 ajoute les **paliers dégressifs**, pour la même raison que les prix
 du catalogue : c'est une décision commerciale de l'entreprise, pas une donnée
@@ -1421,14 +1453,12 @@ place » venant en tête :
 - **Les péages automatiques**, le jour où ils compteront plus que l'absence de
   carte bancaire. C'est le relais qui changerait, pas l'application : elle sait
   déjà lire un péage chiffré et le dire connu.
-- **Ce qu'une intervention a coûté, et ce qu'elle rapporte.** Le magasin apporte
-  le prix d'achat, le chrono apporte le temps ; il manque le **coût horaire
-  interne** — ce qu'une heure de technicien coûte à l'entreprise, distinct du
-  taux facturé — et le prix d'achat recopié sur la pièce posée, pour que la marge
-  d'une intervention de mars reste celle de mars.
-- **Les écrans du magasin** : l'inventaire, les alertes de réapprovisionnement,
-  le carnet de fournisseurs et le chargement du camion. Le modèle est posé et
-  éprouvé, rien n'y mène encore depuis l'application.
+- **Les écrans du magasin et de la rentabilité.** Quatre modèles sont posés et
+  éprouvés sans qu'aucun écran n'y mène encore : l'inventaire et ses alertes de
+  réapprovisionnement, le carnet de fournisseurs, le chargement du camion, la
+  saisie des paliers dégressifs, et la marge d'une intervention sur sa fiche. La
+  couche `data` est le travail difficile — migrations, arrondis, règles — et il
+  est fait ; ce qui reste est de l'assemblage d'écrans sur des flux existants.
 - **Recouper les courbes livrées** avec la table du fournisseur qu'on utilise,
   fluide par fluide, et cocher chacune dans la réglette. Ce n'est plus un
   préalable — les valeurs sont calculées, et le report est ouvert —, mais un
