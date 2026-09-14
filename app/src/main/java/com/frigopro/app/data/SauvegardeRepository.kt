@@ -97,6 +97,7 @@ class SauvegardeRepository(
         val fournisseurs = materielDao.tousLesFournisseurs()
         val articles = materielDao.tousLesArticles()
         val stocks = materielDao.tousLesStocks()
+        val paliers = prestationDao.tousLesPaliers()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -121,6 +122,7 @@ class SauvegardeRepository(
             fournisseurs = fournisseurs.map { it.versSauvegarde() },
             articles = articles.map { it.versSauvegarde() },
             stocks = stocks.map { it.versSauvegarde() },
+            paliers = paliers.map { it.versSauvegarde() },
         )
 
         // Les signatures sont des images comme les autres, rangées au même
@@ -188,6 +190,8 @@ class SauvegardeRepository(
         // Les techniciens avant les interventions, qui les désignent.
         technicienDao.enregistrerTous(sauvegarde.techniciens.map { it.versTechnicien() })
         prestationDao.enregistrerToutes(prestations.filterNotNull())
+        // Les paliers après les prestations, dont ils portent l'identifiant.
+        prestationDao.enregistrerPaliers(sauvegarde.paliers.map { it.versPalier() })
         verificationFluideDao.enregistrerToutes(verifications)
         val types = sauvegarde.types.map { it.versType() }
         val clients = sauvegarde.clients.map { it.versClient() }

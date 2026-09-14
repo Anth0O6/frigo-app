@@ -743,3 +743,30 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         )
     }
 }
+
+/**
+ * Le prix dégressif par rang d'unité.
+ *
+ * Une table, un index, aucune colonne ajoutée — et c'est le signe que le
+ * catalogue s'y prêtait : le prix du rang 1 est déjà `prestations.prixUnitaire`,
+ * et un palier `aPartirDe = 1` aurait dupliqué cette valeur pour la faire
+ * diverger au premier changement de tarif.
+ *
+ * Le prix arrive à **zéro** comme partout ailleurs dans ce schéma : un tarif
+ * inventé partirait chez un vrai client sans que personne ne l'ait relu, et zéro
+ * se voit.
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `paliers_prestation` (" +
+                "`id` TEXT NOT NULL, `prestationId` TEXT NOT NULL, " +
+                "`aPartirDe` INTEGER NOT NULL, `prixUnitaire` REAL NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_paliers_prestation_prestationId` " +
+                "ON `paliers_prestation` (`prestationId`)",
+        )
+    }
+}

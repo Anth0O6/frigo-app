@@ -84,4 +84,29 @@ interface PrestationDao {
 
     @Query("DELETE FROM prestations WHERE id = :id")
     suspend fun effacer(id: String)
+
+    // — Les paliers dégressifs ——————————————————————————————————————————
+
+    @Query("SELECT * FROM paliers_prestation ORDER BY aPartirDe ASC")
+    fun observerPaliers(): Flow<List<PalierPrestation>>
+
+    @Query("SELECT * FROM paliers_prestation")
+    suspend fun tousLesPaliers(): List<PalierPrestation>
+
+    @Upsert
+    suspend fun enregistrerPalier(palier: PalierPrestation)
+
+    @Upsert
+    suspend fun enregistrerPaliers(paliers: List<PalierPrestation>)
+
+    @Query("DELETE FROM paliers_prestation WHERE id = :id")
+    suspend fun effacerPalier(id: String)
+
+    /**
+     * Une prestation effacée emporte ses paliers : ils n'ont plus d'objet, et
+     * les laisser en base ferait ressurgir des prix orphelins le jour où un
+     * identifiant serait réutilisé.
+     */
+    @Query("DELETE FROM paliers_prestation WHERE prestationId = :prestationId")
+    suspend fun effacerPaliersDe(prestationId: String)
 }

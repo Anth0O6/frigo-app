@@ -70,5 +70,39 @@ class PrestationRepository(private val dao: PrestationDao) {
         return nettoyee
     }
 
-    suspend fun supprimer(id: String) = dao.effacer(id)
+    /** Supprimer une prestation emporte ses paliers : ils n'ont plus d'objet. */
+    suspend fun supprimer(id: String) {
+        dao.effacerPaliersDe(id)
+        dao.effacer(id)
+    }
+
+    // — La dégressivité ——————————————————————————————————————————————————
+
+    /** Les paliers de chaque prestation, par identifiant de prestation. */
+    val paliers: Flow<Map<String, List<PalierPrestation>>> =
+        dao.observerPaliers().map { liste -> liste.groupBy { it.prestationId } }
+
+    /** Le tarif complet d'une prestation : son prix de base, et sa dégression. */
+    fun tarif(prestation: Prestation, paliers: List<PalierPrestation>): TarifDegressif =
+        TarifDegressif(base = prestation.prixUnitaire, paliers = paliers)
+
+    /**
+     * Pose le prix d'un rang d'unité.
+     *
+     * Le rang 1 n'est pas un palier — c'est le prix de la prestation, qui se
+     * règle là où il se réglait déjà. Un appel avec `aPartirDe = 1` ne fait donc
+     * rien plutôt que de créer un doublon qui divergerait au premier changement
+     * de tarif.
+     */
+    suspend fun definirPalier(prestationId: String, aPartirDe: Int, prixUnitaire: Double): PalierPrestation? {
+        if (aPartirDe < 2 || prixUnitaire < 0.0) return null
+        val existant = dao.tousLesPaliers()
+            .firstOrNull { it.prestationId == prestationId && it.aPartirDe == aPartirDe }
+        val palier = (existant ?: PalierPrestation(prestationId = prestationId, aPartirDe = aPartirDe))
+            .copy(prixUnitaire = prixUnitaire, modifieLe = Instant.now())
+        dao.enregistrerPalier(palier)
+        return palier
+    }
+
+    suspend fun supprimerPalier(id: String) = dao.effacerPalier(id)
 }

@@ -44,6 +44,24 @@ data class Sauvegarde(
     val fournisseurs: List<FournisseurSauvegarde> = emptyList(),
     val articles: List<ArticleSauvegarde> = emptyList(),
     val stocks: List<StockSauvegarde> = emptyList(),
+    val paliers: List<PalierSauvegarde> = emptyList(),
+)
+
+/**
+ * Le prix d'une prestation à partir d'un rang d'unité.
+ *
+ * Il part dans la sauvegarde pour la même raison que les prix du catalogue :
+ * c'est une **décision commerciale** de l'entreprise, pas une donnée qu'on
+ * retrouve. Un technicien qui restaure sur un téléphone neuf et voit toutes ses
+ * dégressions effacées referait ses devis au plein tarif sans s'en apercevoir.
+ */
+@Serializable
+data class PalierSauvegarde(
+    val id: String,
+    val prestationId: String,
+    val aPartirDe: Int,
+    val prixUnitaire: Double = 0.0,
+    val modifieLe: Long = 0L,
 )
 
 /**
@@ -495,7 +513,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 10
+const val FORMAT_COURANT: Int = 11
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -694,6 +712,22 @@ internal fun FournisseurSauvegarde.versFournisseur(): Fournisseur? {
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }
+
+internal fun PalierPrestation.versSauvegarde(): PalierSauvegarde = PalierSauvegarde(
+    id = id,
+    prestationId = prestationId,
+    aPartirDe = aPartirDe,
+    prixUnitaire = prixUnitaire,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun PalierSauvegarde.versPalier(): PalierPrestation = PalierPrestation(
+    id = id,
+    prestationId = prestationId,
+    aPartirDe = aPartirDe,
+    prixUnitaire = prixUnitaire,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
 
 internal fun Article.versSauvegarde(): ArticleSauvegarde = ArticleSauvegarde(
     id = id,

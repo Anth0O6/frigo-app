@@ -361,6 +361,32 @@ class FauxPrestationDao : PrestationDao {
     override suspend fun effacer(id: String) {
         lignes.update { liste -> liste.filterNot { it.id == id } }
     }
+
+    private val lesPaliers = MutableStateFlow<List<PalierPrestation>>(emptyList())
+
+    val contenuPaliers: List<PalierPrestation> get() = lesPaliers.value
+
+    override fun observerPaliers(): Flow<List<PalierPrestation>> =
+        lesPaliers.map { liste -> liste.sortedBy { it.aPartirDe } }
+
+    override suspend fun tousLesPaliers(): List<PalierPrestation> = lesPaliers.value
+
+    override suspend fun enregistrerPalier(palier: PalierPrestation) {
+        lesPaliers.update { liste -> liste.filterNot { it.id == palier.id } + palier }
+    }
+
+    override suspend fun enregistrerPaliers(paliers: List<PalierPrestation>) {
+        val identifiants = paliers.map { it.id }.toSet()
+        lesPaliers.update { liste -> liste.filterNot { it.id in identifiants } + paliers }
+    }
+
+    override suspend fun effacerPalier(id: String) {
+        lesPaliers.update { liste -> liste.filterNot { it.id == id } }
+    }
+
+    override suspend fun effacerPaliersDe(prestationId: String) {
+        lesPaliers.update { liste -> liste.filterNot { it.prestationId == prestationId } }
+    }
 }
 
 /** Les vérifications de courbe, en mémoire. */
