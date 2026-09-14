@@ -25,6 +25,20 @@ interface ClientDao {
     @Query("SELECT * FROM clients WHERE nom = :nom COLLATE NOCASE LIMIT 1")
     suspend fun trouverParNom(nom: String): Client?
 
+    /**
+     * Le site de ce nom chez ce donneur d'ordre.
+     *
+     * La recherche est **portée par le parent**, et ce n'est pas un détail :
+     * deux donneurs d'ordre qui ont chacun un site « Lyon » ne sont pas une
+     * confusion, c'est le cas ordinaire. C'est la même règle que pour les unités
+     * de multi-split, où deux « Salon » sous deux groupes différents cohabitent.
+     */
+    @Query(
+        "SELECT * FROM clients WHERE nom = :nom COLLATE NOCASE " +
+            "AND parentId = :parentId LIMIT 1",
+    )
+    suspend fun trouverSite(nom: String, parentId: String): Client?
+
     /** Tout le carnet, pour la sauvegarde. Le tri est l'affaire du dépôt. */
     @Query("SELECT * FROM clients")
     suspend fun tous(): List<Client>

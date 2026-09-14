@@ -248,7 +248,11 @@ class FacturesViewModel(
                 pieces = suivi.observerPieces(intervention.id).first(),
                 mouvements = suivi.observerMouvements(intervention.id).first(),
                 parametres = parametres.lire(),
-                client = carnet.value.firstOrNull { it.id == intervention.clientId },
+                // Celui qui paie, et non celui chez qui on est allé : c'est son
+                // adresse qui doit figurer sur la facture.
+                client = carnet.value.firstOrNull {
+                    it.id == (intervention.clientFactureId ?: intervention.clientId)
+                },
             )
             _ouverte.value = facture.id
         }

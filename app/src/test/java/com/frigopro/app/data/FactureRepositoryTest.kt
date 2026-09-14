@@ -326,6 +326,69 @@ class FactureRepositoryTest {
     }
 
     /**
+     * En sous-traitance, la facture part chez le **donneur d'ordre**.
+     *
+     * Et elle dit où le travail a eu lieu : X reçoit des factures pour des
+     * chantiers qu'il n'a pas vus, et « Fuite de fluide — INT-2605-018 » ne lui
+     * dit pas lequel.
+     */
+    @Test
+    fun `la facture d'une sous-traitance part chez le donneur d'ordre`() = runTest {
+        val travail = intervention().copy(
+            clientId = "cl-site",
+            client = "Boucherie Morel",
+            clientFactureId = "cl-donneur",
+            clientFactureNom = "Froid Services",
+        )
+
+        val facture = depot.creerDepuisIntervention(
+            intervention = travail,
+            pieces = emptyList(),
+            mouvements = emptyList(),
+            parametres = Parametres(),
+            client = Client(
+                id = "cl-donneur",
+                nom = "Froid Services",
+                ville = "Villeurbanne",
+                adresse = "8 avenue Roosevelt",
+            ),
+        )
+
+        assertEquals("cl-donneur", facture.clientId)
+        assertEquals("Froid Services", facture.clientNom)
+        assertEquals(
+            "c'est l'adresse de celui qui paie qui s'imprime",
+            "8 avenue Roosevelt, Villeurbanne",
+            facture.clientAdresse,
+        )
+        assertTrue(
+            "et l'objet dit chez qui on est allé : ${facture.objet}",
+            facture.objet.contains("Boucherie Morel"),
+        )
+    }
+
+    /** Hors sous-traitance, rien ne change : l'objet ne répète pas le destinataire. */
+    @Test
+    fun `sans sous-traitance, l'objet ne nomme pas le lieu`() = runTest {
+        val travail = intervention().copy(clientId = "cl-1", client = "Boucherie Morel")
+
+        val facture = depot.creerDepuisIntervention(
+            intervention = travail,
+            pieces = emptyList(),
+            mouvements = emptyList(),
+            parametres = Parametres(),
+            client = Client(id = "cl-1", nom = "Boucherie Morel", ville = "Lyon"),
+        )
+
+        assertEquals("cl-1", facture.clientId)
+        assertEquals("Boucherie Morel", facture.clientNom)
+        assertFalse(
+            "le destinataire était sur place : ${facture.objet}",
+            facture.objet.contains("chez"),
+        )
+    }
+
+    /**
      * Ce qu'un retard fait courir, et ce qu'il ne fait pas.
      *
      * Le montant grandit chaque jour : il ne peut donc pas être stocké, et c'est

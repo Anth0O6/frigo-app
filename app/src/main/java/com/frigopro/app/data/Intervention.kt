@@ -77,6 +77,24 @@ data class Intervention(
     val typeId: String? = null,
     val typeLibelle: String = "",
     val clientId: String? = null,
+    /**
+     * Qui **paie**, quand ce n'est pas celui chez qui on travaille.
+     *
+     * C'est la sous-traitance : on est envoyé chez M. Y par M. X, et c'est X qui
+     * reçoit la facture. Les deux rôles sont donc portés séparément — [clientId]
+     * dit *où*, celui-ci dit *pour qui*.
+     *
+     * `null` est le cas ordinaire et veut dire « le même » : la facture part chez
+     * celui chez qui on est allé. Ce défaut est ce qui rend toutes les
+     * interventions déjà saisies justes sans les toucher.
+     *
+     * Le couple lien / copie est celui du type, de la machine et du technicien,
+     * et pour les mêmes raisons : le lien répercute un renommage, la copie
+     * garantit qu'une tournée de mars continue de dire qui l'avait commandée même
+     * si la fiche a été supprimée depuis.
+     */
+    val clientFactureId: String? = null,
+    val clientFactureNom: String = "",
     val equipementId: String? = null,
     val equipementNom: String = "",
     val statut: StatutIntervention = StatutIntervention.PLANIFIEE,
@@ -90,7 +108,22 @@ data class Intervention(
     val signatureFichier: String? = null,
     val signeeLe: Instant? = null,
     val modifieLe: Instant = Instant.EPOCH,
-)
+) {
+
+    /** Le travail se fait chez quelqu'un d'autre que celui qui l'a commandé. */
+    val sousTraitance: Boolean
+        get() = clientFactureId != null && clientFactureId != clientId
+
+    /**
+     * Le nom à porter sur la facture : le donneur d'ordre s'il y en a un.
+     *
+     * Passe par la **copie** et non par le lien, pour la raison habituelle : une
+     * facture est un document daté, et le nom qu'elle porte doit être celui du
+     * jour où elle est partie.
+     */
+    val clientFacture: String
+        get() = if (sousTraitance) clientFactureNom.ifBlank { client } else client
+}
 
 /**
  * Avancement d'une intervention dans la journée du technicien.

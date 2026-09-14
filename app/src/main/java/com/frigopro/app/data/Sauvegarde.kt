@@ -154,6 +154,11 @@ data class ClientSauvegarde(
     val ville: String,
     val adresse: String = "",
     val telephone: String = "",
+    /**
+     * Le donneur d'ordre dont ce client est un site. Absent d'un fichier
+     * d'avant le format 9, où le carnet était plat.
+     */
+    val parentId: String? = null,
     val modifieLe: Long = 0L,
 )
 
@@ -208,6 +213,15 @@ data class InterventionSauvegarde(
      */
     val typePanne: String? = null,
     val clientId: String? = null,
+    /**
+     * Qui a été facturé, quand ce n'est pas celui chez qui on est allé.
+     *
+     * Absent d'un fichier d'avant le format 9, et `null` y veut dire la même
+     * chose qu'en base : « le même ». Une tournée d'alors se relit donc juste,
+     * sans supposer quoi que ce soit.
+     */
+    val clientFactureId: String? = null,
+    val clientFactureNom: String = "",
     val equipementId: String? = null,
     val equipementNom: String = "",
     val notes: String = "",
@@ -416,7 +430,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 8
+const val FORMAT_COURANT: Int = 9
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -482,6 +496,7 @@ internal fun Client.versSauvegarde(): ClientSauvegarde = ClientSauvegarde(
     ville = ville,
     adresse = adresse,
     telephone = telephone,
+    parentId = parentId,
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -520,6 +535,8 @@ internal fun Intervention.versSauvegarde(): InterventionSauvegarde = Interventio
     typeId = typeId,
     typeLibelle = typeLibelle,
     clientId = clientId,
+    clientFactureId = clientFactureId,
+    clientFactureNom = clientFactureNom,
     equipementId = equipementId,
     equipementNom = equipementNom,
     notes = notes,
@@ -548,6 +565,7 @@ internal fun ClientSauvegarde.versClient(): Client = Client(
     ville = ville,
     adresse = adresse,
     telephone = telephone,
+    parentId = parentId,
     modifieLe = Instant.ofEpochMilli(modifieLe),
 )
 
@@ -612,6 +630,8 @@ internal fun InterventionSauvegarde.versIntervention(): Intervention? {
         typeId = typeId,
         typeLibelle = typeLibelle.ifBlank { intituleHistorique() },
         clientId = clientId,
+        clientFactureId = clientFactureId,
+        clientFactureNom = clientFactureNom,
         equipementId = equipementId,
         equipementNom = equipementNom,
         statut = avancement,

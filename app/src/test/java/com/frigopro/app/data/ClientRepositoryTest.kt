@@ -5,6 +5,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.Instant
 
@@ -70,6 +72,77 @@ class ClientRepositoryTest {
 
         assertEquals("12 rue des Halles", client.adresse)
         assertEquals("02 35 00 00 00", client.telephone)
+    }
+
+    /**
+     * Les sites se rangent sous leur donneur d'ordre, et n'encombrent pas le
+     * premier rang du carnet.
+     *
+     * « Carrefour », « Carrefour Part-Dieu » et « Carrefour Vaise » côte à côte
+     * feraient trois entrées pour un client, et la recherche d'un nom en
+     * ramènerait autant.
+     */
+    @Test
+    fun `les sites se rangent sous leur donneur d'ordre`() = runTest {
+        val enseigne = repository.enregistrer(Client(id = "cl-1", nom = "Carrefour", ville = "Lyon"))
+        repository.enregistrer(
+            Client(id = "cl-2", nom = "Part-Dieu", ville = "Lyon", parentId = enseigne.id),
+        )
+        repository.enregistrer(
+            Client(id = "cl-3", nom = "Vaise", ville = "Lyon", parentId = enseigne.id),
+        )
+        repository.enregistrer(Client(id = "cl-4", nom = "Boucherie Morel", ville = "Lyon"))
+
+        val groupes = repository.groupes.first()
+
+        assertEquals(
+            "seuls les donneurs d'ordre paraissent au premier rang",
+            listOf("Boucherie Morel", "Carrefour"),
+            groupes.map { it.donneur.nom },
+        )
+        val carrefour = groupes.single { it.donneur.nom == "Carrefour" }
+        assertEquals(2, carrefour.nombreSites)
+        assertEquals(listOf("Part-Dieu", "Vaise"), carrefour.sites.map { it.nom })
+    }
+
+    /**
+     * Un site dont le donneur d'ordre a disparu remonte au premier rang.
+     *
+     * Mieux vaut une fiche mal rangée qu'une fiche introuvable : c'est la même
+     * règle que l'intitulé d'un type supprimé, qui reste sur les tournées
+     * passées.
+     */
+    @Test
+    fun `un site orphelin ne disparait pas du carnet`() = runTest {
+        repository.enregistrer(
+            Client(id = "cl-2", nom = "Part-Dieu", ville = "Lyon", parentId = "cl-disparu"),
+        )
+
+        val groupes = repository.groupes.first()
+
+        assertEquals(listOf("Part-Dieu"), groupes.map { it.donneur.nom })
+    }
+
+    /**
+     * Deux donneurs d'ordre peuvent avoir chacun un site du même nom.
+     *
+     * Ce n'est pas une confusion, c'est le cas ordinaire : deux syndics ont
+     * chacun un immeuble « Les Tilleuls ». Même règle que pour deux unités
+     * « Salon » sous deux multi-splits différents.
+     */
+    @Test
+    fun `le doublon d'un site se juge sous son parent`() = runTest {
+        repository.enregistrer(Client(id = "cl-1", nom = "Syndic A", ville = "Lyon"))
+        repository.enregistrer(Client(id = "cl-2", nom = "Syndic B", ville = "Lyon"))
+        repository.enregistrer(
+            Client(id = "s-1", nom = "Les Tilleuls", ville = "Lyon", parentId = "cl-1"),
+        )
+
+        assertNotNull(repository.trouverSite("les tilleuls", "cl-1"))
+        assertNull(
+            "le même nom sous un autre donneur d'ordre n'est pas un doublon",
+            repository.trouverSite("Les Tilleuls", "cl-2"),
+        )
     }
 
     @Test

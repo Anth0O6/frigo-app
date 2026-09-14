@@ -23,6 +23,31 @@ class ClientRepository(private val dao: ClientDao) {
     }
 
     /**
+     * Le carnet en groupes : chaque donneur d'ordre, et ses sites.
+     *
+     * Les sites ne paraissent **pas au premier rang** : « Carrefour Part-Dieu »
+     * et « Carrefour Vaise » côte à côte avec « Carrefour » feraient trois
+     * entrées pour un client, et la recherche d'un nom en ramènerait autant. Ils
+     * se déplient sous le leur, comme les unités sous leur groupe.
+     *
+     * Un site **orphelin** — dont le donneur d'ordre a disparu — remonte au
+     * premier rang plutôt que de s'évanouir : mieux vaut une fiche mal rangée
+     * qu'une fiche introuvable, et c'est la même règle que pour un intitulé de
+     * type supprimé.
+     */
+    val groupes: Flow<List<GroupeClients>> = clients.map { carnet ->
+        val parId = carnet.associateBy { it.id }
+        val sites = carnet.filter { it.parentId != null && it.parentId in parId }
+        val parParent = sites.groupBy { it.parentId }
+        carnet.filterNot { it in sites }
+            .map { GroupeClients(it, parParent[it.id].orEmpty()) }
+    }
+
+    /** Les sites d'un donneur d'ordre, triés comme le carnet. */
+    fun sitesDe(clientId: String): Flow<List<Client>> =
+        clients.map { carnet -> carnet.filter { it.parentId == clientId } }
+
+    /**
      * Renvoie le client de ce nom, en le créant au besoin.
      *
      * C'est ainsi que le carnet se remplit : sans formulaire dédié, chaque
@@ -32,6 +57,15 @@ class ClientRepository(private val dao: ClientDao) {
         val recherche = nom.trim()
         return dao.trouverParNom(recherche) ?: enregistrer(Client(nom = recherche, ville = ville))
     }
+
+    /**
+     * Le site de ce nom chez ce donneur d'ordre, ou `null`.
+     *
+     * Sert à refuser un doublon là où il en est un — sous le même parent — et
+     * nulle part ailleurs : voir [ClientDao.trouverSite].
+     */
+    suspend fun trouverSite(nom: String, parentId: String): Client? =
+        dao.trouverSite(nom.trim(), parentId)
 
     /** Crée le client ou remplace celui qui porte le même identifiant. */
     suspend fun enregistrer(client: Client): Client {

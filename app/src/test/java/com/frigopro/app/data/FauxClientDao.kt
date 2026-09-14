@@ -18,6 +18,12 @@ class FauxClientDao : ClientDao {
     override suspend fun trouverParNom(nom: String): Client? =
         lignes.value.firstOrNull { it.nom.equals(nom, ignoreCase = true) }
 
+    /** Le `WHERE parentId = :parentId` du vrai DAO : la recherche est portée. */
+    override suspend fun trouverSite(nom: String, parentId: String): Client? =
+        lignes.value.firstOrNull {
+            it.parentId == parentId && it.nom.equals(nom, ignoreCase = true)
+        }
+
     override suspend fun tous(): List<Client> = lignes.value
 
     override suspend fun enregistrer(client: Client) {

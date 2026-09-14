@@ -17,6 +17,17 @@ data class EtatFicheClient(
     val ville: String = "",
     val adresse: String = "",
     val telephone: String = "",
+    /**
+     * Le donneur d'ordre dont cette fiche est un site.
+     *
+     * Il **traverse le formulaire sans y être modifiable** : on crée un site
+     * depuis la fiche de son donneur d'ordre, et le rattachement est acquis à ce
+     * moment-là. Le porter ici n'est donc pas un champ de saisie, c'est ce qui
+     * évite qu'une simple correction d'adresse détache le site de son enseigne —
+     * même motif que l'`origine` d'[EtatFormulaire], qui empêche une heure
+     * corrigée d'effacer le chrono.
+     */
+    val parentId: String? = null,
 ) {
 
     /** Un client sans nom ni ville ne se retrouverait pas dans le carnet. */
@@ -29,6 +40,7 @@ data class EtatFicheClient(
         ville = ville,
         adresse = adresse,
         telephone = telephone,
+        parentId = parentId,
     )
 
     companion object {
@@ -40,6 +52,7 @@ data class EtatFicheClient(
             ville = client.ville,
             adresse = client.adresse,
             telephone = client.telephone,
+            parentId = client.parentId,
         )
     }
 }

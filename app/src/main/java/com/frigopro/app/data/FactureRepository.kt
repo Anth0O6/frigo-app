@@ -96,13 +96,17 @@ class FactureRepository(private val dao: FactureDao) {
         pieces: List<PiecePosee>,
         mouvements: List<MouvementFluide>,
         parametres: Parametres,
+        /** La fiche de **celui qui paie** : le donneur d'ordre s'il y en a un. */
         client: Client? = null,
     ): Facture {
         dao.pourIntervention(intervention.id)?.let { return it }
 
+        // Le **donneur d'ordre** quand il y en a un : en sous-traitance, on
+        // travaille chez Y et c'est X qui reçoit la facture. L'appelant passe
+        // donc la fiche de celui qui paie, dont vient l'adresse.
         val facture = Facture(
-            clientId = intervention.clientId,
-            clientNom = intervention.client,
+            clientId = intervention.clientFactureId ?: intervention.clientId,
+            clientNom = intervention.clientFacture,
             clientAdresse = client?.adresseComplete.orEmpty(),
             interventionId = intervention.id,
             equipementNom = intervention.equipementNom,
@@ -284,9 +288,23 @@ class FactureRepository(private val dao: FactureDao) {
         return true
     }
 
+    /**
+     * Ce que la facture annonce.
+     *
+     * En sous-traitance, **le lieu entre dans l'objet**, et ce n'est pas
+     * décoratif : le donneur d'ordre reçoit des factures pour des chantiers
+     * qu'il n'a pas vus, et « Fuite de fluide — INT-2605-018 » ne lui dit pas
+     * lequel. Hors sous-traitance il n'y a rien à préciser — le destinataire
+     * était sur place.
+     */
     private fun objetDe(intervention: Intervention): String {
         val type = intervention.typeLibelle.ifBlank { "Intervention" }
         val reference = intervention.numero.ifBlank { null }
-        return listOfNotNull(type, reference).joinToString(" — ")
+        val lieu = if (intervention.sousTraitance) {
+            intervention.client.takeIf { it.isNotBlank() }?.let { "chez $it" }
+        } else {
+            null
+        }
+        return listOfNotNull(type, lieu, reference).joinToString(" — ")
     }
 }

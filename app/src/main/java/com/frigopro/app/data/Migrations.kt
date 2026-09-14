@@ -643,3 +643,33 @@ val MIGRATION_11_12: Migration = object : Migration(11, 12) {
         )
     }
 }
+
+/**
+ * Les sites d'un client, et la sous-traitance.
+ *
+ * Trois colonnes, aucune table, rien à reconstruire — et c'est le signe que le
+ * modèle se prêtait à ces deux besoins. Un site est un client rattaché à un
+ * autre (`clients.parentId`, le motif des unités de multi-split), et les
+ * machines n'ont rien à changer puisqu'elles pendent déjà d'un `clientId`.
+ *
+ * `clientFactureId` arrive **nullable**, et c'est ce qui rend justes toutes les
+ * interventions déjà saisies sans les toucher : `null` veut dire « facturé à
+ * celui chez qui on est allé », qui est le cas ordinaire et ce qu'elles
+ * disaient déjà. Sa copie arrive à la chaîne vide, comme les autres copies de
+ * ce schéma.
+ *
+ * L'index sur `parentId` est aussi obligatoire que la colonne : Room valide le
+ * schéma entier à l'ouverture, et l'entité le déclare.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `clients` ADD COLUMN `parentId` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_clients_parentId` ON `clients` (`parentId`)")
+
+        db.execSQL("ALTER TABLE `interventions` ADD COLUMN `clientFactureId` TEXT")
+        db.execSQL(
+            "ALTER TABLE `interventions` ADD COLUMN `clientFactureNom` " +
+                "TEXT NOT NULL DEFAULT ''",
+        )
+    }
+}
