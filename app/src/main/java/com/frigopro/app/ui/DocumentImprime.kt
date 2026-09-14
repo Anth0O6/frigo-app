@@ -41,8 +41,13 @@ data class DocumentImprime(
     val objet: String,
     /** La machine concernée, quand le document en désigne une. */
     val machine: String,
-    val lignes: List<LigneImprimee>,
-    val totaux: List<LigneTotalImprimee>,
+    /**
+     * Le tableau chiffré. Vide sur un compte-rendu, qui ne chiffre rien — d'où
+     * le défaut : l'obliger à passer deux listes vides pour dire qu'il ne parle
+     * pas d'argent aurait été une formalité, et une formalité se recopie mal.
+     */
+    val lignes: List<LigneImprimee> = emptyList(),
+    val totaux: List<LigneTotalImprimee> = emptyList(),
     val mentions: List<String>,
     /** Le fichier du logo, `null` si l'entreprise n'en a pas posé. */
     val logoFichier: String?,
