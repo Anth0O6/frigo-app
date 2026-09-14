@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 16,
-    "identityHash": "a-remplacer",
+    "identityHash": "19630fec853f48d148ecf629541758a7",
     "entities": [
       {
         "tableName": "interventions",
@@ -1845,7 +1845,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a-remplacer')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '19630fec853f48d148ecf629541758a7')"
     ]
   }
 }

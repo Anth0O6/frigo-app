@@ -66,7 +66,7 @@ class MigrationTest {
             "SELECT `client`, `heure`, `statut`, `notes`, `clientId` FROM `interventions`",
         ).use { curseur ->
             assertEquals(1, curseur.count)
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Boucherie Lemoine", curseur.getString(0))
             assertEquals("08:30", curseur.getString(1))
             assertEquals("une intervention d'avant le suivi reste à faire", "PLANIFIEE", curseur.getString(2))
@@ -93,7 +93,7 @@ class MigrationTest {
         val db = ouvrirEtMigrer()
 
         db.query("SELECT `statut`, `notes`, `clientId` FROM `interventions`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("le suivi déjà saisi doit survivre", "TERMINEE", curseur.getString(0))
             assertEquals("Dégivrage complet.", curseur.getString(1))
             assertTrue("le carnet n'existait pas encore", curseur.isNull(2))
@@ -125,14 +125,14 @@ class MigrationTest {
 
         db.query("SELECT `nom`, `ville`, `adresse`, `telephone` FROM `clients`").use { curseur ->
             assertEquals(1, curseur.count)
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Primeur Vasseur", curseur.getString(0))
             assertEquals("Elbeuf", curseur.getString(1))
             assertEquals("un client inscrit depuis une intervention arrive sans adresse", "", curseur.getString(2))
             assertEquals("", curseur.getString(3))
         }
         db.query("SELECT `clientId`, `statut` FROM `interventions`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("le rattachement au carnet doit survivre", "cli-1", curseur.getString(0))
             assertEquals("EN_COURS", curseur.getString(1))
         }
@@ -173,7 +173,7 @@ class MigrationTest {
         ).use { curseur ->
             assertEquals(2, curseur.count)
 
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("id-1", curseur.getString(0))
             assertTrue("la liste démarre vide : aucun lien possible", curseur.isNull(1))
             assertEquals("Entretien préventif", curseur.getString(2))
@@ -190,7 +190,7 @@ class MigrationTest {
             assertEquals("la liste des types arrive vide", 0, curseur.count)
         }
         db.query("SELECT `nom`, `adresse` FROM `clients`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("le carnet n'est pas touché", "Primeur Vasseur", curseur.getString(0))
             assertEquals("3 place du Marché", curseur.getString(1))
         }
@@ -254,7 +254,7 @@ class MigrationTest {
                 "`notes`, `modifieLe` FROM `interventions`",
         ).use { curseur ->
             assertEquals(1, curseur.count)
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("le lien vers le type doit survivre", "typ-1", curseur.getString(0))
             assertEquals("Entretien préventif", curseur.getString(1))
             assertEquals("cli-1", curseur.getString(2))
@@ -270,7 +270,7 @@ class MigrationTest {
             assertEquals(0, curseur.count)
         }
         db.query("SELECT `libelle` FROM `types_intervention`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("la liste des types n'est pas touchée", "Entretien préventif", curseur.getString(0))
         }
         assertEquals(VERSION_COURANTE, db.version)
@@ -392,7 +392,7 @@ class MigrationTest {
                 "FROM `photos`",
         ).use { curseur ->
             assertEquals("la photo doit survivre à la reconstruction", 1, curseur.count)
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("eq-1", curseur.getString(0))
             assertTrue("elle n'appartient à aucune intervention", curseur.isNull(1))
             assertEquals("PLAQUE", curseur.getString(2))
@@ -406,7 +406,7 @@ class MigrationTest {
         db.query(
             "SELECT `urgente`, `arriveeLe`, `demarreLe`, `cumuleS`, `numero` FROM `interventions`",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals(0, curseur.getInt(0))
             assertTrue(curseur.isNull(1))
             assertTrue(curseur.isNull(2))
@@ -416,7 +416,7 @@ class MigrationTest {
 
         // La machine reçoit ses champs de plaque, vides faute de les connaître.
         db.query("SELECT `marque`, `fluide`, `chargeKg` FROM `equipements`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("", curseur.getString(0))
             assertEquals("", curseur.getString(1))
             assertTrue(curseur.isNull(2))
@@ -425,7 +425,7 @@ class MigrationTest {
         // La ligne unique des réglages doit exister dès la migration passée.
         db.query("SELECT `themeSombre`, `tauxTva` FROM `parametres`").use { curseur ->
             assertEquals(1, curseur.count)
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("sombre par défaut", 1, curseur.getInt(0))
             assertEquals(20.0, curseur.getDouble(1), 0.001)
         }
@@ -476,7 +476,7 @@ class MigrationTest {
         ).use { curseur ->
             assertEquals(2, curseur.count)
 
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("id-1", curseur.getString(0))
             assertEquals("« à faire » devient « planifié », et reste le même état", "PLANIFIEE", curseur.getString(1))
             assertEquals("À reprendre.", curseur.getString(2))
@@ -514,14 +514,14 @@ class MigrationTest {
         val db = ouvrirEtMigrer()
 
         db.query("SELECT COUNT(*), SUM(`prixUnitaire`) FROM `prestations`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals(21, curseur.getInt(0))
             assertEquals("aucun prix inventé", 0.0, curseur.getDouble(1), 0.001)
         }
         db.query(
             "SELECT `designation`, `categorie`, `unite` FROM `prestations` ORDER BY `rang` LIMIT 1",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Dépannage froid commercial", curseur.getString(0))
             assertEquals("DEPANNAGE", curseur.getString(1))
             assertEquals("forfait", curseur.getString(2))
@@ -529,7 +529,7 @@ class MigrationTest {
         db.query(
             "SELECT COUNT(DISTINCT `categorie`) FROM `prestations`",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("les cinq rayons du catalogue", 5, curseur.getInt(0))
         }
     }
@@ -575,20 +575,20 @@ class MigrationTest {
         val db = ouvrirEtMigrer()
 
         db.query("SELECT `nom`, `parentId`, `fluide` FROM `equipements`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Split salon", curseur.getString(0))
             assertTrue("une machine d'avant le multi-split n'est l'unité de personne", curseur.isNull(1))
             assertEquals("R32", curseur.getString(2))
         }
 
         db.query("SELECT `prixUnitaire`, `parUnite` FROM `prestations`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("le prix déjà saisi survit", 1450.0, curseur.getDouble(0), 0.001)
             assertEquals("rien ne se compte par unité sans qu'on l'ait dit", 0, curseur.getInt(1))
         }
 
         db.query("SELECT `tauxTva`, `tvaOfferte`, `assujettiTva` FROM `devis`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals(20.0, curseur.getDouble(0), 0.001)
             assertEquals("aucun geste commercial rétroactif", 0, curseur.getInt(1))
             assertEquals(
@@ -599,7 +599,7 @@ class MigrationTest {
         }
 
         db.query("SELECT `designation`, `prixUnitaire`, `offerte` FROM `lignes_devis`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Installation split mural", curseur.getString(0))
             assertEquals(1450.0, curseur.getDouble(1), 0.001)
             assertEquals("une ligne déjà envoyée n'était pas offerte", 0, curseur.getInt(2))
@@ -608,7 +608,7 @@ class MigrationTest {
         db.query(
             "SELECT `assujettiTva`, `entreprise`, `entrepriseSiret`, `logoFichier` FROM `parametres`",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals(
                 "assujetti par défaut : le contraire ferait disparaître la TVA des devis",
                 1,
@@ -620,7 +620,7 @@ class MigrationTest {
         }
 
         db.query("SELECT `technicien`, `tauxHoraire` FROM `parametres`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("les réglages déjà saisis survivent", "Anthony Ouvrard", curseur.getString(0))
             assertEquals(68.0, curseur.getDouble(1), 0.001)
         }
@@ -681,7 +681,7 @@ class MigrationTest {
         }
 
         db.query("SELECT `designation`, `prixUnitaire`, `deplacement` FROM `lignes_devis`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Compresseur Copeland", curseur.getString(0))
             assertEquals(980.0, curseur.getDouble(1), 0.001)
             assertEquals(
@@ -699,7 +699,7 @@ class MigrationTest {
             "SELECT `adresseDepart`, `modeDeplacement`, `prixKm`, `prixHeureTrajet`, " +
                 "`minimumDeplacement`, `refacturerPeages` FROM `parametres`",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("aucune adresse de départ n'est devinée", "", curseur.getString(0))
             assertEquals("KM", curseur.getString(1))
             assertEquals(
@@ -718,7 +718,7 @@ class MigrationTest {
         }
 
         db.query("SELECT `technicien`, `entreprise`, `tauxHoraire` FROM `parametres`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("les réglages déjà saisis survivent", "Anthony Ouvrard", curseur.getString(0))
             assertEquals("FrigoPro", curseur.getString(1))
             assertEquals(68.0, curseur.getDouble(2), 0.001)
@@ -777,7 +777,7 @@ class MigrationTest {
                 "`modeDeplacement`, `prixKm`, `prixHeureTrajet`, `minimumDeplacement`, " +
                 "`refacturerPeages`, `tauxHoraire` FROM `parametres`",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("Anthony Ouvrard", curseur.getString(0))
             assertEquals("FrigoPro", curseur.getString(1))
             assertEquals("le logo survit à la reconstruction", "logo-1.jpg", curseur.getString(2))
@@ -847,7 +847,7 @@ class MigrationTest {
 
         db.query("SELECT `delaiPaiementJours`, `tauxPenalitesRetard` FROM `parametres`")
             .use { curseur ->
-                assertTrue(curseur.moveToFirst())
+                assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
                 assertEquals(
                     "le délai supplétif du code de commerce, pas un chiffre inventé",
                     30,
@@ -863,7 +863,7 @@ class MigrationTest {
 
         db.query("SELECT `technicien`, `prixKm`, `logoFichier` FROM `parametres`")
             .use { curseur ->
-                assertTrue(curseur.moveToFirst())
+                assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
                 assertEquals("les réglages déjà saisis survivent", "Anthony Ouvrard", curseur.getString(0))
                 assertEquals(0.45, curseur.getDouble(1), 0.001)
                 assertEquals("logo-1.jpg", curseur.getString(2))
@@ -877,11 +877,11 @@ class MigrationTest {
 
         // Les deux tables neuves doivent être vides et utilisables.
         db.query("SELECT COUNT(*) FROM `factures`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals(0, curseur.getInt(0))
         }
         db.query("SELECT COUNT(*) FROM `lignes_facture`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals(0, curseur.getInt(0))
         }
 
@@ -955,7 +955,7 @@ class MigrationTest {
         db.query(
             "SELECT `clientFactureId`, `clientFactureNom`, `numero` FROM `interventions`",
         ).use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertTrue(
                 "nul veut dire « facturé à celui chez qui on est allé »",
                 curseur.isNull(0),
@@ -1016,7 +1016,7 @@ class MigrationTest {
         // Les trois tables neuves doivent être vides et utilisables.
         listOf("fournisseurs", "articles", "stocks").forEach { table ->
             db.query("SELECT COUNT(*) FROM `$table`").use { curseur ->
-                assertTrue(curseur.moveToFirst())
+                assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
                 assertEquals("$table doit être vide et lisible", 0, curseur.getInt(0))
             }
         }
@@ -1099,7 +1099,7 @@ class MigrationTest {
         }
 
         db.query("SELECT COUNT(*) FROM `paliers_prestation`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
             assertEquals("aucune dégression n'est inventée", 0, curseur.getInt(0))
         }
 
@@ -1137,6 +1137,18 @@ class MigrationTest {
                 "INSERT INTO `mouvements_fluide` (`id`, `interventionId`, `equipementId`, " +
                     "`fluide`, `sens`, `masseKg`, `le`, `modifieLe`) " +
                     "VALUES ('mf-1', 'int-1', NULL, 'R449A', 'AJOUT', 1.5, 15, 15)",
+                // La ligne unique des réglages est posée par `MIGRATION_6_7` ;
+                // une base fabriquée directement en version 15 n'en a pas, et
+                // interroger une table vide ne dit rien de la colonne ajoutée.
+                "INSERT INTO `parametres` (`id`, `technicien`, `attestation`, `themeSombre`, " +
+                    "`modeGants`, `chronoAuto`, `tauxHoraire`, `tauxTva`, `assujettiTva`, " +
+                    "`entreprise`, `entrepriseAdresse`, `entrepriseTelephone`, " +
+                    "`entrepriseEmail`, `entrepriseSiret`, `logoFichier`, `adresseDepart`, " +
+                    "`modeDeplacement`, `prixKm`, `prixHeureTrajet`, `minimumDeplacement`, " +
+                    "`refacturerPeages`, `delaiPaiementJours`, `tauxPenalitesRetard`, " +
+                    "`derniereSauvegardeLe`, `modifieLe`) " +
+                    "VALUES (1, 'Anthony Ouvrard', '', 1, 0, 0, 68.0, 20.0, 1, '', '', '', " +
+                    "'', '', NULL, '', 'KM_ET_HEURE', 0.45, 35.0, 25.0, 1, 30, 0.0, NULL, 15)",
             ),
         )
 
@@ -1154,17 +1166,28 @@ class MigrationTest {
         }
 
         db.query("SELECT `masseKg`, `prixAchatKg` FROM `mouvements_fluide`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+            assertTrue("le mouvement déjà consigné est intact", curseur.moveToFirst())
             assertEquals(1.5, curseur.getDouble(0), 0.001)
-            assertEquals(0.0, curseur.getDouble(1), 0.001)
+            assertEquals(
+                "le prix du kilo n'est pas deviné",
+                0.0,
+                curseur.getDouble(1),
+                0.001,
+            )
         }
 
-        db.query("SELECT `coutHoraireInterne` FROM `parametres`").use { curseur ->
-            assertTrue(curseur.moveToFirst())
+        db.query("SELECT `coutHoraireInterne`, `tauxHoraire` FROM `parametres`").use { curseur ->
+            assertTrue("les réglages déjà saisis survivent", curseur.moveToFirst())
             assertEquals(
                 "zéro veut dire « non renseigné », pas « une heure est gratuite »",
                 0.0,
                 curseur.getDouble(0),
+                0.001,
+            )
+            assertEquals(
+                "et le taux facturé n'a pas bougé : les deux sont bien distincts",
+                68.0,
+                curseur.getDouble(1),
                 0.001,
             )
         }
