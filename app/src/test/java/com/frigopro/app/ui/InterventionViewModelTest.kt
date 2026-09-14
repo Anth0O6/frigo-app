@@ -4,6 +4,8 @@ import com.frigopro.app.data.CHECKLIST_INITIALE
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.FactureRepository
+import com.frigopro.app.data.FauxFactureDao
 import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxEquipementDao
 import com.frigopro.app.data.FauxInterventionDao
@@ -362,6 +364,7 @@ class InterventionViewModelTest {
             ClientRepository(daoClients),
             ParametresRepository(daoParametres, stockage),
             VerificationFluideRepository(daoVerifications),
+            FactureRepository(FauxFactureDao()),
         )
         backgroundScope.launch(ordonnanceur) { viewModel.etat.collect { } }
         backgroundScope.launch(ordonnanceur) { viewModel.fluidesVerifies.collect { } }

@@ -23,11 +23,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.PointChecklist
+import com.frigopro.app.data.RentabiliteIntervention
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Section
+import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.LocalStatuts
 import com.frigopro.app.ui.theme.StyleChiffrePetit
@@ -182,7 +185,94 @@ fun OngletFiche(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+
+        SectionRentabilite(rentabilite = etat.rentabilite)
         EspaceVertical(24)
+    }
+}
+
+/**
+ * Ce que l'intervention a coûté, et ce qu'elle rapporte.
+ *
+ * ## En bas de la fiche, et c'est voulu
+ *
+ * Ce n'est pas une information de terrain : elle ne sert ni à trouver le client,
+ * ni à savoir quoi vérifier. Elle se lit **après coup**, souvent le soir, et la
+ * mettre en haut l'aurait fait passer devant l'adresse et la checklist — qui
+ * sont, elles, ce pour quoi on ouvre cet écran.
+ *
+ * ## Ce que l'encart dit, et ce qu'il refuse de dire
+ *
+ * Une marge sur **coûts directs** : le temps, les pièces, le fluide. Ni le
+ * camion, ni l'assurance, ni les heures de bureau — le dire est le point, parce
+ * qu'un technicien qui lirait « 256 € » en croyant que c'est ce qui lui reste
+ * facturerait trop bas l'année suivante.
+ *
+ * Sans coût horaire renseigné, l'écran **réclame le réglage** au lieu d'afficher
+ * une marge égale à la recette : un chiffre juste par accident ne se distingue
+ * pas d'un vrai.
+ */
+@Composable
+private fun SectionRentabilite(rentabilite: RentabiliteIntervention) {
+    val statuts = LocalStatuts.current
+
+    Section(intitule = "Coût et marge") {
+        if (!rentabilite.chiffrable) {
+            Encart(
+                texte = "Pour connaître la marge de cette intervention, renseignez le coût " +
+                    "horaire interne dans les Réglages, et le prix d'achat des pièces " +
+                    "posées. Sans eux la marge vaudrait exactement la recette, ce qui " +
+                    "serait flatteur et faux.",
+            )
+            return@Section
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CarteInfo(
+                intitule = "Coût direct",
+                valeur = Nombres.enEuros(rentabilite.coutDirect),
+                modifier = Modifier.weight(1f),
+            )
+            CarteInfo(
+                intitule = "Facturé HT",
+                valeur = rentabilite.recetteHt?.let { Nombres.enEuros(it) } ?: "—",
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        val marge = rentabilite.marge
+        if (marge == null) {
+            Encart(
+                texte = "Pas encore facturée : il n'y a donc pas de marge à calculer. " +
+                    "Zéro se lirait « ça n'a rien rapporté », ce qui serait faux.",
+            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TuileChiffre(
+                    valeur = Nombres.enEuros(marge),
+                    libelle = "marge directe",
+                    modifier = Modifier.weight(1f),
+                    couleur = if (rentabilite.aPerte) statuts.urgence else statuts.termine,
+                )
+                rentabilite.tauxDeMarque?.let {
+                    TuileChiffre(
+                        valeur = "${Nombres.enTexte(it)} %",
+                        libelle = "taux de marque",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Main-d'œuvre ${Nombres.enEuros(rentabilite.coutMainDoeuvre)} · " +
+                "pièces ${Nombres.enEuros(rentabilite.coutPieces)} · " +
+                "fluide ${Nombres.enEuros(rentabilite.coutFluide)}. " +
+                "Le véhicule, l'assurance et les heures de bureau n'y sont pas : " +
+                "c'est une marge sur coûts directs, pas un résultat.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -31,6 +31,25 @@ internal fun Context.ouvrirItineraire(adresse: String) {
 }
 
 /**
+ * Ouvre une adresse web au navigateur.
+ *
+ * Elle sert au **catalogue en ligne d'un fournisseur**, et c'est tout ce que
+ * l'application fait de ce lien : elle l'ouvre, elle n'en copie pas le contenu.
+ * Un catalogue n'a pas de format d'échange et change sans prévenir ; en tenir
+ * une copie reviendrait à porter un prix faux au premier changement de tarif,
+ * et ce prix-là partirait ensuite sur un devis.
+ *
+ * L'adresse est normalisée à la saisie (voir `normaliserAdresseWeb`) : sans
+ * schéma, aucune intention ne s'ouvre, et le bouton ne ferait rien sans dire
+ * pourquoi.
+ */
+internal fun Context.ouvrirLien(adresse: String) {
+    val propre = adresse.trim()
+    if (propre.isBlank()) return
+    demarrer(Intent(Intent.ACTION_VIEW, propre.toUri()))
+}
+
+/**
  * Propose d'envoyer un document : courriel, messagerie, ou simple
  * enregistrement.
  *

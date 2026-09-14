@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.PalierPrestation
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.theme.FrigoProTheme
@@ -56,6 +57,7 @@ fun ReglagesRoute(
     val dialogue by viewModel.dialogue.collectAsStateWithLifecycle()
     val parametres by viewModel.parametres.collectAsStateWithLifecycle()
     val prestations by viewModel.prestations.collectAsStateWithLifecycle()
+    val paliers by viewModel.paliers.collectAsStateWithLifecycle()
 
     // Le logo vient de la galerie : aucune permission, le sélecteur du système
     // ne nous donne accès qu'à l'image désignée. Même chemin que les photos de
@@ -93,6 +95,9 @@ fun ReglagesRoute(
         prestations = prestations,
         onEnregistrerPrestation = viewModel::onEnregistrerPrestation,
         onSupprimerPrestation = viewModel::onSupprimerPrestation,
+        paliers = paliers,
+        onDefinirPalier = viewModel::onDefinirPalier,
+        onSupprimerPalier = viewModel::onSupprimerPalier,
         tarifDeplacement = ActionsTarifDeplacement(
             onAdresseDepart = viewModel::onAdresseDepart,
             onMode = viewModel::onModeDeplacement,
@@ -170,6 +175,9 @@ fun ReglagesScreen(
     onRetirerLogo: () -> Unit,
     chargerPhoto: suspend (String, Int) -> Bitmap?,
     prestations: List<Prestation>,
+    paliers: Map<String, List<PalierPrestation>>,
+    onDefinirPalier: (String, Int, Double) -> Unit,
+    onSupprimerPalier: (String) -> Unit,
     onEnregistrerPrestation: (Prestation) -> Unit,
     onSupprimerPrestation: (Prestation) -> Unit,
     /**
@@ -257,6 +265,9 @@ fun ReglagesScreen(
                     prestations = prestations,
                     onEnregistrer = onEnregistrerPrestation,
                     onSupprimer = onSupprimerPrestation,
+                    paliers = paliers,
+                    onDefinirPalier = onDefinirPalier,
+                    onSupprimerPalier = onSupprimerPalier,
                 )
             }
             item {
@@ -385,6 +396,9 @@ private fun ReglagesScreenPreview() {
                 onDelaiPaiement = {},
                 onTauxPenalites = {},
                 prestations = emptyList(),
+                paliers = emptyMap(),
+                onDefinirPalier = { _, _, _ -> },
+                onSupprimerPalier = {},
                 onEnregistrerPrestation = {},
                 onSupprimerPrestation = {},
                 onEntreprise = {},

@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.ModeDeplacement
+import com.frigopro.app.data.PalierPrestation
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.ui.composants.BoutonContour
@@ -35,6 +37,7 @@ import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.IntituleSection
+import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
@@ -499,9 +502,14 @@ fun SectionCatalogue(
     prestations: List<Prestation>,
     onEnregistrer: (Prestation) -> Unit,
     onSupprimer: (Prestation) -> Unit,
+    /** Les paliers dégressifs, par identifiant de prestation. */
+    paliers: Map<String, List<PalierPrestation>> = emptyMap(),
+    onDefinirPalier: (String, Int, Double) -> Unit = { _, _, _ -> },
+    onSupprimerPalier: (String) -> Unit = {},
 ) {
     var dépliée by remember { mutableStateOf(false) }
     var enEdition by remember { mutableStateOf<Prestation?>(null) }
+    var paliersOuverts by remember { mutableStateOf<Prestation?>(null) }
     var creationOuverte by remember { mutableStateOf(false) }
     val àTarifer = prestations.count { !it.tarifee }
 
@@ -549,7 +557,9 @@ fun SectionCatalogue(
                 .forEach { prestation ->
                     LignePrestationReglages(
                         prestation = prestation,
+                        paliers = paliers[prestation.id].orEmpty(),
                         onModifier = { enEdition = prestation },
+                        onPaliers = { paliersOuverts = prestation },
                     )
                 }
             // Le catalogue livré couvre le métier, pas une entreprise : une pièce
@@ -576,6 +586,16 @@ fun SectionCatalogue(
         )
     }
 
+    paliersOuverts?.let { prestation ->
+        DialoguePaliers(
+            prestation = prestation,
+            paliers = paliers[prestation.id].orEmpty(),
+            onDefinir = { rang, prix -> onDefinirPalier(prestation.id, rang, prix) },
+            onSupprimer = onSupprimerPalier,
+            onFermer = { paliersOuverts = null },
+        )
+    }
+
     enEdition?.let { prestation ->
         DialoguePrestation(
             prestation = prestation,
@@ -593,7 +613,12 @@ fun SectionCatalogue(
 }
 
 @Composable
-private fun LignePrestationReglages(prestation: Prestation, onModifier: () -> Unit) {
+private fun LignePrestationReglages(
+    prestation: Prestation,
+    paliers: List<PalierPrestation>,
+    onModifier: () -> Unit,
+    onPaliers: () -> Unit,
+) {
     Carte(contour = true, forme = MaterialTheme.shapes.medium, onClick = onModifier) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -612,6 +637,21 @@ private fun LignePrestationReglages(prestation: Prestation, onModifier: () -> Un
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // La dégressivité ne s'offre que sur une prestation comptée par
+                // unité : un forfait n'a pas de rangs, et il n'y a rien à
+                // dégresser sur « déplacement zone 1 ».
+                if (prestation.parUnite) {
+                    Puce(
+                        texte = if (paliers.isEmpty()) {
+                            "Prix dégressif ?"
+                        } else {
+                            "Dégressif : " + paliers.sortedBy { it.aPartirDe }
+                                .joinToString(" / ") { Nombres.enTexte(it.prixUnitaire) }
+                        },
+                        modifier = Modifier.clickable(onClick = onPaliers),
+                        couleur = MaterialTheme.colorScheme.secondary,
+                    )
+                }
             }
             Text(
                 text = if (prestation.tarifee) {

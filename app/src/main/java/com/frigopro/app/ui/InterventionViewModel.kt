@@ -16,6 +16,7 @@ import com.frigopro.app.data.Depannage
 import com.frigopro.app.data.Diagnostic
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.MouvementFluide
@@ -25,6 +26,7 @@ import com.frigopro.app.data.Photo
 import com.frigopro.app.data.PointChecklist
 import com.frigopro.app.data.PiecePosee
 import com.frigopro.app.data.Releve
+import com.frigopro.app.data.RentabiliteIntervention
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.SuiviRepository
 import com.frigopro.app.data.VerificationFluideRepository
@@ -77,7 +79,32 @@ data class EtatIntervention(
     val photos: List<Photo> = emptyList(),
     val checklist: List<PointChecklist> = emptyList(),
     val parametres: Parametres = Parametres(),
+    /**
+     * Ce que l'intervention a été facturée, hors taxes.
+     *
+     * `null` tant qu'aucune facture n'en est sortie — et non zéro : une
+     * intervention non encore facturée n'est pas une intervention à perte. Voir
+     * [RentabiliteIntervention].
+     */
+    val recetteHt: Double? = null,
 ) {
+
+    /**
+     * Ce que l'intervention a coûté, et ce qu'elle rapporte.
+     *
+     * Dérivé et jamais stocké : le temps se recompte à chaque reprise du chrono,
+     * et les prix d'achat sont sur les lignes. Voir [RentabiliteIntervention]
+     * pour ce que ce chiffre est — une marge sur coûts directs — et pour ce
+     * qu'il n'est pas.
+     */
+    val rentabilite: RentabiliteIntervention
+        get() = RentabiliteIntervention.de(
+            intervention = intervention,
+            pieces = pieces,
+            mouvements = mouvements,
+            parametres = parametres,
+            recetteHt = recetteHt,
+        )
 
     /** Combien de points sont cochés, et sur combien. */
     val pointsFaits: Int get() = checklist.count { it.fait }
@@ -125,6 +152,11 @@ class InterventionViewModel(
     private val clients: ClientRepository,
     private val parametres: ParametresRepository,
     private val verifications: VerificationFluideRepository,
+    /**
+     * Les factures, dont cet écran ne lit qu'une chose : ce que l'intervention
+     * a rapporté, pour le comparer à ce qu'elle a coûté.
+     */
+    private val factures: FactureRepository,
 ) : ViewModel() {
 
     private val _ouverte = MutableStateFlow<String?>(null)
@@ -430,7 +462,7 @@ class InterventionViewModel(
                 )
             }
         }
-        return combine(
+        val enrichi = combine(
             base,
             equipements.equipements,
             clients.clients,
@@ -442,6 +474,17 @@ class InterventionViewModel(
                 client = carnet.firstOrNull { it.id == etat.intervention.clientId },
                 parametres = reglages,
                 checklist = points,
+            )
+        }
+        // Un sixième flux ne rentre pas dans `combine` : il en prend cinq au
+        // plus. La recette arrive donc par une seconde combinaison, ce qui la
+        // sépare proprement du reste — c'est la seule valeur de cet état qui ne
+        // vienne pas de l'intervention elle-même.
+        return combine(enrichi, factures.facturesChiffrees) { etat, chiffrees ->
+            etat?.copy(
+                recetteHt = chiffrees
+                    .firstOrNull { it.facture.interventionId == etat.intervention.id }
+                    ?.totalHt,
             )
         }
     }
@@ -465,6 +508,7 @@ class InterventionViewModel(
                     conteneur.clients,
                     conteneur.parametres,
                     conteneur.verificationsFluide,
+                    conteneur.factures,
                 )
             }
         }

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.ModeDeplacement
+import com.frigopro.app.data.PalierPrestation
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
@@ -188,6 +189,33 @@ class ReglagesViewModel(
      */
     fun onSupprimerPrestation(prestation: Prestation) {
         viewModelScope.launch { prestationRepository.supprimer(prestation.id) }
+    }
+
+    /**
+     * Les paliers dégressifs, par identifiant de prestation.
+     *
+     * Un seul flux pour tout le catalogue plutôt qu'un par prestation : la
+     * section les affiche toutes ensemble, et vingt et un flux séparés auraient
+     * fait vingt et une requêtes pour une table qui tient en trois lignes.
+     */
+    val paliers: StateFlow<Map<String, List<PalierPrestation>>> = prestationRepository.paliers
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyMap())
+
+    /**
+     * Pose le prix d'un rang d'unité.
+     *
+     * Le dépôt refuse un rang inférieur à 2 : le rang 1 est le prix de la
+     * prestation, et le dupliquer l'aurait fait diverger au premier changement
+     * de tarif.
+     */
+    fun onDefinirPalier(prestationId: String, aPartirDe: Int, prixUnitaire: Double) {
+        viewModelScope.launch {
+            prestationRepository.definirPalier(prestationId, aPartirDe, prixUnitaire)
+        }
+    }
+
+    fun onSupprimerPalier(id: String) {
+        viewModelScope.launch { prestationRepository.supprimerPalier(id) }
     }
 
     private fun modifier(transformation: (Parametres) -> Parametres) {

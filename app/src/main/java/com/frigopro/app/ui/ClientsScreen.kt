@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,12 +35,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -87,6 +84,8 @@ import com.frigopro.app.ui.theme.StyleChiffrePetit
  */
 @Composable
 fun ClientsRoute(
+    vue: VueCarnet = VueCarnet.CLIENTS,
+    onVue: (VueCarnet) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
@@ -174,6 +173,8 @@ fun ClientsRoute(
         ClientsScreen(
             carnet = carnet,
             groupes = groupes,
+            vue = vue,
+            onVue = onVue,
             onNouveauClient = viewModel::onNouveauClient,
             onOuvrirFiche = viewModel::onOuvrirFiche,
             onNouveauSite = viewModel::onNouveauSite,
@@ -339,6 +340,9 @@ fun ClientsScreen(
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Le carnet ouvert, et la bascule vers les deux autres. Voir [CadreCarnet]. */
+    vue: VueCarnet = VueCarnet.CLIENTS,
+    onVue: (VueCarnet) -> Unit = {},
 ) {
     val parClient = groupes.groupBy { it.groupe.clientId }
     var recherche by rememberSaveable { mutableStateOf("") }
@@ -358,31 +362,15 @@ fun ClientsScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        // La barre d'onglets, sous cet écran, pose déjà la marge du bas ;
-        // l'y ajouter ici la compterait deux fois.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNouveauClient,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PersonAdd,
-                    contentDescription = "Ajouter un client",
-                )
-            }
-        },
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding)) {
-            Text(
-                text = "Clients",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
-            )
+    CadreCarnet(
+        vue = vue,
+        onVue = onVue,
+        iconeAjout = Icons.Filled.PersonAdd,
+        descriptionAjout = "Ajouter un client",
+        onAjouter = onNouveauClient,
+        modifier = modifier,
+    ) {
+        Column {
             ChampRecherche(
                 valeur = recherche,
                 onValeur = { recherche = it },
