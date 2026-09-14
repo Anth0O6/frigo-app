@@ -3,6 +3,7 @@ package com.frigopro.app.ui
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.FauxClientDao
+import com.frigopro.app.data.FauxRangementPhotos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -121,6 +122,6 @@ class ClientsViewModelTest {
     /** Même raison que dans [InterventionsViewModelTest]. */
     private fun TestScope.creerViewModel(): ClientsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        return ClientsViewModel(ClientRepository(dao))
+        return ClientsViewModel(ClientRepository(dao, FauxRangementPhotos()))
     }
 }

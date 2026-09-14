@@ -102,4 +102,27 @@ class FauxInterventionDao : InterventionDao {
             liste.map { if (it.equipementId == equipementId) it.copy(equipementId = null) else it }
         }
     }
+
+    /** Les machines d'un parc entier, quand son client disparaît. */
+    fun detacherEquipements(equipementIds: Set<String>) {
+        lignes.update { liste ->
+            liste.map { if (it.equipementId in equipementIds) it.copy(equipementId = null) else it }
+        }
+    }
+
+    /** Voir [ClientDao.detacherInterventions] : `client` et `ville` restent. */
+    fun detacherClient(clientId: String) {
+        lignes.update { liste ->
+            liste.map { if (it.clientId == clientId) it.copy(clientId = null) else it }
+        }
+    }
+
+    /** Voir [ClientDao.detacherSousTraitance] : `clientFactureNom` reste. */
+    fun detacherDonneurDOrdre(clientId: String) {
+        lignes.update { liste ->
+            liste.map {
+                if (it.clientFactureId == clientId) it.copy(clientFactureId = null) else it
+            }
+        }
+    }
 }

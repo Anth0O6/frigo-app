@@ -34,7 +34,7 @@ class ConteneurApp(private val contexte: Context) {
 
     val interventions: InterventionRepository by lazy { InterventionRepository(base.interventionDao()) }
 
-    val clients: ClientRepository by lazy { ClientRepository(base.clientDao()) }
+    val clients: ClientRepository by lazy { ClientRepository(base.clientDao(), photos) }
 
     val typesIntervention: TypeInterventionRepository by lazy {
         TypeInterventionRepository(base.typeInterventionDao())

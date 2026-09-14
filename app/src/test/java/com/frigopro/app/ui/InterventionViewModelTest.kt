@@ -416,7 +416,7 @@ class InterventionViewModelTest {
             InterventionRepository(daoInterventions),
             SuiviRepository(daoSuivi, stockage),
             EquipementRepository(daoEquipements, stockage),
-            ClientRepository(daoClients),
+            ClientRepository(daoClients, stockage),
             ParametresRepository(daoParametres, stockage),
             VerificationFluideRepository(daoVerifications),
             FactureRepository(FauxFactureDao()),

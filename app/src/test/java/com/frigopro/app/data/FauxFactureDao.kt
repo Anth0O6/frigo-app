@@ -21,6 +21,16 @@ class FauxFactureDao : FactureDao() {
 
     val contenu: List<Facture> get() = documents.value
 
+    /**
+     * Voir [ClientDao.detacherFactures] : la ligne reste entière, seul le lien
+     * tombe. Une facture est un document comptable — elle ne s'efface jamais.
+     */
+    fun detacherClient(clientId: String) {
+        documents.update { liste ->
+            liste.map { if (it.clientId == clientId) it.copy(clientId = null) else it }
+        }
+    }
+
     val contenuLignes: List<LigneFacture> get() = lignes.value
 
     override fun observerToutes(): Flow<List<Facture>> =

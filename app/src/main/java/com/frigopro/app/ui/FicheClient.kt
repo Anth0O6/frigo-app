@@ -51,10 +51,15 @@ private val OPTIONS_TELEPHONE = KeyboardOptions(
 /**
  * Fiche d'un client, en création comme en édition.
  *
- * Pas de suppression : une intervention passée garde le `clientId` de celui
- * chez qui elle a eu lieu, et supprimer la fiche détacherait son historique.
- * Le jour où la suppression arrivera, elle devra décider du sort de ce
- * rattachement — ce qui est une décision, pas un bouton.
+ * **La suppression est ici et nulle part ailleurs**, à la différence d'un devis
+ * qu'un appui long efface depuis la liste. Les deux gestes ne répondent pas à la
+ * même chose : un devis de trop vient d'une fausse manœuvre et se voit dans la
+ * liste, un client se supprime délibérément, après avoir ouvert sa fiche et vu
+ * ce qu'elle porte. Un appui long sur une carte qui montre déjà le parc et
+ * plusieurs boutons aurait effacé un client pendant qu'on cherchait une machine.
+ *
+ * Elle n'est proposée qu'en **édition** : il n'y a rien à supprimer d'une fiche
+ * qu'on est en train de créer, et « Annuler » y répond déjà.
  *
  * Composable sans état : la saisie est remontée telle quelle via [onEtatChange].
  */
@@ -66,6 +71,11 @@ fun FicheClient(
     onEnregistrer: () -> Unit,
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Demande la suppression. `null` en création, et la confirmation est
+     * l'affaire de la route : c'est elle qui sait compter ce qui disparaît.
+     */
+    onSupprimer: (() -> Unit)? = null,
 ) {
     val contexte = LocalContext.current
     val client = etat.versClient()
@@ -174,6 +184,22 @@ fun FicheClient(
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(text = if (etat.estCreation) "Ajouter" else "Enregistrer")
+                }
+            }
+
+            // En dessous et non dans la rangée : une action destructrice à côté
+            // d'« Enregistrer », sur une cible de doigt ganté, se touche par
+            // erreur. Elle est en retrait, et la confirmation qui suit nomme ce
+            // qui disparaît.
+            if (!etat.estCreation && onSupprimer != null) {
+                TextButton(
+                    onClick = onSupprimer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "Supprimer ce client",
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }

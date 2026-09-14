@@ -167,7 +167,7 @@ class FacturesViewModelTest {
         val viewModel = FacturesViewModel(
             FactureRepository(daoFactures),
             SuiviRepository(daoSuivi, stockage),
-            ClientRepository(daoClients),
+            ClientRepository(daoClients, stockage),
             ParametresRepository(daoParametres, stockage),
             // Le PDF ne se dessine pas sans Android : le producteur retient le
             // document et rend `null`. C'est ce que le document **dit** qui est

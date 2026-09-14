@@ -522,7 +522,7 @@ class InterventionsViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         return InterventionsViewModel(
             InterventionRepository(dao),
-            ClientRepository(daoClients),
+            ClientRepository(daoClients, FauxRangementPhotos()),
             TypeInterventionRepository(daoTypes),
             EquipementRepository(daoEquipements, FauxRangementPhotos()),
             TechnicienRepository(daoTechniciens),

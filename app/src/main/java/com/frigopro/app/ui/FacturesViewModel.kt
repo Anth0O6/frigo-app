@@ -180,10 +180,21 @@ class FacturesViewModel(
     }
 
     /** Ne fait rien sur une facture numérotée : c'est le dépôt qui refuse. */
-    fun onSupprimer() {
-        val courante = complete.value?.facture ?: return
+    /**
+     * Supprime un brouillon, ouvert ou non.
+     *
+     * La facture est passée plutôt que prise sur celle qu'on regarde : la liste
+     * supprime aussi, et c'est de là que le geste sert le plus — un brouillon
+     * créé par erreur se voit dans la liste. Le dépôt reste seul juge : il rend
+     * `false` sur une facture numérotée, qui s'annule au lieu de s'effacer, et
+     * c'est lui qui tient la continuité de la numérotation quoi que fasse
+     * l'écran.
+     */
+    fun onSupprimer(facture: Facture) {
         viewModelScope.launch {
-            if (factures.supprimer(courante)) _ouverte.value = null
+            if (factures.supprimer(facture) && _ouverte.value == facture.id) {
+                _ouverte.value = null
+            }
         }
     }
 

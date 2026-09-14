@@ -101,6 +101,11 @@ fun ClientsRoute(
     val historique by machines.historique.collectAsStateWithLifecycle()
     val relevesMachine by machines.relevesMachine.collectAsStateWithLifecycle()
     var ficheOuverte by remember { mutableStateOf(false) }
+
+    // Le client dont on vient de demander la suppression, en attente de
+    // confirmation. Tenu par la route et non par la feuille : c'est ici qu'on a
+    // sous la main de quoi compter ce qui disparaît — le parc, les sites.
+    var aSupprimer by remember { mutableStateOf<Client?>(null) }
     val dialogue by machines.dialogue.collectAsStateWithLifecycle()
     val agrandie by machines.agrandie.collectAsStateWithLifecycle()
 
@@ -189,8 +194,22 @@ fun ClientsRoute(
                 onEtatChange = viewModel::onFicheChange,
                 onEnregistrer = viewModel::onEnregistrerFiche,
                 onFermer = viewModel::onFermerFiche,
+                onSupprimer = { aSupprimer = etat.versClient() },
             )
         }
+    }
+
+    aSupprimer?.let { condamne ->
+        ConfirmationSuppressionClient(
+            client = condamne,
+            machines = parc.count { it.clientId == condamne.id },
+            sites = carnet.firstOrNull { it.donneur.id == condamne.id }?.nombreSites ?: 0,
+            onConfirmer = {
+                viewModel.onSupprimerClient(condamne)
+                aSupprimer = null
+            },
+            onFermer = { aSupprimer = null },
+        )
     }
 
     agrandie?.let { photo ->
@@ -316,6 +335,74 @@ private fun ConfirmationSuppressionMachine(
 }
 
 /** Écran sans état : le carnet, trié alphabétiquement par le dépôt. */
+/**
+ * La confirmation de suppression d'un client.
+ *
+ * Elle **nomme ce qui disparaît et ce qui reste**, et les deux comptent autant.
+ * Ce qui disparaît, parce qu'un parc de machines emporte des plaques
+ * signalétiques photographiées sur un toit, qu'on ne reprendra pas. Ce qui
+ * reste, parce que la crainte qui retient le doigt est celle d'effacer une année
+ * de tournées — et ce n'est pas ce qui se passe : les interventions, devis et
+ * factures gardent leur ligne, le nom recopié dessus, et perdent seulement le
+ * lien. C'est la règle que le projet applique déjà au type d'intervention et à
+ * la machine.
+ *
+ * Les comptes sont **dérivés au moment d'afficher** et non stockés : un parc
+ * grossit, et un chiffre figé serait faux le lendemain.
+ */
+@Composable
+private fun ConfirmationSuppressionClient(
+    client: Client,
+    machines: Int,
+    sites: Int,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Supprimer ${client.nom} ?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val emporte = buildList {
+                    if (machines > 0) {
+                        add(
+                            if (machines == 1) {
+                                "sa machine, ses photos et son historique d'étanchéité"
+                            } else {
+                                "ses $machines machines, leurs photos et leur historique d'étanchéité"
+                            },
+                        )
+                    }
+                    if (sites > 0) {
+                        add(if (sites == 1) "son site, et tout ce qu'il porte" else "ses $sites sites, et tout ce qu'ils portent")
+                    }
+                }
+                Text(
+                    text = if (emporte.isEmpty()) {
+                        "La fiche disparaît du carnet. C'est définitif."
+                    } else {
+                        "Disparaissent avec la fiche : ${emporte.joinToString(", ")}. C'est définitif."
+                    },
+                )
+                Text(
+                    text = "Les interventions, devis et factures de ce client sont " +
+                        "conservés : ils gardent son nom, et perdent seulement le lien " +
+                        "vers la fiche.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmer) {
+                Text(text = "Supprimer", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientsScreen(

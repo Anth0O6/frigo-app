@@ -468,7 +468,7 @@ class DevisViewModelTest {
         Dispatchers.setMain(ordonnanceur)
         val viewModel = DevisViewModel(
             DevisRepository(daoDevis),
-            ClientRepository(daoClients),
+            ClientRepository(daoClients, stockage),
             ParametresRepository(daoParametres, stockage),
             PrestationRepository(daoPrestations),
             EquipementRepository(daoEquipements, stockage),

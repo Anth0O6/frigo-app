@@ -176,6 +176,13 @@ class FauxDevisDao : DevisDao() {
 
     val contenu: List<Devis> get() = documents.value
 
+    /** Voir [ClientDao.detacherDevis] : le lien tombe, `clientNom` reste. */
+    fun detacherClient(clientId: String) {
+        documents.update { liste ->
+            liste.map { if (it.clientId == clientId) it.copy(clientId = null) else it }
+        }
+    }
+
     val contenuLignes: List<LigneDevis> get() = lignes.value
 
     override fun observerTous(): Flow<List<Devis>> =

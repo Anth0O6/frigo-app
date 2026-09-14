@@ -160,6 +160,11 @@ fun FacturesRoute(
         )
     }
 
+    // Le brouillon dont on vient de demander la suppression, en attente de
+    // confirmation. Seule la liste passe par là : la facture ouverte a déjà sa
+    // propre confirmation, qui sert aussi à émettre et à annuler.
+    var aSupprimer by remember { mutableStateOf<Facture?>(null) }
+
     BackHandler(enabled = complete != null) { viewModel.onFermer() }
 
     val ouverte = complete
@@ -171,7 +176,7 @@ fun FacturesRoute(
             onPayee = viewModel::onPayee,
             onImpayee = viewModel::onImpayee,
             onAnnuler = viewModel::onAnnuler,
-            onSupprimer = viewModel::onSupprimer,
+            onSupprimer = { viewModel.onSupprimer(ouverte.facture) },
             onSupprimerLigne = viewModel::onSupprimerLigne,
             onFermer = viewModel::onFermer,
             modifier = modifier,
@@ -181,6 +186,7 @@ fun FacturesRoute(
             factures = liste,
             compteurs = compteurs,
             onOuvrir = viewModel::onOuvrir,
+            onSupprimer = { aSupprimer = it },
             onVoirDevis = onVoirDevis,
             rappelsActifs = rappelsActifs,
             onAutoriserRappels = {
@@ -191,6 +197,54 @@ fun FacturesRoute(
             modifier = modifier,
         )
     }
+
+    aSupprimer?.let { condamne ->
+        ConfirmationSuppressionFacture(
+            facture = condamne,
+            onConfirmer = {
+                viewModel.onSupprimer(condamne)
+                aSupprimer = null
+            },
+            onFermer = { aSupprimer = null },
+        )
+    }
+}
+
+/**
+ * La confirmation de suppression d'un brouillon, depuis la liste.
+ *
+ * Elle ne s'ouvre que sur un brouillon : une facture numérotée ne se supprime
+ * pas, elle s'annule en gardant son numéro, et cela se fait depuis la facture
+ * elle-même — un trou dans la séquence est ce qu'un contrôle cherche en premier.
+ */
+@Composable
+private fun ConfirmationSuppressionFacture(
+    facture: Facture,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Supprimer ce brouillon ?") },
+        text = {
+            Text(
+                text = buildString {
+                    append(facture.objet.ifBlank { "Ce brouillon" })
+                    if (facture.clientNom.isNotBlank()) append(" — ${facture.clientNom}")
+                    append(" disparaît avec ses lignes. C'est définitif.")
+                    append(" Il n'a pris aucun numéro : la séquence des factures")
+                    append(" n'en gardera pas de trou.")
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmer) {
+                Text(text = "Supprimer", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
 }
 
 /** La liste des factures, de la plus récente à la plus ancienne. */
@@ -200,6 +254,8 @@ fun ListeFactures(
     factures: List<FactureChiffree>,
     compteurs: CompteursFactures,
     onOuvrir: (Facture) -> Unit,
+    /** L'appui long sur un brouillon. Sans effet sur une facture numérotée. */
+    onSupprimer: (Facture) -> Unit = {},
     onVoirDevis: () -> Unit,
     /** Le rappel du matin est autorisé : voir [RappelsFactures]. */
     rappelsActifs: Boolean = true,
@@ -291,6 +347,7 @@ fun ListeFactures(
                         chiffree = chiffree,
                         aujourdhui = aujourdhui,
                         onClick = { onOuvrir(chiffree.facture) },
+                        onSupprimer = { onSupprimer(chiffree.facture) },
                     )
                 }
             }
@@ -303,11 +360,20 @@ private fun CarteFacture(
     chiffree: FactureChiffree,
     aujourdhui: LocalDate,
     onClick: () -> Unit,
+    onSupprimer: (() -> Unit)? = null,
 ) {
     val facture = chiffree.facture
     val retard = facture.joursDeRetard(aujourdhui)
 
-    Carte(onClick = onClick, liseré = couleurStatutFacture(facture, aujourdhui)) {
+    Carte(
+        onClick = onClick,
+        // L'appui long n'existe que sur un brouillon : une facture numérotée ne
+        // se supprime pas, et un geste qui ne ferait rien vaut moins que pas de
+        // geste. La convention reste celle du projet — appui simple pour ouvrir,
+        // appui long pour détruire.
+        onLongClick = onSupprimer.takeIf { !facture.numerotee },
+        liseré = couleurStatutFacture(facture, aujourdhui),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(

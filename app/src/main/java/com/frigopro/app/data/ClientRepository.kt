@@ -7,7 +7,15 @@ import java.time.Instant
 import java.util.Locale
 
 /** Carnet de clients : ce que l'on ne veut plus retaper à chaque intervention. */
-class ClientRepository(private val dao: ClientDao) {
+class ClientRepository(
+    private val dao: ClientDao,
+    /**
+     * Où vivent les photos du parc. Le dépôt est le seul endroit où la base et
+     * les fichiers avancent ensemble, comme [EquipementRepository] — et dans le
+     * même ordre : les lignes d'abord, les fichiers ensuite.
+     */
+    private val stockage: RangementPhotos,
+) {
 
     /**
      * Carnet trié alphabétiquement. Le tri passe par un [Collator] français
@@ -78,5 +86,25 @@ class ClientRepository(private val dao: ClientDao) {
         )
         dao.enregistrer(nettoye)
         return nettoye
+    }
+
+    /**
+     * Supprime un client, ses sites et son parc.
+     *
+     * Ce que la suppression emporte et ce qu'elle garde est décidé par
+     * [ClientDao.supprimer] ; ici on ne fait que ce que SQLite ne sait pas
+     * faire : effacer les **fichiers image** du parc. Ils sont relevés avant la
+     * transaction, parce qu'après, plus aucune ligne ne dit lesquels étaient là.
+     *
+     * L'ordre est celui de tout le projet — la base d'abord, les fichiers
+     * ensuite : une ligne sans fichier se voit à l'écran et se corrige, un
+     * fichier sans ligne ne se voit nulle part.
+     */
+    suspend fun supprimer(client: Client) {
+        val fichiers = (dao.sitesDe(client.id) + client)
+            .flatMap { dao.photosDuParc(it.id) }
+            .map { it.fichier }
+        dao.supprimer(client.id)
+        fichiers.forEach { stockage.supprimer(it) }
     }
 }

@@ -86,6 +86,19 @@ class ClientsViewModel(private val repository: ClientRepository) : ViewModel() {
         viewModelScope.launch { repository.enregistrer(etat.versClient()) }
     }
 
+    /**
+     * Supprime un client, et referme sa fiche si c'est celle qu'on regardait.
+     *
+     * Ce que la suppression emporte est décidé par `ClientDao.supprimer` : le
+     * parc et les sites partent, les interventions, devis et factures restent,
+     * lien coupé. L'écran ne fait que le demander, après avoir nommé ce qui
+     * disparaît.
+     */
+    fun onSupprimerClient(client: Client) {
+        if (_fiche.value?.id == client.id) _fiche.value = null
+        viewModelScope.launch { repository.supprimer(client) }
+    }
+
     companion object {
 
         /** Même raison que dans [InterventionsViewModel]. */

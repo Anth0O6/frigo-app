@@ -170,7 +170,7 @@ class ReglagesViewModelTest {
             PrestationRepository(daoPrestations),
             SuiviRepository(daoSuivi, FauxRangementPhotos()),
             InterventionRepository(daoInterventions),
-            ClientRepository(FauxClientDao()),
+            ClientRepository(FauxClientDao(), FauxRangementPhotos()),
             EquipementRepository(FauxEquipementDao(daoInterventions), FauxRangementPhotos()),
             // Ce que le registre imprimé dit s'éprouve dans `DocumentRegistreTest` ;
             // l'écrire demanderait un `Canvas`.
