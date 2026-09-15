@@ -15,6 +15,7 @@ import com.frigopro.app.data.FauxDevisDao
 import com.frigopro.app.data.FauxEquipementDao
 import com.frigopro.app.data.FauxFactureDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.FauxMaterielDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.FauxRangementPhotos
@@ -28,6 +29,7 @@ import com.frigopro.app.data.ResultatItineraire
 import com.frigopro.app.data.ServiceItineraire
 import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.data.TarifDeplacement
+import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.OrigineTrajet
 import com.frigopro.app.data.Trajet
@@ -59,6 +61,7 @@ class DevisViewModelTest {
     private val daoClients = FauxClientDao()
     private val daoParametres = FauxParametresDao()
     private val daoPrestations = FauxPrestationDao()
+    private val daoMateriel = FauxMaterielDao()
     private val daoInterventions = FauxInterventionDao()
     private val daoEquipements = FauxEquipementDao(daoInterventions)
     private val stockage = FauxRangementPhotos()
@@ -592,6 +595,7 @@ class DevisViewModelTest {
             PrestationRepository(daoPrestations),
             EquipementRepository(daoEquipements, stockage),
             FactureRepository(daoFactures),
+            MaterielRepository(daoMateriel),
             // Le PDF ne se dessine pas sans Android : le producteur rend `null`, ce
             // qui est le chemin d'échec. Ce que le document dit et où tombent ses
             // lignes est vérifié par [DocumentDevisTest] et [MiseEnPageDevisTest].
