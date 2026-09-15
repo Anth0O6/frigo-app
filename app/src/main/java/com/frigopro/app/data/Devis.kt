@@ -116,6 +116,23 @@ data class LigneDevis(
      * jour où quelqu'un en ajoute une à la main.
      */
     val deplacement: Boolean = false,
+    /**
+     * Ce que la ligne a **coûté**, à l'unité, au jour du chiffrage.
+     *
+     * Zéro veut dire « pas de matériel » ou « coût inconnu », et non « gratuit » :
+     * la marge se déclare alors non chiffrable plutôt que d'annoncer un bénéfice
+     * égal à la recette — même règle que le coût horaire interne et que le GWP
+     * d'un fluide hors catalogue.
+     *
+     * Il est **recopié** depuis la fiche article et jamais relu dans le magasin
+     * au moment d'afficher : un devis de mars a été chiffré sur les prix de mars,
+     * et sur un split dont le tarif fournisseur a bougé de 15 % en un an, relire
+     * le prix du jour donnerait une marge que personne n'a jamais faite. Même
+     * raison que `PiecePosee.prixAchat` et que le taux de TVA d'une facture.
+     *
+     * Il ne sort **jamais** sur le document du client, et un test le vérifie.
+     */
+    val prixAchat: Double = 0.0,
     val rang: Int = 0,
 ) : LigneChiffree
 
@@ -160,6 +177,39 @@ data class DevisComplet(
 
     /** Total toutes taxes comprises. */
     val totalTtc: Double get() = totaux.totalTtc
+
+    /**
+     * Ce que le devis **rapporte sur le matériel**, et rien d'autre.
+     *
+     * Ce n'est pas la rentabilité du chantier, et le nom le dit : la main-d'œuvre
+     * n'y entre pas — elle n'a pas de prix d'achat, elle a un coût horaire
+     * interne, qui est une autre grandeur et qui vit dans les Réglages. Confondre
+     * les deux donnerait un chiffre flatteur et faux. Ce que
+     * `RentabiliteIntervention` calcule après coup reste la seule réponse
+     * complète ; celui-ci répond à la question qu'on se pose **pendant** qu'on
+     * chiffre : « est-ce que je me sers correctement sur ce matériel ? »
+     *
+     * Seules les lignes qui portent un prix d'achat comptent, et les lignes
+     * **offertes** en sont écartées : une ligne donnée ne rapporte rien, et son
+     * coût est déjà dans les gestes commerciaux. Le calcul se tait — `null` —
+     * quand aucune ligne n'a de coût connu, plutôt que d'annoncer une marge de
+     * 100 % sur un devis de pure main-d'œuvre.
+     *
+     * Rien n'est stocké : la marge découle des lignes, et un montant en base
+     * aurait cessé d'être juste à la première ligne retouchée. Même règle que les
+     * totaux au-dessus.
+     */
+    val margeMateriel: Marge?
+        get() {
+            val chiffrees = lignes.filter { !it.offerte && it.prixAchat > 0.0 }
+            if (chiffrees.isEmpty()) return null
+            return Marge(
+                prixAchat = chiffrees.sumOf { (it.quantite * it.prixAchat).auCentime() }
+                    .auCentime(),
+                prixVente = chiffrees.sumOf { (it.quantite * it.prixUnitaire).auCentime() }
+                    .auCentime(),
+            )
+        }
 }
 
 /**

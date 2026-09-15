@@ -111,6 +111,12 @@ class DevisRepository(private val dao: DevisDao) {
         quantite: Double,
         unite: String,
         prixUnitaire: Double,
+        /**
+         * Ce que la ligne coûte, à l'unité. Zéro pour tout ce qui n'a pas de prix
+         * d'achat — la main-d'œuvre, un forfait —, et c'est ce qui l'écarte du
+         * calcul de marge plutôt que de la faire passer pour du bénéfice pur.
+         */
+        prixAchat: Double = 0.0,
     ): LigneDevis? {
         val intitule = designation.trim()
         if (intitule.isEmpty()) return null
@@ -120,6 +126,7 @@ class DevisRepository(private val dao: DevisDao) {
             quantite = quantite,
             unite = unite.trim(),
             prixUnitaire = prixUnitaire,
+            prixAchat = prixAchat,
             rang = dao.prochainRang(devisId),
         )
         dao.enregistrerLigne(ligne)

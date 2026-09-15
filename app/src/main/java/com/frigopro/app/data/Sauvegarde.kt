@@ -175,6 +175,15 @@ data class LigneFactureSauvegarde(
     val unite: String = "",
     val prixUnitaire: Double = 0.0,
     val offerte: Boolean = false,
+    /**
+     * Ce que la ligne a coûté, à l'unité.
+     *
+     * Sauvegardé pour la raison qui a fait entrer les prix d'achat des pièces au
+     * format 12 : c'est le prix **du jour du chiffrage**, et rien ne le retrouve.
+     * Un devis restauré sans lui afficherait une marge inconnue sur du matériel
+     * dont on sait très bien ce qu'il a coûté.
+     */
+    val prixAchat: Double = 0.0,
     val rang: Int = 0,
 )
 
@@ -408,6 +417,15 @@ data class LigneDevisSauvegarde(
      * effacé les secondes, ou laissé les premières en double.
      */
     val deplacement: Boolean = false,
+    /**
+     * Ce que la ligne a coûté, à l'unité.
+     *
+     * Sauvegardé pour la raison qui a fait entrer les prix d'achat des pièces au
+     * format 12 : c'est le prix **du jour du chiffrage**, et rien ne le retrouve.
+     * Un devis restauré sans lui afficherait une marge inconnue sur du matériel
+     * dont on sait très bien ce qu'il a coûté.
+     */
+    val prixAchat: Double = 0.0,
     val rang: Int = 0,
 )
 
@@ -428,6 +446,15 @@ data class ParametresSauvegarde(
     val tauxHoraire: Double = 0.0,
     /** Ce qu'une heure coûte à l'entreprise, distinct du taux facturé. */
     val coutHoraireInterne: Double = 0.0,
+    /**
+     * Le coefficient matériel.
+     *
+     * Une décision commerciale de l'entreprise, comme les prix du catalogue et
+     * les paliers dégressifs : ce n'est pas une donnée qu'on retrouve, et un
+     * technicien qui restaure sans elle chiffrerait son matériel au prix coûtant
+     * sans s'en apercevoir.
+     */
+    val coefficientMateriel: Double = 0.0,
     val tauxTva: Double = 20.0,
     val assujettiTva: Boolean = true,
     val entreprise: String = "",
@@ -519,7 +546,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 12
+const val FORMAT_COURANT: Int = 13
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -977,6 +1004,7 @@ internal fun LigneDevis.versSauvegarde(): LigneDevisSauvegarde = LigneDevisSauve
     unite = unite,
     prixUnitaire = prixUnitaire,
     offerte = offerte,
+    prixAchat = prixAchat,
     deplacement = deplacement,
     rang = rang,
 )
@@ -989,6 +1017,7 @@ internal fun LigneDevisSauvegarde.versLigne(): LigneDevis = LigneDevis(
     unite = unite,
     prixUnitaire = prixUnitaire,
     offerte = offerte,
+    prixAchat = prixAchat,
     deplacement = deplacement,
     rang = rang,
 )
@@ -1001,6 +1030,7 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     chronoAuto = chronoAuto,
     tauxHoraire = tauxHoraire,
     coutHoraireInterne = coutHoraireInterne,
+    coefficientMateriel = coefficientMateriel,
     tauxTva = tauxTva,
     assujettiTva = assujettiTva,
     entreprise = entreprise,
@@ -1036,6 +1066,7 @@ internal fun ParametresSauvegarde.versParametres(): Parametres? {
         chronoAuto = chronoAuto,
         tauxHoraire = tauxHoraire,
         coutHoraireInterne = coutHoraireInterne,
+    coefficientMateriel = coefficientMateriel,
         tauxTva = tauxTva,
         assujettiTva = assujettiTva,
         entreprise = entreprise,
@@ -1242,6 +1273,7 @@ internal fun LigneFacture.versSauvegarde(): LigneFactureSauvegarde = LigneFactur
     unite = unite,
     prixUnitaire = prixUnitaire,
     offerte = offerte,
+    prixAchat = prixAchat,
     rang = rang,
 )
 
@@ -1253,5 +1285,6 @@ internal fun LigneFactureSauvegarde.versLigne(): LigneFacture = LigneFacture(
     unite = unite,
     prixUnitaire = prixUnitaire,
     offerte = offerte,
+    prixAchat = prixAchat,
     rang = rang,
 )

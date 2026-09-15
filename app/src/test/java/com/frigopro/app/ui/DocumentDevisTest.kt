@@ -276,4 +276,47 @@ class DocumentDevisTest {
 
         assertTrue(document.mentions.any { it.contains("Bon pour accord") })
     }
+
+    // — Ce que le document ne dit pas ————————————————————————————————————
+
+    /**
+     * Le prix d'achat ne sort **jamais** sur le devis du client.
+     *
+     * Il est sur la ligne en base depuis que le matériel se chiffre depuis le
+     * magasin, et il sert à la marge affichée au technicien — à l'écran, et
+     * nulle part ailleurs. Un client qui lit ce qu'on a payé le split ne
+     * discute plus le devis, il discute la marge.
+     *
+     * Le test cherche le **montant exact** et le symbole, et non « 640 » : un
+     * contrôle qui mord sur un nombre ordinaire finit désactivé, et la propriété
+     * qu'il gardait part avec lui. C'est la leçon du test de secret de la
+     * sauvegarde, et celle du compte-rendu imprimé.
+     */
+    @Test
+    fun `le prix d'achat du materiel ne parait nulle part sur le devis`() {
+        val document = DocumentDevis.de(
+            devis(
+                lignes = listOf(
+                    LigneDevis(
+                        devisId = "d-1",
+                        designation = "Split mural 3,5 kW",
+                        quantite = 1.0,
+                        prixUnitaire = 890.0,
+                        prixAchat = 643.17,
+                    ),
+                ),
+            ),
+            entreprise,
+            client,
+            mai,
+        )
+
+        val imprime = document.lignes.flatMap {
+            listOf(it.designation, it.quantite, it.prixUnitaire, it.montant)
+        } + document.mentions + document.emetteur + document.destinataire
+
+        assertFalse(imprime.any { it.contains("643,17") })
+        // Et le prix de vente, lui, est bien là : la ligne dit ce que le client paie.
+        assertTrue(imprime.any { it.contains("890,00") })
+    }
 }

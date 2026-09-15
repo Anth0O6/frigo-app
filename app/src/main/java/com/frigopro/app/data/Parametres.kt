@@ -56,6 +56,27 @@ data class Parametres(
      * accident ne se distingue pas d'un vrai.
      */
     val coutHoraireInterne: Double = 0.0,
+    /**
+     * Le coefficient appliqué au prix d'achat d'un article faute de prix de
+     * vente sur sa fiche.
+     *
+     * Le magasin sert de tarifaire autant que d'inventaire, et tous les articles
+     * n'ont pas un prix de vente arrêté : celui qu'on commande trois fois par an
+     * se chiffre au coefficient, celui qu'on pose toutes les semaines a son prix.
+     * Ce réglage est ce qui fait marcher le premier cas sans imposer une saisie
+     * au second.
+     *
+     * C'est un **coefficient** et non un taux de marque, parce que c'est ce qu'un
+     * frigoriste applique : ×1,4 se pose de tête devant un client, « 29 % de
+     * marque » ne se pose pas. Voir [Marge] pour les trois façons de dire la même
+     * chose, et pourquoi elles ne se confondent pas.
+     *
+     * Zéro veut dire **non réglé**, et non « coefficient nul » : le devis propose
+     * alors le prix d'achat tel quel et le dit, plutôt que de poser une ligne à
+     * zéro euro chez un vrai client. Même règle que le taux de pénalités et que
+     * le coût horaire interne.
+     */
+    val coefficientMateriel: Double = 0.0,
     val tauxTva: Double = 20.0,
     /**
      * L'entreprise est assujettie à la TVA.

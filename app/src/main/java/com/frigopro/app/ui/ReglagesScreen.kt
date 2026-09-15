@@ -114,6 +114,7 @@ fun ReglagesRoute(
         onTauxTva = viewModel::onTauxTva,
         onDelaiPaiement = viewModel::onDelaiPaiement,
         onTauxPenalites = viewModel::onTauxPenalites,
+        onCoefficientMateriel = viewModel::onCoefficientMateriel,
         onEntreprise = viewModel::onEntreprise,
         onEntrepriseAdresse = viewModel::onEntrepriseAdresse,
         onEntrepriseTelephone = viewModel::onEntrepriseTelephone,
@@ -202,6 +203,7 @@ fun ReglagesScreen(
     onTauxTva: (Double) -> Unit,
     onDelaiPaiement: (Int) -> Unit,
     onTauxPenalites: (Double) -> Unit,
+    onCoefficientMateriel: (Double) -> Unit,
     onEntreprise: (String) -> Unit,
     onEntrepriseAdresse: (String) -> Unit,
     onEntrepriseTelephone: (String) -> Unit,
@@ -277,6 +279,7 @@ fun ReglagesScreen(
                     onTauxTva = onTauxTva,
                     onDelaiPaiement = onDelaiPaiement,
                     onTauxPenalites = onTauxPenalites,
+                    onCoefficientMateriel = onCoefficientMateriel,
                 )
             }
             item {

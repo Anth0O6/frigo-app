@@ -1,7 +1,10 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Article
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.Devis
+import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
@@ -15,6 +18,7 @@ import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.FauxRangementPhotos
+import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
@@ -38,6 +42,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -461,6 +466,120 @@ class DevisViewModelTest {
             0.001,
         )
     }
+
+    // — Le matériel, et ce qu'il rapporte ————————————————————————————————
+
+    /**
+     * Le matériel du magasin se pose sur un devis, avec son coût.
+     *
+     * C'était le trou : le magasin tenait les références et les deux prix, et
+     * aucun devis ne pouvait y puiser — chiffrer la pose d'une clim revenait à
+     * retaper le split à la main, ou à ne chiffrer que la main-d'œuvre.
+     */
+    @Test
+    fun `un article du magasin devient une ligne qui porte son cout`() = runTest {
+        val depot = DevisRepository(daoDevis)
+        val viewModel = creerViewModel()
+        val ouvert = depot.creer(client = null, equipement = null, aujourdhui = mai)
+        viewModel.onOuvrir(ouvert)
+        advanceUntilIdle()
+
+        viewModel.onAjouterArticle(split, quantite = 2.0, prixVente = 890.0)
+        advanceUntilIdle()
+
+        val ligne = daoDevis.contenuLignes.single()
+        // La référence entre dans l'intitulé : c'est ce qu'un client compare à un
+        // devis concurrent, et ce qu'on dicte au fournisseur en commandant.
+        assertEquals("Split mural 3,5 kW (SPL-35)", ligne.designation)
+        assertEquals(2.0, ligne.quantite, 0.001)
+        assertEquals(890.0, ligne.prixUnitaire, 0.001)
+        assertEquals("le coût est recopié depuis la fiche", 640.0, ligne.prixAchat, 0.001)
+    }
+
+    /** Le prix de vente est décidé par l'appelant : au coûtant, c'est un geste. */
+    @Test
+    fun `le materiel peut se poser au prix coutant`() = runTest {
+        val depot = DevisRepository(daoDevis)
+        val viewModel = creerViewModel()
+        val ouvert = depot.creer(client = null, equipement = null, aujourdhui = mai)
+        viewModel.onOuvrir(ouvert)
+        advanceUntilIdle()
+
+        viewModel.onAjouterArticle(split, quantite = 1.0, prixVente = split.prixAchat)
+        advanceUntilIdle()
+
+        val ligne = daoDevis.contenuLignes.single()
+        assertEquals(640.0, ligne.prixUnitaire, 0.001)
+        // Le coût reste porté : la marge est nulle, et c'est une information —
+        // pas un coût inconnu.
+        assertEquals(640.0, ligne.prixAchat, 0.001)
+        assertEquals(0.0, DevisComplet(ouvert, listOf(ligne)).margeMateriel?.brute ?: -1.0, 0.001)
+    }
+
+    /**
+     * La marge ne porte que sur le matériel, et se tait quand il n'y en a pas.
+     *
+     * Un devis de pure main-d'œuvre n'a pas une marge de 100 % : il a un coût
+     * horaire interne, qui est une autre grandeur et qui vit ailleurs. Annoncer
+     * un bénéfice égal à la recette serait le genre de chiffre juste par
+     * accident qu'on ne distingue pas d'un vrai.
+     */
+    @Test
+    fun `la marge materiel ignore la main-d'oeuvre et se tait sans cout connu`() {
+        val devis = Devis(id = "d-1", numero = "DEV-2605-001")
+
+        val sansMateriel = DevisComplet(
+            devis,
+            listOf(LigneDevis(devisId = "d-1", designation = "Main-d'œuvre", quantite = 4.0, prixUnitaire = 68.0)),
+        )
+        assertNull("aucun coût connu : le calcul se tait", sansMateriel.margeMateriel)
+
+        val mixte = DevisComplet(
+            devis,
+            listOf(
+                LigneDevis(devisId = "d-1", designation = "Main-d'œuvre", quantite = 4.0, prixUnitaire = 68.0),
+                LigneDevis(
+                    devisId = "d-1",
+                    designation = "Split",
+                    quantite = 2.0,
+                    prixUnitaire = 890.0,
+                    prixAchat = 640.0,
+                ),
+            ),
+        )
+        // 2 × (890 − 640) = 500, et les 272 € de main-d'œuvre n'y sont pour rien.
+        assertEquals(500.0, mixte.margeMateriel?.brute ?: 0.0, 0.001)
+    }
+
+    /** Une ligne offerte ne rapporte rien : son coût est déjà un geste commercial. */
+    @Test
+    fun `une ligne de materiel offerte sort du calcul de marge`() {
+        val devis = Devis(id = "d-1", numero = "DEV-2605-001")
+        val complet = DevisComplet(
+            devis,
+            listOf(
+                LigneDevis(
+                    devisId = "d-1",
+                    designation = "Split",
+                    quantite = 1.0,
+                    prixUnitaire = 890.0,
+                    prixAchat = 640.0,
+                    offerte = true,
+                ),
+            ),
+        )
+
+        assertNull(complet.margeMateriel)
+    }
+
+    private val split = Article(
+        id = "a-1",
+        reference = "SPL-35",
+        designation = "Split mural 3,5 kW",
+        prixAchat = 640.0,
+        prixVente = 890.0,
+        unite = "u",
+    )
 
     /** Même raison que dans [InterventionsViewModelTest] pour `Dispatchers.Main`. */
     private fun TestScope.creerViewModel(): DevisViewModel {

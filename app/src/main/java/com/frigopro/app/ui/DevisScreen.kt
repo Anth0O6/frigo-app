@@ -48,6 +48,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.Article
+import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
@@ -96,6 +98,7 @@ fun DevisRoute(
     val complet by viewModel.complet.collectAsStateWithLifecycle()
     val compteurs by viewModel.compteurs.collectAsStateWithLifecycle()
     val catalogue by viewModel.catalogue.collectAsStateWithLifecycle()
+    val magasin by viewModel.magasin.collectAsStateWithLifecycle()
     val unitesVisees by viewModel.unitesVisees.collectAsStateWithLifecycle()
     val reglages by viewModel.reglages.collectAsStateWithLifecycle()
     val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
@@ -154,6 +157,9 @@ fun DevisRoute(
             onStatut = viewModel::onStatut,
             onAjouterLigne = viewModel::onAjouterLigne,
             onAjouterPrestation = viewModel::onAjouterPrestation,
+            magasin = magasin,
+            onAjouterArticle = viewModel::onAjouterArticle,
+            coefficientMateriel = reglages.coefficientMateriel,
             onCreerPrestation = viewModel::onCreerPrestation,
             catalogue = catalogue,
             unitesVisees = unitesVisees,
@@ -560,6 +566,11 @@ fun EcranDevis(
     onStatut: (StatutDevis) -> Unit,
     onAjouterLigne: (String, Double, String, Double) -> Unit,
     onAjouterPrestation: (Prestation) -> Unit,
+    /** Le magasin, d'où se chiffre le matériel. Tout le magasin, stock ou non. */
+    magasin: List<ArticleEnStock> = emptyList(),
+    onAjouterArticle: (Article, Double, Double) -> Unit = { _, _, _ -> },
+    /** Le coefficient des Réglages ; `0` quand il n'est pas réglé. */
+    coefficientMateriel: Double = 0.0,
     onCreerPrestation: (Prestation) -> Unit,
     catalogue: Map<CategoriePrestation, List<Prestation>>,
     /** Le nombre d'unités intérieures de la machine visée : 1 pour un monosplit. */
@@ -594,6 +605,8 @@ fun EcranDevis(
     var saisieOuverte by remember { mutableStateOf(false) }
     var clientOuvert by remember { mutableStateOf(false) }
     var catalogueOuvert by remember { mutableStateOf(false) }
+
+    var magasinOuvert by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -677,6 +690,15 @@ fun EcranDevis(
                 onClick = { catalogueOuvert = true },
                 modifier = Modifier.fillMaxWidth(),
             )
+            // Le matériel entre les deux : moins fréquent que la main-d'œuvre,
+            // beaucoup plus que la ligne tapée à la main. C'était le chemin
+            // manquant — le magasin tenait les références et les deux prix, et
+            // aucun devis ne pouvait y puiser.
+            BoutonContour(
+                texte = "Ajouter du matériel",
+                onClick = { magasinOuvert = true },
+                modifier = Modifier.fillMaxWidth(),
+            )
             BoutonContour(
                 texte = "+ Ligne libre",
                 onClick = { saisieOuverte = true },
@@ -746,6 +768,15 @@ fun EcranDevis(
                 saisieOuverte = false
             },
             onFermer = { saisieOuverte = false },
+        )
+    }
+
+    if (magasinOuvert) {
+        FeuilleMateriel(
+            magasin = magasin,
+            coefficientParDefaut = coefficientMateriel,
+            onChoisir = onAjouterArticle,
+            onFermer = { magasinOuvert = false },
         )
     }
 
@@ -863,6 +894,24 @@ private fun CarteTotaux(devis: DevisComplet, onOffrirTva: () -> Unit) {
                 text = Nombres.enEuros(devis.totalTtc),
                 style = StyleChiffre,
                 color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        // Ce que le matériel rapporte, pour le technicien et jamais pour le
+        // client : le prix d'achat ne sort sur aucun document, et un test le
+        // vérifie. La main-d'œuvre n'y est pas — elle n'a pas de prix d'achat
+        // mais un coût horaire interne, qui est une autre grandeur.
+        devis.margeMateriel?.let { marge ->
+            val brute = marge.brute
+            val marque = marge.tauxDeMarque
+            Text(
+                text = buildString {
+                    append("Marge matériel : ")
+                    append(Nombres.enEuros(brute ?: 0.0))
+                    if (marque != null) append(" (${Nombres.enTexte(marque, 0)} % de marque)")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if ((brute ?: 0.0) >= 0.0) statuts.termine else statuts.urgence,
             )
         }
 

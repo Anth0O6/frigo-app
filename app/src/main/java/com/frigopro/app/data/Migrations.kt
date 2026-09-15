@@ -800,3 +800,37 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         )
     }
 }
+
+/**
+ * Le matériel chiffré sur un devis, et ce qu'il rapporte.
+ *
+ * Trois colonnes, aucune table : le magasin existait déjà, le catalogue de
+ * prestations aussi, et il ne manquait que la porte entre le magasin et le
+ * devis — plus de quoi savoir ce que la ligne a coûté une fois posée.
+ *
+ * `prixAchat` est ajouté aux **deux** tables de lignes, et pas seulement à celle
+ * des devis. Un devis accepté devient une facture en recopiant ses lignes ; sans
+ * la colonne côté facture, le coût se serait perdu exactement au moment où le
+ * document devient celui qui compte. Zéro y veut dire « pas de matériel » ou
+ * « coût inconnu », jamais « gratuit » — la marge se déclare alors non
+ * chiffrable.
+ *
+ * `coefficientMateriel` arrive à **zéro**, qui veut dire « non réglé » et non
+ * « coefficient nul » : un coefficient inventé partirait chez un vrai client
+ * sans que personne ne l'ait relu, et un coefficient à zéro poserait des lignes
+ * à zéro euro. Même choix que le taux de pénalités et le coût horaire interne,
+ * et pour la même raison.
+ */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `lignes_devis` ADD COLUMN `prixAchat` REAL NOT NULL DEFAULT 0",
+        )
+        db.execSQL(
+            "ALTER TABLE `lignes_facture` ADD COLUMN `prixAchat` REAL NOT NULL DEFAULT 0",
+        )
+        db.execSQL(
+            "ALTER TABLE `parametres` ADD COLUMN `coefficientMateriel` REAL NOT NULL DEFAULT 0",
+        )
+    }
+}

@@ -142,6 +142,7 @@ fun SectionGeneral(
     onTauxTva: (Double) -> Unit,
     onDelaiPaiement: (Int) -> Unit,
     onTauxPenalites: (Double) -> Unit,
+    onCoefficientMateriel: (Double) -> Unit,
 ) {
     var tarifsOuverts by remember { mutableStateOf(false) }
 
@@ -202,6 +203,9 @@ fun SectionGeneral(
         var penalites by remember {
             mutableStateOf(Nombres.enTexte(parametres.tauxPenalitesRetard))
         }
+        var coefficient by remember {
+            mutableStateOf(Nombres.enTexte(parametres.coefficientMateriel))
+        }
         AlertDialog(
             onDismissRequest = { tarifsOuverts = false },
             title = { Text(text = "Tarifs et paiement") },
@@ -222,6 +226,21 @@ fun SectionGeneral(
                     Text(
                         text = "Un devis garde le taux en vigueur au moment où il est créé : " +
                             "changer ce réglage ne recalcule aucun devis déjà établi.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ChampTexte(
+                        libelle = "Coefficient matériel",
+                        valeur = coefficient,
+                        onValeur = { coefficient = it },
+                        clavier = KeyboardType.Decimal,
+                    )
+                    Text(
+                        text = "Il chiffre le matériel dont la fiche ne porte pas de prix " +
+                            "de vente : 1,4 vend 100 € d'achat à 140 €. Laissé à zéro, un " +
+                            "article sans prix de vente se propose au prix coûtant — jamais " +
+                            "à un prix inventé.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -258,6 +277,7 @@ fun SectionGeneral(
                         Nombres.versDecimal(tva)?.let(onTauxTva)
                         delai.trim().toIntOrNull()?.let(onDelaiPaiement)
                         Nombres.versDecimal(penalites)?.let(onTauxPenalites)
+                        Nombres.versDecimal(coefficient)?.let(onCoefficientMateriel)
                         tarifsOuverts = false
                     },
                 ) {

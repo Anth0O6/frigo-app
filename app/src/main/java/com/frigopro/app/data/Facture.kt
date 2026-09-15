@@ -221,6 +221,23 @@ data class LigneFacture(
     override val unite: String = "",
     override val prixUnitaire: Double = 0.0,
     override val offerte: Boolean = false,
+    /**
+     * Ce que la ligne a **coûté**, à l'unité, au jour de la facturation.
+     *
+     * Zéro veut dire « pas de matériel » ou « coût inconnu », et non « gratuit » :
+     * la marge se déclare alors non chiffrable plutôt que d'annoncer un bénéfice
+     * égal à la recette — même règle que le coût horaire interne et que le GWP
+     * d'un fluide hors catalogue.
+     *
+     * Il est **recopié** depuis la fiche article et jamais relu dans le magasin
+     * au moment d'afficher : un devis de mars a été chiffré sur les prix de mars,
+     * et sur un split dont le tarif fournisseur a bougé de 15 % en un an, relire
+     * le prix du jour donnerait une marge que personne n'a jamais faite. Même
+     * raison que `PiecePosee.prixAchat` et que le taux de TVA d'une facture.
+     *
+     * Il ne sort **jamais** sur le document du client, et un test le vérifie.
+     */
+    val prixAchat: Double = 0.0,
     val rang: Int = 0,
 ) : LigneChiffree
 
@@ -319,13 +336,23 @@ object LignesFacture {
     ): List<LigneFacture> {
         val lignes = mutableListOf<LigneFacture>()
 
-        fun ajouter(designation: String, quantite: Double, unite: String, prix: Double) {
+        fun ajouter(
+            designation: String,
+            quantite: Double,
+            unite: String,
+            prix: Double,
+            prixAchat: Double = 0.0,
+        ) {
             lignes += LigneFacture(
                 factureId = factureId,
                 designation = designation,
                 quantite = quantite,
                 unite = unite,
                 prixUnitaire = prix,
+                // Zéro partout sauf sur les pièces : le temps n'a pas de prix
+                // d'achat — il a un coût horaire interne, qui est une autre
+                // grandeur et que `RentabiliteIntervention` sait manier.
+                prixAchat = prixAchat,
                 rang = lignes.size,
             )
         }
@@ -349,7 +376,7 @@ object LignesFacture {
             } else {
                 "${piece.designation} (${piece.reference})"
             }
-            ajouter(intitule, piece.quantite, "", piece.prixUnitaire ?: 0.0)
+            ajouter(intitule, piece.quantite, "", piece.prixUnitaire ?: 0.0, piece.prixAchat)
         }
 
         // Le fluide ajouté, regroupé par fluide : deux compléments de charge le
@@ -384,6 +411,9 @@ object LignesFacture {
                 unite = ligne.unite,
                 prixUnitaire = ligne.prixUnitaire,
                 offerte = ligne.offerte,
+                // Le coût suit la ligne : sans lui il se perdrait exactement au
+                // moment où le document devient celui qui compte.
+                prixAchat = ligne.prixAchat,
                 rang = rang,
             )
         }

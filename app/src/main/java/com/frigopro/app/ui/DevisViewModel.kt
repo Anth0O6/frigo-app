@@ -9,6 +9,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.Article
+import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
@@ -16,6 +18,7 @@ import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.LigneDevis
+import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.OrigineTrajet
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
@@ -103,6 +106,8 @@ class DevisViewModel(
      * en a déjà produit une, pour le ranger plus bas.
      */
     private val factures: FactureRepository,
+    /** Le magasin : les références, les deux prix, et de quoi chiffrer du matériel. */
+    private val materiel: MaterielRepository,
     /**
      * Ce qui produit le PDF. Une interface, parce que le dessin est
      * irréductiblement Android et qu'un ViewModel qui en dépendrait directement ne
@@ -149,6 +154,17 @@ class DevisViewModel(
     /** Le catalogue, groupé par famille, tel que la feuille l'affiche. */
     val catalogue: StateFlow<Map<CategoriePrestation, List<Prestation>>> = prestations.parCategorie
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyMap())
+
+    /**
+     * Le magasin, pour y puiser du matériel.
+     *
+     * **Tout le magasin**, et non ce qui est en stock : il sert de tarifaire
+     * autant que d'inventaire, et l'article qu'on chiffre est précisément celui
+     * qu'on n'a pas encore acheté. Filtrer sur le camion aurait rendu
+     * inchiffrable le cas le plus courant — une installation neuve.
+     */
+    val magasin: StateFlow<List<ArticleEnStock>> = materiel.magasin
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
 
     val carnet: StateFlow<List<Client>> = clients.clients
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
@@ -270,9 +286,54 @@ class DevisViewModel(
         viewModelScope.launch { devis.changerStatut(courant, statut) }
     }
 
-    fun onAjouterLigne(designation: String, quantite: Double, unite: String, prixUnitaire: Double) {
+    fun onAjouterLigne(
+        designation: String,
+        quantite: Double,
+        unite: String,
+        prixUnitaire: Double,
+        prixAchat: Double = 0.0,
+    ) {
         val id = _ouvert.value ?: return
-        viewModelScope.launch { devis.ajouterLigne(id, designation, quantite, unite, prixUnitaire) }
+        viewModelScope.launch {
+            devis.ajouterLigne(id, designation, quantite, unite, prixUnitaire, prixAchat)
+        }
+    }
+
+    /**
+     * Pose une ligne de **matériel** depuis le magasin.
+     *
+     * C'était le trou : le magasin tenait les références, les deux prix et les
+     * fournisseurs, et aucun devis ne pouvait y puiser. Chiffrer la pose d'une
+     * clim revenait à retaper la désignation et le prix d'un split qui était
+     * déjà en fiche — ou à ne chiffrer que la main-d'œuvre.
+     *
+     * La référence entre dans l'intitulé quand il y en a une : c'est ce qu'un
+     * client compare à un devis concurrent, et ce qu'on dicte au fournisseur en
+     * commandant.
+     *
+     * Le **prix de vente est décidé par l'appelant** et non ici : la fiche en
+     * propose un, on peut le ramener au prix d'achat — vendre le matériel au
+     * coûtant — ou le recalculer d'un coefficient, et c'est la boîte de saisie
+     * qui tranche parce que c'est là qu'on a le client en face. Le
+     * **prix d'achat**, lui, est toujours celui de la fiche, et il est recopié
+     * sur la ligne : c'est ce qui rend la marge calculable, et calculable pour
+     * toujours sur les prix du jour du chiffrage.
+     *
+     * Le stock **ne bouge pas**. Un devis n'est pas une sortie de magasin : il
+     * peut être refusé, et le matériel chiffré n'est souvent même pas acheté.
+     * C'est la **pose** qui retranche du camion, et elle seule.
+     */
+    fun onAjouterArticle(article: Article, quantite: Double, prixVente: Double) {
+        onAjouterLigne(
+            designation = listOfNotNull(
+                article.designation,
+                article.reference.takeIf { it.isNotBlank() }?.let { "($it)" },
+            ).joinToString(" "),
+            quantite = quantite,
+            unite = article.unite,
+            prixUnitaire = prixVente,
+            prixAchat = article.prixAchat,
+        )
     }
 
     fun onModifierLigne(ligne: LigneDevis) {
@@ -494,6 +555,7 @@ class DevisViewModel(
                     conteneur.prestations,
                     conteneur.equipements,
                     conteneur.factures,
+                    conteneur.materiel,
                     ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                     conteneur.itineraires,
                 )

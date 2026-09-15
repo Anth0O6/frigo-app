@@ -173,6 +173,18 @@ class ReglagesViewModel(
     fun onTauxPenalites(taux: Double) =
         modifier { it.copy(tauxPenalitesRetard = taux.coerceAtLeast(0.0)) }
 
+    /**
+     * Le coefficient appliqué au prix d'achat faute de prix de vente en fiche.
+     *
+     * Ramené au positif, et rien de plus : un coefficient **inférieur à 1** est
+     * une vente à perte, ce qui arrive et se décide — on prend un chantier au
+     * coûtant pour en gagner un autre. L'écran du devis le signale, il ne le
+     * réécrit pas dans le dos de celui qui le saisit. Même règle que le taux de
+     * pénalités sous son plancher légal.
+     */
+    fun onCoefficientMateriel(coefficient: Double) =
+        modifier { it.copy(coefficientMateriel = coefficient.coerceAtLeast(0.0)) }
+
     // — L'identité de l'entreprise : l'en-tête des documents —————————————————
 
     fun onEntreprise(nom: String) = modifier { it.copy(entreprise = nom) }
