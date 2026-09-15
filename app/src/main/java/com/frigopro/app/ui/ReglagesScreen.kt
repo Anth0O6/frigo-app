@@ -443,6 +443,7 @@ private fun ReglagesScreenPreview() {
                 onTauxTva = {},
                 onDelaiPaiement = {},
                 onTauxPenalites = {},
+                onCoefficientMateriel = {},
                 prestations = emptyList(),
                 paliers = emptyMap(),
                 onDefinirPalier = { _, _, _ -> },
