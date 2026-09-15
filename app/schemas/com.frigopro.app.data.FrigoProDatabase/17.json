@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 17,
-    "identityHash": "a-remplacer-par-l-empreinte-de-la-ci",
+    "identityHash": "36df508fe18dfeb62da2c1a94f045077",
     "entities": [
       {
         "tableName": "interventions",
@@ -1862,8 +1862,8 @@
       }
     ],
     "setupQueries": [
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a-remplacer-par-l-empreinte-de-la-ci')",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a-remplacer-par-l-empreinte-de-la-ci')"
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '36df508fe18dfeb62da2c1a94f045077')"
     ]
   }
 }
