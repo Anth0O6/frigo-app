@@ -80,12 +80,19 @@ class MaterielViewModel(private val materiel: MaterielRepository) : ViewModel() 
      */
     val magasin: StateFlow<List<ArticleEnStock>> =
         combine(materiel.magasin, _recherche) { liste, saisie ->
-            val cherche = saisie.trim().lowercase()
+            // La même recherche que le carnet des clients et que la feuille du
+            // matériel : accents repliés, mots cherchés séparément. Les trois
+            // écrans la faisaient chacun à sa façon, si bien que « pean » ne
+            // trouvait pas « Péan » et qu'un utilisateur apprenait que la
+            // recherche « marche ici mais pas là » — la meilleure façon de cesser
+            // de s'en servir.
             liste.filter {
-                cherche.isBlank() ||
-                    it.article.designation.lowercase().contains(cherche) ||
-                    it.article.reference.lowercase().contains(cherche) ||
-                    it.article.fournisseurNom.lowercase().contains(cherche)
+                Recherche.correspond(
+                    saisie,
+                    it.article.designation,
+                    it.article.reference,
+                    it.article.fournisseurNom,
+                )
             }.sortedWith(compareByDescending<ArticleEnStock> { it.enAlerte }.thenBy { it.article.designation })
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
 

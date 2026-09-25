@@ -313,9 +313,5 @@ private fun prixPour(article: Article, origine: PrixMateriel, coefficient: Doubl
     }
 
 /** La recherche du magasin : référence, désignation, fournisseur. */
-private fun Article.correspondA(recherche: String): Boolean {
-    val cherche = recherche.trim()
-    if (cherche.isEmpty()) return true
-    return listOf(reference, designation, fournisseurNom)
-        .any { it.contains(cherche, ignoreCase = true) }
-}
+private fun Article.correspondA(recherche: String): Boolean =
+    Recherche.correspond(recherche, reference, designation, fournisseurNom)

@@ -57,6 +57,9 @@ import com.frigopro.app.data.enDuree
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.ChampRecherche
+import com.frigopro.app.ui.composants.Encart
+import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
@@ -100,12 +103,23 @@ fun TourneeRoute(
     val vue by viewModel.vue.collectAsStateWithLifecycle()
     val frise by viewModel.frise.collectAsStateWithLifecycle()
     val semaine by viewModel.semaine.collectAsStateWithLifecycle()
+    val recherche by viewModel.recherche.collectAsStateWithLifecycle()
+    val trouvees by viewModel.trouvees.collectAsStateWithLifecycle()
 
     // Le retour système ramène à « Maintenant », qui est le point de départ de
     // l'onglet. Une seule profondeur à défaire : toujours pas de graphe de
     // navigation.
-    BackHandler(enabled = ouverte == null && vue != VueTournee.MAINTENANT) {
-        viewModel.onVue(VueTournee.MAINTENANT)
+    // Le retour système défait une chose à la fois, la plus récente d'abord : la
+    // recherche en cours, puis la vue. Une seule profondeur à défaire dans les
+    // deux cas — toujours pas de graphe de navigation.
+    BackHandler(
+        enabled = ouverte == null && (recherche.isNotBlank() || vue != VueTournee.MAINTENANT),
+    ) {
+        if (recherche.isNotBlank()) {
+            viewModel.onRecherche("")
+        } else {
+            viewModel.onVue(VueTournee.MAINTENANT)
+        }
     }
 
     // Un `when` plutôt que des retours anticipés : le formulaire se pose **après**
@@ -168,6 +182,9 @@ fun TourneeRoute(
             onChangerStatut = viewModel::onChangerStatut,
             frise = frise,
             onBasculerVue = viewModel::onBasculerVue,
+            recherche = recherche,
+            onRecherche = viewModel::onRecherche,
+            trouvees = trouvees,
             modifier = modifier,
         )
     }
@@ -242,9 +259,21 @@ fun InterventionsScreen(
     /** La journée en frise horaire plutôt qu'en liste. */
     frise: Boolean,
     onBasculerVue: () -> Unit,
+    /**
+     * La recherche, et ce qu'elle trouve dans **toute** la tournée.
+     *
+     * Tant qu'elle est vide, l'écran est la journée. Dès qu'on tape, il
+     * devient la liste des interventions qui correspondent, groupées par
+     * date : retrouver « Carrefour en mars » demandait sinon de remonter jour
+     * par jour.
+     */
+    recherche: String = "",
+    onRecherche: (String) -> Unit = {},
+    trouvees: List<LigneTournee> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var selecteurOuvert by remember { mutableStateOf(false) }
+    val cherche = recherche.isNotBlank()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -292,19 +321,73 @@ fun InterventionsScreen(
                 // dedans — une quatrième pastille aurait laissé croire à une
                 // quatrième destination — et elle a quitté la barre du haut, où
                 // elle prenait la place du titre.
-                BoutonCarre(
-                    icone = if (frise) {
-                        Icons.AutoMirrored.Filled.ViewList
-                    } else {
-                        Icons.Filled.Schedule
-                    },
-                    description = if (frise) "Voir en liste" else "Voir en frise",
-                    onClick = onBasculerVue,
-                )
+                if (!cherche) {
+                    BoutonCarre(
+                        icone = if (frise) {
+                            Icons.AutoMirrored.Filled.ViewList
+                        } else {
+                            Icons.Filled.Schedule
+                        },
+                        description = if (frise) "Voir en liste" else "Voir en frise",
+                        onClick = onBasculerVue,
+                    )
+                }
             }
-            PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
-            BandeauJournee(lignes = lignes)
-            if (frise) {
+            ChampRecherche(
+                valeur = recherche,
+                onValeur = onRecherche,
+                indication = "Client, ville, machine, numéro…",
+                modifier = Modifier
+                    .padding(horizontal = MargeEcran)
+                    .padding(bottom = 14.dp),
+            )
+            // Pendant une recherche, la semaine et le bandeau du jour ne disent
+            // plus rien : les résultats viennent de toutes les dates, et une
+            // pastille « mercredi » retenue au-dessus d'une intervention de mars
+            // ferait croire que l'une désigne l'autre. La frise disparaît pour la
+            // même raison — on ne dessine pas sur une journée des créneaux qui
+            // appartiennent à dix.
+            if (!cherche) {
+                PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
+                BandeauJournee(lignes = lignes)
+            }
+            if (cherche) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = MargeEcran,
+                        end = MargeEcran,
+                        top = 4.dp,
+                        bottom = 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (trouvees.isEmpty()) {
+                        item {
+                            Encart(
+                                texte = "Aucune intervention ne correspond à " +
+                                    "« ${recherche.trim()} ».",
+                            )
+                        }
+                    }
+                    // `groupBy` garde l'ordre d'arrivée, et la liste vient déjà
+                    // antichronologique : les dates se suivent donc de la plus
+                    // récente à la plus ancienne sans être triées deux fois.
+                    trouvees.groupBy { it.intervention.date }.forEach { (date, duJour) ->
+                        item(key = "date-$date") {
+                            IntituleSection(texte = libelleDateAvecAnnee(date))
+                        }
+                        items(items = duJour, key = { it.intervention.id }) { ligne ->
+                            LigneCompacte(
+                                ligne = ligne,
+                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                onModifier = { onModifierIntervention(ligne.intervention) },
+                                onChangerStatut = { onChangerStatut(ligne.intervention) },
+                            )
+                        }
+                    }
+                }
+            } else if (frise) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()

@@ -503,6 +503,118 @@ class InterventionsViewModelTest {
         assertTrue(daoEquipements.contenu.isEmpty())
     }
 
+    /**
+     * Retrouver « Carrefour en mars » demandait de remonter jour par jour, ou de
+     * passer par la fiche d'une machine en espérant que l'intervention y était
+     * rattachée. Une application qui garde le temps passé, les relevés et la
+     * signature d'un client doit pouvoir les ressortir sans connaître la date.
+     */
+    @Test
+    fun `la recherche trouve dans toutes les journees`() = runTest {
+        val viewModel = creerViewModel()
+        val lundi = viewModel.jour.value
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.lignes.collect { }
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.trouvees.collect { }
+        }
+
+        enregistrer(viewModel, client = "Carrefour Market", ville = "Rouen")
+        enregistrer(
+            viewModel,
+            client = "Boucherie Péan",
+            ville = "Elbeuf",
+            date = lundi.minusMonths(6),
+        )
+        advanceUntilIdle()
+
+        viewModel.onRecherche("carrefour")
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("Carrefour Market"),
+            viewModel.trouvees.value.map { it.intervention.client },
+        )
+    }
+
+    /**
+     * Un technicien tape sans accents, une main sur une lampe : « pean » doit
+     * sortir « Péan ». Et l'intervention trouvée est vieille de six mois, donc
+     * hors de toute journée consultable à la flèche.
+     */
+    @Test
+    fun `la recherche replie les accents et remonte loin`() = runTest {
+        val viewModel = creerViewModel()
+        val lundi = viewModel.jour.value
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.lignes.collect { }
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.trouvees.collect { }
+        }
+
+        enregistrer(viewModel, client = "Carrefour Market", ville = "Rouen")
+        enregistrer(
+            viewModel,
+            client = "Boucherie Péan",
+            ville = "Elbeuf",
+            date = lundi.minusMonths(6),
+        )
+        advanceUntilIdle()
+
+        viewModel.onRecherche("pean")
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("Boucherie Péan"),
+            viewModel.trouvees.value.map { it.intervention.client },
+        )
+    }
+
+    /**
+     * Une recherche vide ne trouve **rien** plutôt que tout, et ce n'est pas un
+     * détail de présentation : c'est ce qui arrête le flux de toutes les
+     * interventions, le plus lourd du projet, sur l'onglet le plus ouvert de
+     * l'application.
+     */
+    @Test
+    fun `une recherche vide n'observe rien`() = runTest {
+        val viewModel = creerViewModel()
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.lignes.collect { }
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.trouvees.collect { }
+        }
+
+        enregistrer(viewModel, client = "Carrefour Market", ville = "Rouen")
+        advanceUntilIdle()
+
+        assertTrue(viewModel.trouvees.value.isEmpty())
+    }
+
+    /**
+     * Changer de vue abandonne la recherche : la laisser courir ferait retrouver
+     * une journée filtrée en revenant, sans que rien ne dise qu'on cherche encore.
+     */
+    @Test
+    fun `changer de vue efface la recherche`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onRecherche("carrefour")
+        advanceUntilIdle()
+        assertEquals("carrefour", viewModel.recherche.value)
+
+        viewModel.onVue(VueTournee.SEMAINE)
+        advanceUntilIdle()
+
+        assertEquals("", viewModel.recherche.value)
+    }
+
     private fun enregistrer(
         viewModel: InterventionsViewModel,
         client: String,

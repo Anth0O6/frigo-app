@@ -49,6 +49,7 @@ import com.frigopro.app.ui.composants.BarreActions
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
@@ -268,6 +269,12 @@ fun ListeFactures(
     val statuts = LocalStatuts.current
     val aujourdhui = remember { LocalDate.now() }
 
+    // La recherche ne survit pas à la sortie de l'onglet : on cherche une
+    // facture, on l'ouvre, et on ne veut pas retrouver la liste filtrée ensuite.
+    var recherche by rememberSaveable { mutableStateOf("") }
+    val trouvees = factures.filter { it.correspondA(recherche) }
+    val cherche = recherche.isNotBlank()
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -289,6 +296,14 @@ fun ListeFactures(
                 libelle = { it.libelle },
                 onChoisir = { if (it == VueFacturation.DEVIS) onVoirDevis() },
                 modifier = Modifier.padding(horizontal = MargeEcran),
+            )
+            ChampRecherche(
+                valeur = recherche,
+                onValeur = { recherche = it },
+                indication = "Client, objet, numéro…",
+                modifier = Modifier
+                    .padding(horizontal = MargeEcran)
+                    .padding(top = 14.dp),
             )
             Row(
                 modifier = Modifier
@@ -336,7 +351,14 @@ fun ListeFactures(
                         )
                     }
                 }
-                if (factures.isEmpty()) {
+                if (cherche && trouvees.isEmpty()) {
+                    // « Rien ne correspond » et « aucune facture » n'appellent
+                    // pas le même geste : l'un fait effacer un mot, l'autre fait
+                    // aller chercher une intervention terminée.
+                    item {
+                        Encart(texte = "Aucune facture ne correspond à « ${recherche.trim()} ».")
+                    }
+                } else if (factures.isEmpty()) {
                     item {
                         Encart(
                             texte = "Aucune facture. Une intervention terminée se facture " +
@@ -345,7 +367,7 @@ fun ListeFactures(
                         )
                     }
                 }
-                items(factures, key = { it.facture.id }) { chiffree ->
+                items(trouvees, key = { it.facture.id }) { chiffree ->
                     CarteFacture(
                         chiffree = chiffree,
                         aujourdhui = aujourdhui,

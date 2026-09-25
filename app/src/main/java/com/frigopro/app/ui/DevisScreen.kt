@@ -61,6 +61,7 @@ import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.ui.composants.BoutonCarre
+import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
@@ -304,6 +305,13 @@ fun ListeDevis(
     // un coup d'œil qu'on donne, pas une vue qu'on adopte.
     var facturésDepliés by rememberSaveable { mutableStateOf(false) }
 
+    // La recherche, elle, ne survit pas non plus : on cherche un devis, on
+    // l'ouvre, et on ne veut pas retrouver la liste filtrée en revenant.
+    var recherche by rememberSaveable { mutableStateOf("") }
+    val enCours = devis.enCours.filter { it.correspondA(recherche) }
+    val facturés = devis.facturés.filter { it.chiffre.correspondA(recherche) }
+    val cherche = recherche.isNotBlank()
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -337,6 +345,18 @@ fun ListeDevis(
                     .padding(horizontal = MargeEcran)
                     .padding(bottom = 14.dp),
             )
+            ChampRecherche(
+                valeur = recherche,
+                onValeur = { recherche = it },
+                indication = "Client, objet, numéro…",
+                modifier = Modifier
+                    .padding(horizontal = MargeEcran)
+                    .padding(bottom = 14.dp),
+            )
+            // Les compteurs portent sur **tout** et non sur ce qui est filtré :
+            // « 3 en attente » est un état de l'entreprise, pas une propriété de
+            // la recherche en cours, et le faire tomber à 1 pendant qu'on cherche
+            // aurait donné un chiffre faux au moment où on le lit le moins.
             CompteursEnTete(compteurs = compteurs)
             LazyColumn(
                 contentPadding = PaddingValues(
@@ -346,7 +366,14 @@ fun ListeDevis(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (devis.enCours.isEmpty() && devis.facturés.isEmpty()) {
+                if (cherche && enCours.isEmpty() && facturés.isEmpty()) {
+                    // Dire que la recherche n'a rien donné, et non qu'il n'y a
+                    // aucun devis : les deux phrases n'appellent pas le même
+                    // geste — l'une fait effacer un mot, l'autre en créer un.
+                    item {
+                        Encart(texte = "Aucun devis ne correspond à « ${recherche.trim()} ».")
+                    }
+                } else if (devis.enCours.isEmpty() && devis.facturés.isEmpty()) {
                     item {
                         Encart(
                             texte = "Aucun devis. Un devis chiffré sur place et envoyé avant " +
@@ -354,28 +381,32 @@ fun ListeDevis(
                                 "la semaine suivante.",
                         )
                     }
-                } else if (devis.enCours.isEmpty()) {
+                } else if (!cherche && devis.enCours.isEmpty()) {
                     item {
                         Encart(texte = "Tous les devis sont facturés.")
                     }
                 }
-                items(items = devis.enCours, key = { it.devis.id }) { document ->
+                items(items = enCours, key = { it.devis.id }) { document ->
                     LigneDevisListe(
                         chiffre = document,
                         onClick = { onOuvrir(document.devis) },
                         onSupprimer = { onSupprimer(document.devis) },
                     )
                 }
-                if (devis.facturés.isNotEmpty()) {
+                if (facturés.isNotEmpty()) {
                     item(key = "entete-factures") {
                         EnTeteFacturés(
-                            nombre = devis.facturés.size,
-                            deplié = facturésDepliés,
+                            nombre = facturés.size,
+                            // Une recherche déplie les facturés d'elle-même : on
+                            // cherche un devis, pas une catégorie, et le trouver
+                            // replié sous un en-tête ferait conclure qu'il n'est
+                            // pas là.
+                            deplié = facturésDepliés || cherche,
                             onBasculer = { facturésDepliés = !facturésDepliés },
                         )
                     }
-                    if (facturésDepliés) {
-                        items(items = devis.facturés, key = { it.chiffre.devis.id }) { facturé ->
+                    if (facturésDepliés || cherche) {
+                        items(items = facturés, key = { it.chiffre.devis.id }) { facturé ->
                             LigneDevisListe(
                                 chiffre = facturé.chiffre,
                                 onClick = { onOuvrir(facturé.chiffre.devis) },

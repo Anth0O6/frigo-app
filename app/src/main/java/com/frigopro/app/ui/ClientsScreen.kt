@@ -536,16 +536,25 @@ fun ClientsScreen(
  * « la vitrine Costan » sans retrouver le nom du commerce.
  */
 private fun correspond(client: Client, machines: List<GroupeMachines>, recherche: String): Boolean {
-    val cherche = recherche.trim().lowercase()
-    if (cherche.isEmpty()) return true
     // Les unités intérieures comptent dans la recherche même si elles ne comptent
     // pas dans l'affichage : « chambre 3 » est ce dont le client parle au
     // téléphone, et c'est par là qu'on retrouve l'appareil.
-    fun porte(machine: Equipement) = machine.nom.lowercase().contains(cherche) ||
-        machine.designation.lowercase().contains(cherche)
-    return client.nom.lowercase().contains(cherche) ||
-        client.ville.lowercase().contains(cherche) ||
-        machines.any { groupe -> porte(groupe.groupe) || groupe.unites.any(::porte) }
+    //
+    // Tous les champs partent d'un coup dans [Recherche.correspond] plutôt qu'en
+    // une disjonction de `contains` : c'est ce qui replie les accents — « pean »
+    // trouve « Péan », ce que ce carnet ne faisait pas — et ce qui laisse chercher
+    // « carrefour lens » sans savoir lequel des deux mots est la ville.
+    val champs = buildList {
+        add(client.nom)
+        add(client.ville)
+        machines.forEach { groupe ->
+            (listOf(groupe.groupe) + groupe.unites).forEach { machine ->
+                add(machine.nom)
+                add(machine.designation)
+            }
+        }
+    }
+    return Recherche.correspond(recherche, *champs.toTypedArray())
 }
 
 /** L'initiale sous laquelle ranger un nom, accents repliés. */

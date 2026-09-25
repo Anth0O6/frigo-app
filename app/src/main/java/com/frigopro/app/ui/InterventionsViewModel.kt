@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -105,6 +106,11 @@ class InterventionsViewModel(
 
     fun onVue(vue: VueTournee) {
         _vue.value = vue
+        // Changer de vue abandonne la recherche : elle n'appartient qu'à la vue
+        // du jour, et la laisser courir ferait retrouver une journée filtrée en
+        // revenant — sans que rien, à ce moment-là, ne dise qu'on cherche encore.
+        // C'est aussi ce qui arrête le flux de toutes les interventions.
+        _recherche.value = ""
     }
 
     /** Les interventions de la semaine où tombe la journée affichée. */
@@ -145,6 +151,65 @@ class InterventionsViewModel(
      * l'intervention *et* de quoi agir — appeler, se rendre sur place.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
+    private val _recherche = MutableStateFlow("")
+
+    /** Ce qu'on cherche dans toute la tournée, et non dans la seule journée. */
+    val recherche: StateFlow<String> = _recherche.asStateFlow()
+
+    fun onRecherche(saisie: String) {
+        _recherche.value = saisie
+    }
+
+    /**
+     * Les interventions qui correspondent à la recherche, **toutes dates
+     * confondues**, les plus récentes d'abord.
+     *
+     * C'est ce qui manquait pour retrouver « l'intervention chez Carrefour en
+     * mars » : il fallait remonter jour par jour, ou passer par la fiche d'une
+     * machine en espérant que l'intervention y était rattachée. Une application
+     * qui garde le temps passé, les relevés et la signature d'un client doit
+     * pouvoir les ressortir autrement qu'en connaissant la date.
+     *
+     * Le flux de **toutes** les interventions est le plus lourd du projet, et il
+     * ne coule donc que tant qu'on cherche : `flatMapLatest` sur la saisie le
+     * remplace par une liste vide dès qu'elle est effacée. Sans cela l'onglet le
+     * plus ouvert de l'application observerait la table entière en permanence,
+     * pour un écran qui ne montre qu'une journée.
+     *
+     * Les résultats sont **antichronologiques**, à l'inverse de la journée : on
+     * cherche presque toujours quelque chose de récent, et la première
+     * intervention d'un client de longue date n'est pas celle qu'on veut voir en
+     * tête.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val trouvees: StateFlow<List<LigneTournee>> = _recherche
+        .flatMapLatest { saisie ->
+            if (saisie.isBlank()) {
+                flowOf(emptyList())
+            } else {
+                combine(interventionRepository.observerToutes(), clients) { toutes, carnet ->
+                    val parIdentifiant = carnet.associateBy { client -> client.id }
+                    toutes
+                        .map { intervention ->
+                            LigneTournee(
+                                intervention = intervention,
+                                client = intervention.clientId?.let { parIdentifiant[it] },
+                            )
+                        }
+                        .filter { ligne -> ligne.correspondA(saisie) }
+                        .sortedWith(
+                            compareByDescending<LigneTournee> { it.intervention.date }
+                                .thenByDescending { it.intervention.heure },
+                        )
+                }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            initialValue = emptyList(),
+        )
+
     val lignes: StateFlow<List<LigneTournee>> = combine(
         _jour.flatMapLatest { interventionRepository.observerJournee(it) },
         clients,
