@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,8 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -35,6 +39,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,11 +50,43 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.PalierPrestation
+import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.TypeIntervention
+import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.theme.FrigoProTheme
+
+/**
+ * Les pages des Réglages, et l'ordre dans lequel on les ouvre.
+ *
+ * L'onglet était **six sections déroulées l'une sous l'autre**, ce qui en faisait
+ * le plus long écran de l'application : pour changer un taux horaire il fallait
+ * faire défiler le technicien, le thème, l'entreprise et le déplacement, et le
+ * bouton flottant posé par-dessus n'ajoutait qu'un type d'intervention. Un
+ * sommaire répond mieux à la question qu'on se pose en ouvrant cet onglet, qui
+ * n'est jamais « que peut-on régler ? » mais « où se règle *ceci* ? ».
+ *
+ * L'ordre est celui de ce qu'on remplit d'abord : qui je suis, quelle entreprise
+ * je suis, ce que je facture, comment je me déplace, ce que je vends. Viennent
+ * ensuite ce qu'on règle une fois (l'affichage, les types), puis les deux pages
+ * qui ne règlent rien mais **sortent** quelque chose — la sauvegarde et le
+ * registre. Elles ferment la marche parce qu'on les ouvre rarement, et non parce
+ * qu'elles compteraient moins : la sauvegarde est le seul filet contre un
+ * téléphone perdu.
+ */
+enum class PageReglages(val titre: String) {
+    TECHNICIEN("Technicien"),
+    ENTREPRISE("Mon entreprise"),
+    TARIFS("Tarifs et paiement"),
+    DEPLACEMENT("Déplacement"),
+    CATALOGUE("Catalogue des prestations"),
+    AFFICHAGE("Affichage"),
+    TYPES("Types d'intervention"),
+    SAUVEGARDE("Sauvegarde"),
+    REGISTRE("Registre des fluides"),
+}
 
 /** Point d'entrée de l'onglet, branché sur le [ReglagesViewModel]. */
 @Composable
@@ -111,6 +150,7 @@ fun ReglagesRoute(
         onTechnicien = viewModel::onTechnicien,
         onAttestation = viewModel::onAttestation,
         onTauxHoraire = viewModel::onTauxHoraire,
+        onCoutHoraireInterne = viewModel::onCoutHoraireInterne,
         onTauxTva = viewModel::onTauxTva,
         onDelaiPaiement = viewModel::onDelaiPaiement,
         onTauxPenalites = viewModel::onTauxPenalites,
@@ -144,6 +184,10 @@ fun ReglagesRoute(
             annees = anneesRegistre,
             onExporter = viewModel::onExporterRegistre,
         ),
+        // La sauvegarde tient ses propres lanceurs et son propre ViewModel :
+        // l'écran l'héberge sans la connaître, exactement comme la barre de la
+        // tournée le faisait avant elle.
+        sauvegarde = { SectionSauvegarde() },
         modifier = modifier,
     )
 
@@ -200,6 +244,7 @@ fun ReglagesScreen(
     onTechnicien: (String) -> Unit,
     onAttestation: (String) -> Unit,
     onTauxHoraire: (Double) -> Unit,
+    onCoutHoraireInterne: (Double) -> Unit,
     onTauxTva: (Double) -> Unit,
     onDelaiPaiement: (Int) -> Unit,
     onTauxPenalites: (Double) -> Unit,
@@ -229,8 +274,24 @@ fun ReglagesScreen(
     tarifDeplacement: ActionsTarifDeplacement,
     /** Le registre des fluides : les années disponibles, et l'export. */
     registre: ActionsRegistre = ActionsRegistre(),
+    /**
+     * La page de sauvegarde, posée par la route.
+     *
+     * Un emplacement plutôt qu'une liste de rappels : la sauvegarde ouvre deux
+     * sélecteurs de fichiers du système et tient son propre ViewModel, ce que
+     * cet écran n'a pas à savoir. C'est le motif que la barre de la tournée
+     * employait déjà pour le même composant.
+     */
+    sauvegarde: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    var page by rememberSaveable { mutableStateOf<PageReglages?>(null) }
+
+    // Une seule profondeur à défaire : la page ouverte remplace le sommaire, et
+    // le retour système la referme. Toujours pas de graphe de navigation — c'est
+    // le motif du devis ouvert, de la machine ouverte et de l'outil ouvert.
+    BackHandler(enabled = page != null) { page = null }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         // La barre d'onglets pose déjà la marge du bas ; voir `FrigoProApp`.
@@ -239,109 +300,240 @@ fun ReglagesScreen(
             CenterAlignedTopAppBar(
                 // Voir `FrigoProApp` : la coquille pose la marge du haut.
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                title = { Text(text = "Réglages") },
+                title = { Text(text = page?.titre ?: "Réglages", maxLines = 1) },
+                navigationIcon = {
+                    // Un bouton de retour visible **en plus** du geste système :
+                    // un geste qui ne se voit pas n'est pas une fonctionnalité,
+                    // et c'est la règle que le projet suit partout.
+                    if (page != null) {
+                        IconButton(onClick = { page = null }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Revenir aux réglages",
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAjouterType) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Ajouter un type d'intervention",
-                )
-            }
-        },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                SectionTechnicien(
-                    parametres = parametres,
-                    onTechnicien = onTechnicien,
-                    onAttestation = onAttestation,
-                )
-            }
-            item {
-                SectionGeneral(
-                    parametres = parametres,
-                    onThemeSombre = onThemeSombre,
-                    onModeGants = onModeGants,
-                    onChronoAuto = onChronoAuto,
-                    onTauxHoraire = onTauxHoraire,
-                    onTauxTva = onTauxTva,
-                    onDelaiPaiement = onDelaiPaiement,
-                    onTauxPenalites = onTauxPenalites,
-                    onCoefficientMateriel = onCoefficientMateriel,
-                )
-            }
-            item {
-                SectionEntreprise(
-                    parametres = parametres,
-                    chargerPhoto = chargerPhoto,
-                    onEntreprise = onEntreprise,
-                    onAdresse = onEntrepriseAdresse,
-                    onTelephone = onEntrepriseTelephone,
-                    onEmail = onEntrepriseEmail,
-                    onSiret = onEntrepriseSiret,
-                    onAssujettiTva = onAssujettiTva,
-                    onChoisirLogo = onChoisirLogo,
-                    onRetirerLogo = onRetirerLogo,
-                )
-            }
-            item {
-                SectionDeplacementReglages(
-                    parametres = parametres,
-                    actions = tarifDeplacement,
-                )
-            }
-            item {
-                // Après l'entreprise et le déplacement, avant le catalogue : le
-                // registre est un document qu'on sort, pas un réglage qu'on
-                // ajuste, et il se range donc avec ce qui identifie l'entreprise.
-                SectionRegistre(actions = registre)
-            }
-            item {
-                SectionCatalogue(
-                    prestations = prestations,
-                    onEnregistrer = onEnregistrerPrestation,
-                    onSupprimer = onSupprimerPrestation,
-                    paliers = paliers,
-                    onDefinirPalier = onDefinirPalier,
-                    onSupprimerPalier = onSupprimerPalier,
-                )
-            }
-            item {
-                Column {
-                    Text(
-                        text = "Types d'intervention",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = if (types.isEmpty()) {
-                            "Aucun type pour l'instant. Ajoutez-en ici, ou au moment " +
-                                "de saisir une intervention."
-                        } else {
-                            "Renommer un type met à jour toutes les interventions " +
-                                "qui l'utilisent, y compris les anciennes."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Le bouton flottant n'existe que là où il ajoute quelque chose. Il
+            // était auparavant posé sur les six sections à la fois alors qu'il
+            // n'ajoutait qu'un type d'intervention, c'est-à-dire l'avant-dernière
+            // chose de la page : une action flottante qui ne désigne pas ce qu'on
+            // regarde est une invitation à se tromper.
+            if (page == PageReglages.TYPES) {
+                FloatingActionButton(onClick = onAjouterType) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Ajouter un type d'intervention",
                     )
                 }
             }
-            items(items = types, key = { it.id }) { type ->
-                LigneType(
-                    type = type,
-                    onRenommer = { onRenommerType(type) },
-                    onSupprimer = { onSupprimerType(type) },
+        },
+    ) { marges ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(marges),
+            contentPadding = PaddingValues(
+                start = MargeEcran,
+                end = MargeEcran,
+                top = 12.dp,
+                bottom = 88.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when (page) {
+                null -> sommaire(
+                    parametres = parametres,
+                    prestations = prestations,
+                    types = types,
+                    onPage = { page = it },
+                )
+
+                PageReglages.TECHNICIEN -> item {
+                    SectionTechnicien(
+                        parametres = parametres,
+                        onTechnicien = onTechnicien,
+                        onAttestation = onAttestation,
+                    )
+                }
+
+                PageReglages.ENTREPRISE -> item {
+                    SectionEntreprise(
+                        parametres = parametres,
+                        chargerPhoto = chargerPhoto,
+                        onEntreprise = onEntreprise,
+                        onAdresse = onEntrepriseAdresse,
+                        onTelephone = onEntrepriseTelephone,
+                        onEmail = onEntrepriseEmail,
+                        onSiret = onEntrepriseSiret,
+                        onAssujettiTva = onAssujettiTva,
+                        onChoisirLogo = onChoisirLogo,
+                        onRetirerLogo = onRetirerLogo,
+                    )
+                }
+
+                PageReglages.TARIFS -> item {
+                    SectionTarifs(
+                        parametres = parametres,
+                        onTauxHoraire = onTauxHoraire,
+                        onCoutHoraireInterne = onCoutHoraireInterne,
+                        onTauxTva = onTauxTva,
+                        onDelaiPaiement = onDelaiPaiement,
+                        onTauxPenalites = onTauxPenalites,
+                        onCoefficientMateriel = onCoefficientMateriel,
+                    )
+                }
+
+                PageReglages.DEPLACEMENT -> item {
+                    SectionDeplacementReglages(
+                        parametres = parametres,
+                        actions = tarifDeplacement,
+                    )
+                }
+
+                PageReglages.CATALOGUE -> item {
+                    SectionCatalogue(
+                        prestations = prestations,
+                        onEnregistrer = onEnregistrerPrestation,
+                        onSupprimer = onSupprimerPrestation,
+                        paliers = paliers,
+                        onDefinirPalier = onDefinirPalier,
+                        onSupprimerPalier = onSupprimerPalier,
+                    )
+                }
+
+                PageReglages.TYPES -> {
+                    item {
+                        Text(
+                            text = if (types.isEmpty()) {
+                                "Aucun type pour l'instant. Ajoutez-en ici, ou au moment " +
+                                    "de saisir une intervention : le type est facultatif, " +
+                                    "et la liste démarre vide parce que « fuite de fluide » " +
+                                    "est le vocabulaire d'un métier et non celui d'une " +
+                                    "entreprise."
+                            } else {
+                                "Renommer un type met à jour toutes les interventions " +
+                                    "qui l'utilisent, y compris les anciennes. Le supprimer " +
+                                    "ne perd rien : elles gardent leur intitulé."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    items(items = types, key = { it.id }) { type ->
+                        LigneType(
+                            type = type,
+                            onRenommer = { onRenommerType(type) },
+                            onSupprimer = { onSupprimerType(type) },
+                        )
+                    }
+                }
+
+                PageReglages.AFFICHAGE -> item {
+                    SectionAffichage(
+                        parametres = parametres,
+                        onThemeSombre = onThemeSombre,
+                        onModeGants = onModeGants,
+                        onChronoAuto = onChronoAuto,
+                    )
+                }
+
+                PageReglages.SAUVEGARDE -> item { sauvegarde() }
+
+                PageReglages.REGISTRE -> item { SectionRegistre(actions = registre) }
+            }
+        }
+    }
+}
+
+/**
+ * Le sommaire : une ligne par page, et **ce que la page contient aujourd'hui**.
+ *
+ * Le résumé est ce qui distingue un sommaire d'un menu, et c'est lui qui fait le
+ * travail : « 0,00 € HT · coût interne non réglé » dit d'un coup d'œil qu'il y a
+ * là quelque chose à faire, là où « Tarifs et paiement › » aurait demandé
+ * d'ouvrir les sept pages l'une après l'autre pour s'en assurer. Rien n'y est
+ * stocké — chaque résumé se lit dans les réglages courants, et un compteur en
+ * base serait faux au premier tarif saisi.
+ */
+private fun LazyListScope.sommaire(
+    parametres: Parametres,
+    prestations: List<Prestation>,
+    types: List<TypeIntervention>,
+    onPage: (PageReglages) -> Unit,
+) {
+    val tarifes = prestations.count { it.prixUnitaire > 0.0 }
+    val resumes = mapOf(
+        PageReglages.TECHNICIEN to listOfNotNull(
+            parametres.technicien.ifBlank { "Nom non renseigné" },
+            parametres.attestation.ifBlank { null }?.let { "attestation $it" },
+        ).joinToString(" · "),
+        PageReglages.ENTREPRISE to listOfNotNull(
+            parametres.entreprise.ifBlank { "Raison sociale non renseignée" },
+            if (parametres.assujettiTva) null else "franchise en base",
+            if (parametres.logoFichier == null) "sans logo" else null,
+        ).joinToString(" · "),
+        PageReglages.TARIFS to listOfNotNull(
+            "${Nombres.enEuros(parametres.tauxHoraire)} HT l'heure",
+            if (parametres.coutHoraireInterne > 0.0) null else "coût interne non réglé",
+            "TVA ${Nombres.enTexte(parametres.tauxTva)} %",
+            "${parametres.delaiPaiementJours} j",
+        ).joinToString(" · "),
+        PageReglages.DEPLACEMENT to listOfNotNull(
+            parametres.adresseDepart.ifBlank { "Adresse de départ non renseignée" },
+            if (parametres.prixKm > 0.0 || parametres.prixHeureTrajet > 0.0) {
+                null
+            } else {
+                "tarif non réglé"
+            },
+        ).joinToString(" · "),
+        PageReglages.CATALOGUE to when {
+            prestations.isEmpty() -> "Catalogue vide"
+            tarifes == 0 -> "${prestations.size} prestations, aucune tarifée"
+            tarifes < prestations.size ->
+                "${prestations.size} prestations, ${prestations.size - tarifes} sans prix"
+
+            else -> "${prestations.size} prestations, toutes tarifées"
+        },
+        PageReglages.TYPES to when (types.size) {
+            0 -> "Aucun type"
+            1 -> "1 type"
+            else -> "${types.size} types"
+        },
+        PageReglages.AFFICHAGE to listOfNotNull(
+            if (parametres.themeSombre) "Sombre" else "Clair",
+            if (parametres.modeGants) "gants" else null,
+            if (parametres.chronoAuto) "chrono automatique" else null,
+        ).joinToString(" · "),
+        PageReglages.SAUVEGARDE to "Exporter ou restaurer une archive",
+        PageReglages.REGISTRE to "Règlement (UE) 517/2014",
+    )
+
+    items(items = PageReglages.entries, key = { it.name }) { cible ->
+        Carte(onClick = { onPage(cible) }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = cible.titre, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = resumes[cible].orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -440,6 +632,7 @@ private fun ReglagesScreenPreview() {
                 onTechnicien = {},
                 onAttestation = {},
                 onTauxHoraire = {},
+                onCoutHoraireInterne = {},
                 onTauxTva = {},
                 onDelaiPaiement = {},
                 onTauxPenalites = {},

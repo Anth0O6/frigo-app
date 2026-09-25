@@ -131,23 +131,23 @@ fun SectionTechnicien(
     }
 }
 
-/** Le comportement de l'application : thème, cibles, chronomètre, tarifs. */
+/**
+ * L'affichage : thème, cibles tactiles, chronomètre.
+ *
+ * Trois interrupteurs, et rien d'autre. Ils étaient auparavant dans la même
+ * section que les tarifs, ce qui mettait sur la même carte le thème sombre et le
+ * taux horaire — un réglage de confort et une donnée qui part sur une facture.
+ * Les séparer est ce qui rend le sommaire des Réglages lisible : on cherche l'un
+ * une fois pour toutes, et l'autre chaque fois qu'un tarif change.
+ */
 @Composable
-fun SectionGeneral(
+fun SectionAffichage(
     parametres: Parametres,
     onThemeSombre: (Boolean) -> Unit,
     onModeGants: (Boolean) -> Unit,
     onChronoAuto: (Boolean) -> Unit,
-    onTauxHoraire: (Double) -> Unit,
-    onTauxTva: (Double) -> Unit,
-    onDelaiPaiement: (Int) -> Unit,
-    onTauxPenalites: (Double) -> Unit,
-    onCoefficientMateriel: (Double) -> Unit,
 ) {
-    var tarifsOuverts by remember { mutableStateOf(false) }
-
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IntituleSection(texte = "Général")
         Carte(contour = true) {
             LigneInterrupteur(
                 intitule = "Thème sombre",
@@ -171,125 +171,164 @@ fun SectionGeneral(
                 actif = parametres.chronoAuto,
                 onChange = onChronoAuto,
             )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Tarifs et paiement",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = "${Nombres.enEuros(parametres.tauxHoraire)} HT · " +
-                            "TVA ${Nombres.enTexte(parametres.tauxTva)} % · " +
-                            "${parametres.delaiPaiementJours} j",
-                        style = StyleChiffrePetit,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TextButton(onClick = { tarifsOuverts = true }) { Text(text = "Modifier") }
-            }
         }
     }
+}
 
-    if (tarifsOuverts) {
-        var taux by remember { mutableStateOf(Nombres.enTexte(parametres.tauxHoraire)) }
-        var tva by remember { mutableStateOf(Nombres.enTexte(parametres.tauxTva)) }
-        var delai by remember { mutableStateOf(parametres.delaiPaiementJours.toString()) }
-        var penalites by remember {
-            mutableStateOf(Nombres.enTexte(parametres.tauxPenalitesRetard))
-        }
-        var coefficient by remember {
-            mutableStateOf(Nombres.enTexte(parametres.coefficientMateriel))
-        }
-        AlertDialog(
-            onDismissRequest = { tarifsOuverts = false },
-            title = { Text(text = "Tarifs et paiement") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ChampTexte(
-                        libelle = "Taux horaire HT",
-                        valeur = taux,
-                        onValeur = { taux = it },
-                        clavier = KeyboardType.Decimal,
-                    )
-                    ChampTexte(
-                        libelle = "TVA par défaut (%)",
-                        valeur = tva,
-                        onValeur = { tva = it },
-                        clavier = KeyboardType.Decimal,
-                    )
-                    Text(
-                        text = "Un devis garde le taux en vigueur au moment où il est créé : " +
-                            "changer ce réglage ne recalcule aucun devis déjà établi.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    ChampTexte(
-                        libelle = "Coefficient matériel",
-                        valeur = coefficient,
-                        onValeur = { coefficient = it },
-                        clavier = KeyboardType.Decimal,
-                    )
-                    Text(
-                        text = "Il chiffre le matériel dont la fiche ne porte pas de prix " +
-                            "de vente : 1,4 vend 100 € d'achat à 140 €. Laissé à zéro, un " +
-                            "article sans prix de vente se propose au prix coûtant — jamais " +
-                            "à un prix inventé.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    ChampTexte(
-                        libelle = "Délai de paiement (jours)",
-                        valeur = delai,
-                        onValeur = { delai = it },
-                        clavier = KeyboardType.Number,
-                    )
-                    ChampTexte(
-                        libelle = "Pénalités de retard (% l'an)",
-                        valeur = penalites,
-                        onValeur = { penalites = it },
-                        clavier = KeyboardType.Decimal,
-                    )
-                    // Les deux valeurs paraissent sur chaque facture, et ce sont
-                    // des mentions obligatoires : mieux vaut dire ce qu'elles
-                    // engagent au moment de les saisir qu'après l'envoi.
-                    Text(
-                        text = "Trente jours est le délai qui s'applique faute d'accord, " +
-                            "soixante le maximum légal. Laisser les pénalités à zéro veut " +
-                            "dire « non fixées » et non « aucune » : le taux légal " +
-                            "s'applique alors de plein droit, et la facture le mentionne.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        Nombres.versDecimal(taux)?.let(onTauxHoraire)
-                        Nombres.versDecimal(tva)?.let(onTauxTva)
-                        delai.trim().toIntOrNull()?.let(onDelaiPaiement)
-                        Nombres.versDecimal(penalites)?.let(onTauxPenalites)
-                        Nombres.versDecimal(coefficient)?.let(onCoefficientMateriel)
-                        tarifsOuverts = false
-                    },
-                ) {
-                    Text(text = "Enregistrer")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { tarifsOuverts = false }) { Text(text = "Annuler") }
-            },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+/**
+ * Les tarifs et le paiement : ce qui chiffre un devis et ce qui part sur une
+ * facture.
+ *
+ * C'était une **boîte de dialogue** ouverte depuis la section « Général », et
+ * c'est maintenant une page à elle. Le changement n'est pas cosmétique : une
+ * boîte se valide ou s'annule, et six réglages qui décident de tous les montants
+ * de l'entreprise n'ont pas à tenir dans une fenêtre qu'on referme d'un geste de
+ * travers. Chaque champ **s'enregistre à la frappe**, comme l'identité de
+ * l'entreprise et comme une case de relevé : il n'y a donc pas de bouton
+ * « Enregistrer » à oublier.
+ *
+ * [Parametres.coutHoraireInterne] est ici, et c'est une correction : la colonne
+ * existait en base depuis la migration 16, la sauvegarde l'emportait, le calcul
+ * de marge la lisait — mais **aucun écran ne permettait de la saisir**. La fiche
+ * d'une intervention invitait donc à « renseigner le coût horaire interne dans
+ * les Réglages », où il n'y avait rien à renseigner, et la marge d'une
+ * intervention était de ce fait impossible à obtenir.
+ */
+@Composable
+fun SectionTarifs(
+    parametres: Parametres,
+    onTauxHoraire: (Double) -> Unit,
+    onCoutHoraireInterne: (Double) -> Unit,
+    onTauxTva: (Double) -> Unit,
+    onDelaiPaiement: (Int) -> Unit,
+    onTauxPenalites: (Double) -> Unit,
+    onCoefficientMateriel: (Double) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        IntituleSection(texte = "La main-d'œuvre")
+        ChampDecimal(
+            libelle = "Taux horaire facturé, HT",
+            valeur = parametres.tauxHoraire,
+            onValeur = onTauxHoraire,
+        )
+        ChampDecimal(
+            libelle = "Coût horaire interne, HT",
+            valeur = parametres.coutHoraireInterne,
+            onValeur = onCoutHoraireInterne,
+        )
+        NoteReglage(
+            texte = "Les deux ne sont pas la même chose : l'un est ce qu'une heure se " +
+                "facture, l'autre ce qu'elle coûte à l'entreprise, salaire chargé compris. " +
+                "C'est tout l'écart qui fait la marge, et c'est le second qui manquait : " +
+                "sans lui la fiche d'une intervention ne peut pas la calculer.",
+        )
+
+        IntituleSection(texte = "La TVA")
+        ChampDecimal(
+            libelle = "TVA par défaut (%)",
+            valeur = parametres.tauxTva,
+            onValeur = onTauxTva,
+        )
+        NoteReglage(
+            texte = "Un devis garde le taux en vigueur au moment où il est créé : changer " +
+                "ce réglage ne recalcule aucun devis déjà établi. Le régime " +
+                "d'assujettissement, lui, est dans « Mon entreprise » : il change ce que le " +
+                "document dit, pas seulement ce qu'il calcule.",
+        )
+
+        IntituleSection(texte = "Le matériel")
+        ChampDecimal(
+            libelle = "Coefficient matériel",
+            valeur = parametres.coefficientMateriel,
+            onValeur = onCoefficientMateriel,
+        )
+        NoteReglage(
+            texte = "Il chiffre le matériel dont la fiche ne porte pas de prix de vente : " +
+                "1,4 vend 100 € d'achat à 140 €. Laissé à zéro, un article sans prix de " +
+                "vente se propose au prix coûtant — jamais à un prix inventé.",
+        )
+
+        IntituleSection(texte = "Le paiement")
+        ChampEntier(
+            libelle = "Délai de paiement (jours)",
+            valeur = parametres.delaiPaiementJours,
+            onValeur = onDelaiPaiement,
+        )
+        ChampDecimal(
+            libelle = "Pénalités de retard (% l'an)",
+            valeur = parametres.tauxPenalitesRetard,
+            onValeur = onTauxPenalites,
+        )
+        // Les deux valeurs paraissent sur chaque facture, et ce sont des
+        // mentions obligatoires : mieux vaut dire ce qu'elles engagent au moment
+        // de les saisir qu'après l'envoi.
+        NoteReglage(
+            texte = "Trente jours est le délai qui s'applique faute d'accord, soixante le " +
+                "maximum légal. Laisser les pénalités à zéro veut dire « non fixées » et " +
+                "non « aucune » : le taux légal s'applique alors de plein droit, et la " +
+                "facture le mentionne.",
         )
     }
+}
+
+/**
+ * Un champ décimal des Réglages, qui s'enregistre à la frappe.
+ *
+ * Aucun état local ici : [ChampTexte] tient déjà son texte et la position du
+ * curseur tant qu'il a le focus, et ne reprend la valeur d'en haut qu'une fois
+ * perdu. Une seconde couche du même mécanisme se serait disputé le curseur avec
+ * la première.
+ *
+ * Un champ **vidé** ne remonte rien, parce que [Nombres.versDecimal] rend `null`
+ * sur une saisie vide. C'est ce qu'il faut : zéro veut dire « non réglé » dans
+ * ces écrans et se saisit en tapant zéro, alors que l'écrire à chaque champ en
+ * cours d'effacement aurait mis un tarif à zéro à chaque correction.
+ */
+@Composable
+private fun ChampDecimal(
+    libelle: String,
+    valeur: Double,
+    onValeur: (Double) -> Unit,
+) {
+    ChampTexte(
+        libelle = libelle,
+        valeur = Nombres.enTexte(valeur),
+        onValeur = { texte -> Nombres.versDecimal(texte)?.let(onValeur) },
+        modifier = Modifier.fillMaxWidth(),
+        clavier = KeyboardType.Decimal,
+    )
+}
+
+/**
+ * Le pendant entier de [ChampDecimal] : le délai de paiement, en jours.
+ *
+ * Une valeur hors des bornes du code de commerce est ramenée par le ViewModel, et
+ * la correction **se voit** : le champ reprend la valeur retenue dès qu'il perd
+ * le focus, si bien que saisir soixante-cinq jours affiche soixante.
+ */
+@Composable
+private fun ChampEntier(
+    libelle: String,
+    valeur: Int,
+    onValeur: (Int) -> Unit,
+) {
+    ChampTexte(
+        libelle = libelle,
+        valeur = valeur.toString(),
+        onValeur = { texte -> texte.trim().toIntOrNull()?.let(onValeur) },
+        modifier = Modifier.fillMaxWidth(),
+        clavier = KeyboardType.Number,
+    )
+}
+
+/** Le texte qui explique un réglage, sous le champ qu'il explique. */
+@Composable
+private fun NoteReglage(texte: String) {
+    Text(
+        text = texte,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /**

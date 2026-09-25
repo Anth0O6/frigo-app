@@ -148,6 +148,23 @@ class ReglagesViewModel(
 
     fun onTauxHoraire(taux: Double) = modifier { it.copy(tauxHoraire = taux) }
 
+    /**
+     * Ce qu'une heure de technicien **coûte à l'entreprise**, hors taxes.
+     *
+     * La colonne existait depuis la migration 16, la sauvegarde l'emportait et
+     * `RentabiliteIntervention` la lisait — mais aucun écran ne la saisissait. La
+     * fiche d'une intervention invitait donc à la renseigner « dans les
+     * Réglages », où il n'y avait rien à renseigner, et la marge d'une
+     * intervention était de ce fait impossible à obtenir. C'est ce setter qui
+     * manquait.
+     *
+     * Ramené au positif, et rien de plus : zéro veut dire « non renseigné », et
+     * le calcul se déclare alors non chiffrable plutôt que d'afficher une marge
+     * égale à la recette.
+     */
+    fun onCoutHoraireInterne(cout: Double) =
+        modifier { it.copy(coutHoraireInterne = cout.coerceAtLeast(0.0)) }
+
     fun onTauxTva(taux: Double) = modifier { it.copy(tauxTva = taux) }
 
     /**

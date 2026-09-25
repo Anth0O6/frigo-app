@@ -1,14 +1,14 @@
 package com.frigopro.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -60,8 +61,8 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.AValider
-import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.FrigoProTheme
+import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import com.frigopro.app.ui.theme.StyleSection
@@ -161,7 +162,6 @@ fun TourneeRoute(
             onChangerStatut = viewModel::onChangerStatut,
             frise = frise,
             onBasculerVue = viewModel::onBasculerVue,
-            actions = { MenuSauvegarde() },
             modifier = modifier,
         )
     }
@@ -237,8 +237,6 @@ fun InterventionsScreen(
     frise: Boolean,
     onBasculerVue: () -> Unit,
     modifier: Modifier = Modifier,
-    /** Posé dans la barre du haut : la sauvegarde s'y branche sans que l'écran la connaisse. */
-    actions: @Composable RowScope.() -> Unit = {},
 ) {
     var selecteurOuvert by remember { mutableStateOf(false) }
 
@@ -263,17 +261,41 @@ fun InterventionsScreen(
                 onJourPrecedent = onJourPrecedent,
                 onJourSuivant = onJourSuivant,
                 onOuvrirSelecteur = { selecteurOuvert = true },
-                frise = frise,
-                onBasculerVue = onBasculerVue,
-                actions = actions,
             )
-            BasculeTournee(
-                vue = vue,
-                onVue = onVue,
+            Row(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .padding(horizontal = MargeEcran)
                     .padding(bottom = 14.dp),
-            )
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // La bascule défile si elle déborde : trois pastilles et un
+                // bouton carré tiennent sur un écran ordinaire mais se disputent
+                // le dernier point sur un écran de 360 dp en mode gants, et une
+                // pastille rognée est pire qu'une rangée qui glisse.
+                BasculeTournee(
+                    vue = vue,
+                    onVue = onVue,
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                )
+                // Frise ou liste : une préférence d'affichage, pas une
+                // navigation. Elle est donc **à côté** de la bascule et non
+                // dedans — une quatrième pastille aurait laissé croire à une
+                // quatrième destination — et elle a quitté la barre du haut, où
+                // elle prenait la place du titre.
+                BoutonCarre(
+                    icone = if (frise) {
+                        Icons.AutoMirrored.Filled.ViewList
+                    } else {
+                        Icons.Filled.Schedule
+                    },
+                    description = if (frise) "Voir en liste" else "Voir en frise",
+                    onClick = onBasculerVue,
+                )
+            }
             PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
             BandeauJournee(lignes = lignes)
             if (frise) {
@@ -347,16 +369,33 @@ fun InterventionsScreen(
     }
 }
 
+/**
+ * L'en-tête de la journée : sa date, et les deux flèches qui en changent.
+ *
+ * Elle portait **quatre boutons carrés** — jour précédent, jour suivant,
+ * frise/liste, et le menu de sauvegarde — sur la même rangée que le titre. Le
+ * compte ne tenait pas : en mode gants les quatre laissaient une trentaine de
+ * points au titre, si bien que « Aujourd'hui » s'affichait « Auj… ». C'était
+ * exactement l'abréviation que la refonte de la barre du bas avait chassée,
+ * revenue en haut de l'écran par le même mécanisme — un libellé qui paie la
+ * place qu'on a donnée aux boutons.
+ *
+ * Deux boutons sont donc partis d'ici : la sauvegarde a rejoint les Réglages, où
+ * l'on va la chercher (voir [SectionSauvegarde]), et le choix frise / liste a
+ * rejoint la rangée de la bascule, qui en avait la place. Restent les deux
+ * flèches, et le titre a de quoi se lire en entier.
+ *
+ * Le titre ouvre le sélecteur de date, et **le dit** : une icône de calendrier le
+ * signale, là où rien ne le laissait deviner. Un texte cliquable dont rien
+ * n'annonce qu'il l'est n'est pas une fonctionnalité — c'est la même règle qui
+ * fait doubler tout appui long par un bouton visible.
+ */
 @Composable
 private fun EnTeteTournee(
     jour: LocalDate,
     onJourPrecedent: () -> Unit,
     onJourSuivant: () -> Unit,
     onOuvrirSelecteur: () -> Unit,
-    /** La journée en frise horaire plutôt qu'en liste. */
-    frise: Boolean,
-    onBasculerVue: () -> Unit,
-    actions: @Composable RowScope.() -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -375,12 +414,27 @@ private fun EnTeteTournee(
                 style = StyleSection,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text(
-                text = titreJour(jour),
-                style = MaterialTheme.typography.displaySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    // `headlineMedium` et non `displaySmall` : « Aujourd'hui »
+                    // ne tient pas en 36 sp à côté de deux boutons et d'une
+                    // icône sur un téléphone étroit, et un titre tronqué ne se
+                    // rattrape par aucun réglage.
+                    text = titreJour(jour),
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = Icons.Filled.EditCalendar,
+                    contentDescription = "Choisir une date",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
         BoutonCarre(
             icone = Icons.AutoMirrored.Filled.ArrowBack,
@@ -392,17 +446,6 @@ private fun EnTeteTournee(
             description = "Jour suivant",
             onClick = onJourSuivant,
         )
-        // Frise ou liste : une préférence d'affichage, pas une navigation. Elle
-        // tient donc dans un bouton de la barre du haut, là où la bascule des
-        // trois vues occupe la rangée en dessous — les deux ne se lisent pas au
-        // même niveau, et les empiler en deux rangées de pastilles laissait
-        // croire à quatre destinations.
-        BoutonCarre(
-            icone = if (frise) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.Schedule,
-            description = if (frise) "Voir en liste" else "Voir en frise",
-            onClick = onBasculerVue,
-        )
-        actions()
     }
 }
 

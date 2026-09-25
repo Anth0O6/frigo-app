@@ -160,13 +160,14 @@ class ReglagesViewModelTest {
     )
 
     private val daoPrestations = FauxPrestationDao()
+    private val daoParametres = FauxParametresDao()
 
     /** Même raison que dans [InterventionsViewModelTest]. */
     private fun TestScope.creerViewModel(): ReglagesViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         return ReglagesViewModel(
             TypeInterventionRepository(daoTypes),
-            ParametresRepository(FauxParametresDao(), FauxRangementPhotos()),
+            ParametresRepository(daoParametres, FauxRangementPhotos()),
             PrestationRepository(daoPrestations),
             SuiviRepository(daoSuivi, FauxRangementPhotos()),
             InterventionRepository(daoInterventions),
@@ -263,4 +264,59 @@ class ReglagesViewModelTest {
 
         assertEquals(0.0, daoPrestations.contenu.single().prixUnitaire, 0.001)
     }
+
+    /**
+     * Le coût horaire interne était en base depuis la migration 16, la
+     * sauvegarde l'emportait et `RentabiliteIntervention` le lisait — mais aucun
+     * écran ne le saisissait, si bien que la fiche d'une intervention invitait à
+     * le renseigner « dans les Réglages », où il n'y avait rien à renseigner. La
+     * marge d'une intervention était donc **impossible à obtenir**. Ce test tient
+     * le chemin qui manquait.
+     */
+    @Test
+    fun `le cout horaire interne se renseigne enfin`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onCoutHoraireInterne(28.5)
+        advanceUntilIdle()
+
+        assertEquals(28.5, reglages().coutHoraireInterne, 0.001)
+    }
+
+    /**
+     * Zéro veut dire « non renseigné », et un coût négatif ne veut rien dire :
+     * il donnerait une marge supérieure à la recette, donc un chiffre flatteur et
+     * faux — exactement ce que le calcul refuse de produire quand il se tait.
+     */
+    @Test
+    fun `un cout horaire negatif est ramene a zero`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onCoutHoraireInterne(-12.0)
+        advanceUntilIdle()
+
+        assertEquals(0.0, reglages().coutHoraireInterne, 0.001)
+    }
+
+    /**
+     * Le taux facturé et le coût interne ne doivent jamais se confondre : entre
+     * les deux il y a le salaire chargé, et c'est tout l'écart qu'on mesure. Les
+     * intervertir donnerait une marge négative sur une intervention rentable.
+     */
+    @Test
+    fun `le taux facture et le cout interne ne se marchent pas dessus`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onTauxHoraire(65.0)
+        viewModel.onCoutHoraireInterne(32.0)
+        advanceUntilIdle()
+
+        val parametres = reglages()
+        assertEquals(65.0, parametres.tauxHoraire, 0.001)
+        assertEquals(32.0, parametres.coutHoraireInterne, 0.001)
+    }
+
+    /** La ligne unique des réglages, telle que le dépôt vient de l'écrire. */
+    private fun reglages() =
+        requireNotNull(daoParametres.contenu) { "les réglages doivent avoir été écrits" }
 }
