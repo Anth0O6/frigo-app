@@ -15,7 +15,7 @@ propose des pistes — jamais un verdict — et le contrôle qui tranche chacune
 
 Un onglet Carnets tient le carnet des clients — adresse et téléphone compris — ainsi que le
 parc de machines de chaque client : plaque signalétique, fluide et charge,
-photos, échéance du contrôle d'étanchéité et historique. Un onglet Facturation
+photos, échéance du contrôle d'étanchéité et historique. Un onglet Factures
 permet de chiffrer sur place, **déplacement compris** : temps de trajet,
 kilomètres et péages, au km, à l'heure ou les deux, avec un plancher et le choix
 de l'offrir. Il porte aussi les **factures** : une intervention terminée ou un
@@ -167,8 +167,9 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── OutilSubstitution.kt # par quoi remplacer, et à quel prix
 │       │       ├── OutilsViewModel.kt
 │       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
-│       │       ├── SectionsReglages.kt  # technicien, thème, gants, tarifs
+│       │       ├── SectionsReglages.kt  # une page des Réglages par section
 │       │       ├── Nombres.kt           # virgule décimale à la saisie
+│       │       ├── Recherche.kt         # accents repliés, mots cherchés séparément
 │       │       ├── composants/          # le vocabulaire visuel commun
 │       │       ├── EcranEquipement.kt  # photos et historique d'une machine
 │       │       ├── EquipementsViewModel.kt
@@ -178,7 +179,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── DialoguePrestation.kt # créer, retarifer, retirer
 │       │       ├── ReglagesScreen.kt
 │       │       ├── ReglagesViewModel.kt
-│       │       ├── MenuSauvegarde.kt
+│       │       ├── SectionSauvegarde.kt # l'export et la restauration, dans les Réglages
 │       │       ├── SauvegardeViewModel.kt
 │       │       └── theme/
 │       └── res/                    # chaînes, couleurs, thème XML, icône,
@@ -524,11 +525,34 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   auparavant recopiés dans l'accueil *et* dans le planning, et deux copies du
   même branchement finissent par ne plus se comporter pareil selon l'onglet d'où
   l'on vient.
-  Le choix **frise / liste** de la journée ne passe pas par cette bascule mais
-  par un bouton de la barre du haut, et la distinction est le point à ne pas
-  perdre : les trois vues sont une navigation, frise-ou-liste une préférence
-  d'affichage. Deux rangées de pastilles empilées auraient laissé croire à cinq
-  destinations là où il y en a trois.
+  Le choix **frise / liste** de la journée n'entre pas dans cette bascule, et la
+  distinction est le point à ne pas perdre : les trois vues sont une navigation,
+  frise-ou-liste une préférence d'affichage. Il est donc **à côté** de la
+  bascule, sur la même rangée mais séparé — une quatrième pastille aurait laissé
+  croire à une quatrième destination. Il était auparavant dans la barre du haut,
+  qui portait **quatre boutons carrés** sur la rangée du titre : jour précédent,
+  jour suivant, frise/liste et le menu de sauvegarde. Le compte ne tenait pas —
+  en mode gants les quatre laissaient une trentaine de points au titre, si bien
+  que « Aujourd'hui » s'affichait « Auj… », exactement l'abréviation que la
+  refonte de la barre du bas avait chassée, revenue en haut par le même
+  mécanisme : un libellé qui paie la place qu'on a donnée aux boutons. Deux
+  boutons en sont partis, la sauvegarde aux Réglages et frise/liste à la rangée
+  d'en dessous, et le titre a de quoi se lire en entier. Il **ouvre le sélecteur
+  de date et le dit** maintenant, par une icône de calendrier : un texte
+  cliquable dont rien n'annonce qu'il l'est n'est pas une fonctionnalité — même
+  règle que l'appui long doublé d'un bouton visible.
+  **Chercher une intervention traverse les dates.** La vue du jour porte un champ
+  de recherche, et dès qu'on y tape l'écran cesse d'être une journée pour devenir
+  la liste des interventions qui correspondent, **toutes dates confondues**,
+  groupées par jour et antichronologiques — on cherche presque toujours quelque
+  chose de récent. La semaine, le bandeau du jour et la frise disparaissent
+  alors : une pastille « mercredi » retenue au-dessus d'une intervention de mars
+  ferait croire que l'une désigne l'autre. Le flux de **toutes** les
+  interventions est le plus lourd du projet, et il ne coule donc que tant que la
+  recherche n'est pas vide (`flatMapLatest` sur la saisie) : sans cela l'onglet le
+  plus ouvert de l'application observerait la table entière en permanence pour
+  n'afficher qu'une journée. Le retour système défait la recherche avant la vue,
+  et changer de vue l'abandonne.
   Le titre d'un écran nomme **la vue ouverte et non l'onglet** — « Devis », pas
   « Facturation » —, comme celui des carnets le faisait déjà : répéter le nom du
   groupe au-dessus d'une bascule laissait l'écran sans dire lequel des deux
@@ -545,7 +569,21 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   l'accueil. `EcranAujourdhui` met en avant
   l'intervention en cours, ou à défaut la prochaine, et ne navigue **jamais**
   dans le temps : donner deux façons de changer de date conduirait à se demander
-  laquelle des deux on regarde. Les échéances F-Gas qu'il annonce ne sont
+  laquelle des deux on regarde. Sa carte porte **« Démarrer »**, qui est le geste
+  le plus fréquent de la journée : il demandait trois appuis — ouvrir la fiche,
+  trouver le chronomètre dans le volet des relevés, le lancer — dont le premier
+  n'apprenait rien à personne, puisqu'on sait chez qui l'on est et qu'on vient de
+  s'y garer. Il passe par `InterventionRepository.basculerChrono`, le même chemin
+  que le chronomètre du volet : **un seul endroit décide que le travail a
+  commencé**, et le statut suit le chronomètre plutôt que d'être posé à part. Il
+  disparaît dès que le temps tourne — un « Démarrer » sur une intervention en
+  cours n'aurait su que la mettre en pause, ce que personne ne vient faire là —
+  et un second appui ne met pas en pause : le doigt qui insiste ne veut jamais
+  arrêter ce qu'il vient de lancer. Il prend l'intervention **en paramètre** et ne
+  la lit pas dans `etat.value` : ce flux n'est collecté que par l'écran de
+  l'intervention, et `.value` sur un flux que personne ne collecte reste à sa
+  valeur initiale pour toujours — c'est le défaut qui avait fait partir des
+  factures sans logo. Les échéances F-Gas qu'il annonce ne sont
   stockées nulle part — elles se recalculent (`EtatEtancheite`), une échéance en
   base étant fausse le lendemain d'un contrôle.
   Le planning offre deux vues de la même journée, et c'est délibéré : la liste
@@ -641,16 +679,49 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
   total pour deux, trois et quatre unités pendant la saisie, parce que les prix
   unitaires se lisent mal et que leur somme se lit tout de suite.
+  **`ReglageManquant` dit ce qui n'est pas réglé, sur l'accueil.** Quatre valeurs
+  arrivent vides ou à zéro sur une installation neuve, à dessein — une valeur
+  inventée partirait chez un vrai client sans que personne ne l'ait relue — mais
+  rien ne le disait : un devis sortait à 0 €, la marge se déclarait « non
+  chiffrable », et il fallait avoir lu le code pour savoir qu'un réglage
+  manquait. La liste est **dérivée, jamais stockée**, comme le retard d'une
+  facture : un booléen « configuration terminée » serait faux le jour où l'on
+  remet un taux à zéro. Chaque ligne nomme **la conséquence** plutôt que le
+  réglage — « le matériel se propose au prix coûtant » se juge tout de suite,
+  « coefficientMateriel = 0 » ne se juge pas du tout — et mène à la page qui la
+  corrige, parce qu'une alerte qui ne mène nulle part n'est pas une réponse à
+  « et maintenant ? ». Le bandeau disparaît de lui-même : rien à fermer, rien à
+  faire taire.
+  Le **coût horaire interne** en fait partie, et c'est ce qui l'a fait
+  découvrir : la colonne existait depuis la migration 16, la sauvegarde
+  l'emportait et `RentabiliteIntervention` la lisait, mais **aucun écran ne la
+  saisissait**. La fiche d'une intervention invitait donc à la renseigner « dans
+  les Réglages », où il n'y avait rien à renseigner, et la marge d'une
+  intervention était de ce fait impossible à obtenir.
   La **marge d'une intervention** est en bas de sa fiche et non en haut : ce
   n'est pas une information de terrain — elle ne sert ni à trouver le client ni à
   savoir quoi vérifier —, elle se lit après coup, et la mettre devant l'adresse
   et la checklist aurait inversé les priorités de l'écran. Sans coût horaire
   renseigné elle **réclame le réglage** au lieu d'afficher une marge égale à la
   recette : un chiffre juste par accident ne se distingue pas d'un vrai.
-  `ReglagesViewModel` tient l'onglet
-  Réglages — la liste des types, et les prix du catalogue, qui ne se saisissent
-  que là : le catalogue est livré sans tarifs, et un catalogue qu'on ne peut pas
-  tarifer ne sert à rien — et n'expose qu'un seul
+  **L'onglet Réglages est un sommaire, et non une page.** Il a longtemps été six
+  sections déroulées l'une sous l'autre, ce qui en faisait le plus long écran de
+  l'application : changer un taux horaire demandait de faire défiler le
+  technicien, le thème, l'entreprise et le déplacement. Et le bouton flottant
+  posé par-dessus les six n'ajoutait qu'un **type d'intervention**, c'est-à-dire
+  l'avant-dernière chose de la page — une action flottante qui ne désigne pas ce
+  qu'on regarde est une invitation à se tromper. `PageReglages` en nomme donc les
+  neuf pages, et chaque ligne du sommaire dit **ce que la page contient
+  aujourd'hui** : « 0,00 € HT · coût interne non réglé » se lit d'un coup d'œil,
+  là où il aurait fallu ouvrir les neuf pour s'en assurer. C'est ce résumé qui
+  distingue un sommaire d'un menu, et rien n'en est stocké — il se relit dans les
+  réglages courants. Une seule profondeur, un `BackHandler`, toujours pas de
+  graphe de navigation ; et la page ouverte est tenue par **la coquille** et non
+  par la route, pour la même raison que le carnet : l'accueil doit pouvoir la
+  désigner.
+  `ReglagesViewModel` tient cet onglet — la liste des types, et les prix du
+  catalogue, qui ne se saisissent que là : le catalogue est livré sans tarifs, et
+  un catalogue qu'on ne peut pas tarifer ne sert à rien — et n'expose qu'un seul
   `StateFlow<DialogueReglages?>` plutôt que trois booléens : deux boîtes de
   dialogue ne peuvent pas être ouvertes en même temps, et le dire au type
   supprime la question. `DialogueIntitule` est partagée par les types, les
@@ -769,9 +840,22 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   **mode gants** fait passer de 56 à 68 dp.
 - **`ui.composants`** — le vocabulaire visuel commun aux écrans : `Carte`,
   `Section`, `TuileChiffre`, `Puce`, `BoutonPlein`, `BoutonCarre`, `Encart`,
-  `ChampChiffre`, `ChampRecherche`. La maquette répète partout les mêmes formes ;
+  `ChampChiffre`, `ChampRecherche`, `RangeePastilles`, `RangeeOnglets`. La
+  maquette répète partout les mêmes formes ;
   les nommer une fois évite qu'elles divergent écran par écran, ce qui est
   exactement ce qui arrive quand chacun recopie un `Box` et ses marges.
+  `RangeeOnglets` existe pour un cas que `RangeePastilles` ne sait pas tenir :
+  **cinq** choix. Les cinq volets d'une intervention faisaient près de quatre
+  cents points de large pour trois cent vingt disponibles, la rangée défilait
+  donc horizontalement, et « Rapport » — le volet où l'on fait signer et où l'on
+  clôture, c'est-à-dire le dernier geste de chaque intervention — pouvait se
+  trouver hors de l'écran sans rien pour dire qu'il existait. Empiler l'icône et
+  le libellé est ce qui fait tenir les cinq : la largeur d'un onglet n'est plus
+  celle de son texte en corps courant mais celle de son libellé en petites
+  capitales. L'icône n'est pas décorative — elle porte le sens à la place des
+  lettres retirées. **Aucun défilement**, et c'est la propriété à garder : tout
+  ce qui est atteignable se voit ; un sixième volet demanderait de reprendre
+  cette décision plutôt que de rétrécir celui-ci.
   **Un champ de saisie possède son texte tant qu'il a le focus**, et ne le reprend
   de l'état que lorsqu'il l'a perdu. Ce n'est pas une optimisation : un champ qui
   ne reçoit qu'une `String` laisse Compose replacer le curseur au début à chaque
@@ -945,6 +1029,21 @@ passer.
 - **État** : exposé en `StateFlow` et collecté avec
   `collectAsStateWithLifecycle()`. Pas d'état mutable dans les composables
   au-delà de l'affichage local (ouverture d'une boîte de dialogue, par exemple).
+- **Recherche** : `Recherche.kt` est la seule recherche de l'application, et les
+  cinq listes qui filtrent y passent — clients, magasin, feuille du matériel,
+  devis, factures, interventions. Elles étaient chacune un
+  `contains(ignoreCase)` sur la chaîne entière, ce qui avait deux conséquences
+  que rien à l'écran ne laissait deviner : « pean » ne trouvait pas « Péan », et
+  « carrefour toit » ne trouvait rien du tout. Les accents sont repliés par
+  **décomposition Unicode** et non par une table de correspondances, qui aurait
+  oublié un caractère au premier nom hors de l'alphabet français ; les mots se
+  cherchent séparément, tous requis, dans n'importe quel ordre et dans n'importe
+  lequel des champs, parce qu'on se souvient d'une fiche et non de la façon dont
+  elle est rédigée ; et la ponctuation ne compte pas, si bien que « dev 2609 »
+  retrouve « DEV-2609-007 ». La leçon est celle que le projet tire partout de son
+  vocabulaire partagé : trois filtres qui se ressemblent sans être le même
+  apprennent à l'utilisateur que « la recherche marche ici mais pas là », ce qui
+  est la façon la plus sûre de lui faire cesser de s'en servir.
 - **Dates** : `Dates.kt` centralise formats et conversions. Le sélecteur
   Material 3 raisonne en **millisecondes UTC** — y passer par le fuseau local
   décale la date d'un jour selon l'heure qu'il est.
@@ -968,13 +1067,13 @@ l'APK : un test rouge bloque la publication.
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
-| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage |
+| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées |
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
-| `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé |
+| `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible |
 | `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
@@ -987,7 +1086,7 @@ l'APK : un test rouge bloque la publication.
 | `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
 | `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, montant de chaque devis, ce qui compte comme « en attente », lignes emportées avec le devis |
 | `ParametresRepositoryTest` | Valeurs par défaut sans ligne en base, ligne unique, initiales |
-| `InterventionViewModelTest` | Chrono qui met « en cours », clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite, pièce prise au camion qui emporte son prix d'achat et sort du stock, pièce saisie à la main qui ne touche rien |
+| `InterventionViewModelTest` | Chrono qui met « en cours », démarrage en un appui depuis l'accueil dont le second appui ne met pas en pause, clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite, pièce prise au camion qui emporte son prix d'achat et sort du stock, pièce saisie à la main qui ne touche rien |
 | `InitialesTest` | « KB », « LÉ » : deux lettres au plus, apostrophe comprise |
 | `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
 | `ConversionsTest` | Les repères du métier (1 bar = 14,5 psi, 0 °C = 32 °F), la distinction température / écart, et l'aller-retour de toute paire d'unités |
@@ -1011,6 +1110,8 @@ l'APK : un test rouge bloque la publication.
 | `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
+| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation |
+| `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
@@ -1040,7 +1141,19 @@ fichier non versionné).
 
 Les données ne vivent que sur le téléphone. La sauvegarde automatique d'Android
 fait le minimum, mais ne se restaure qu'à la réinstallation et suppose un compte
-Google : le menu de la tournée offre donc un export explicite.
+Google : les Réglages offrent donc un export explicite.
+
+**Elle a longtemps vécu derrière le bouton ⋮ de la barre de la tournée**, et
+elle y était introuvable — au point que la seule vue qui le portait était celle
+du jour : depuis « Maintenant » ou « Semaine », le seul filet contre un
+téléphone perdu ou cassé était hors d'atteinte. C'est la fonction la plus
+importante de l'application et c'était la plus cachée, ce qui est l'inverse de
+l'ordre à tenir. Elle est maintenant une page des Réglages, où l'on va la
+chercher, et elle **nomme ce qu'elle emporte** : une liste vaut mieux qu'une
+promesse, parce que c'est ce qui permet de juger, avant de changer de
+téléphone, s'il manque quelque chose. Elle dit aussi qu'une restauration
+fusionne et n'efface rien — c'est cette propriété qui la rend faisable sans
+hésiter, et la taire faisait renoncer.
 
 La sauvegarde est une **archive zip** (`ArchiveSauvegarde`) : `sauvegarde.json`
 à la racine, les images dans `photos/`. Depuis que les machines portent des
