@@ -40,7 +40,18 @@ internal object Recherche {
         // et exiger que chaque mot tombe dans le *même* champ serait exiger de
         // l'utilisateur qu'il sache lequel.
         val foin = champs.filterNotNull().joinToString(" ", transform = ::plier)
-        return mots.all { mot -> mot in foin }
+        // Et le même texte **sans aucune coupure**, parce que la ponctuation se
+        // tape de deux façons : « dev 2609 » se cherche dans le premier, mais
+        // « dev2609 » — un numéro recopié de mémoire, sans tiret — ne s'y trouve
+        // pas, puisque le repliage a séparé « dev » de « 2609 » des deux côtés.
+        // Le second rattrape ce cas, et lui seul.
+        //
+        // Un mot peut alors chevaucher deux mots du texte : « tclim » trouverait
+        // « Market Clim ». C'est le prix assumé de cette tolérance, et il est
+        // faible — un filtre de liste peut se permettre d'en montrer un de trop,
+        // là où n'en montrer aucun fait conclure que la fiche a disparu.
+        val compact = foin.filter { !it.isWhitespace() }
+        return mots.all { mot -> mot in foin || mot in compact }
     }
 
     /** Les mots d'une recherche, repliés, les séparateurs écartés. */
