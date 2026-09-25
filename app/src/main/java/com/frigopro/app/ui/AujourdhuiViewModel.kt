@@ -47,6 +47,75 @@ data class EcheanceFgas(
 }
 
 /**
+ * Un réglage que l'application attend, et ce qu'il empêche tant qu'il manque.
+ *
+ * Sept valeurs des Réglages arrivent à zéro ou vides sur une installation neuve,
+ * **à dessein** : un tarif horaire inventé partirait chez un vrai client sans que
+ * personne ne l'ait relu, et le projet préfère partout une valeur absente à une
+ * valeur devinée. Mais rien ne le disait. Un devis sortait donc à 0 €, la marge
+ * d'une intervention se déclarait « non chiffrable », et l'écran ne nommait ni la
+ * cause ni l'endroit où la corriger — il fallait avoir lu le code pour savoir
+ * qu'un réglage manquait.
+ *
+ * Cette liste est ce qui manquait, et elle est **dérivée, jamais stockée** : elle
+ * se relit dans les réglages courants à chaque affichage, comme le retard d'une
+ * facture ou une échéance F-Gas, et un booléen « configuration terminée » en base
+ * serait faux le jour où l'on remet un taux à zéro.
+ *
+ * Chacune nomme la conséquence plutôt que le réglage, parce que c'est la
+ * conséquence qui décide si l'on s'en occupe maintenant : « le matériel se
+ * propose au prix coûtant » se juge tout de suite, « coefficientMateriel = 0 »
+ * ne se juge pas du tout. Et chacune porte la page où elle se règle : une alerte
+ * qui ne mène nulle part n'est pas une réponse à « et maintenant ? ».
+ */
+enum class ReglageManquant(
+    val intitule: String,
+    val consequence: String,
+    val page: PageReglages,
+) {
+    ENTREPRISE(
+        intitule = "Nom de l'entreprise",
+        consequence = "Vos devis et factures partent sans raison sociale.",
+        page = PageReglages.ENTREPRISE,
+    ),
+    TAUX_HORAIRE(
+        intitule = "Taux horaire facturé",
+        consequence = "Une ligne de main-d'œuvre se chiffre à 0 €.",
+        page = PageReglages.TARIFS,
+    ),
+    COUT_HORAIRE(
+        intitule = "Coût horaire interne",
+        consequence = "La marge d'une intervention reste incalculable.",
+        page = PageReglages.TARIFS,
+    ),
+    COEFFICIENT_MATERIEL(
+        intitule = "Coefficient matériel",
+        consequence = "Le matériel sans prix de vente se propose au prix coûtant.",
+        page = PageReglages.TARIFS,
+    ),
+    ;
+
+    companion object {
+
+        /**
+         * Ce qui manque, dans l'ordre où cela se règle.
+         *
+         * L'ordre n'est pas celui de l'enum par hasard : la raison sociale d'abord
+         * parce qu'elle paraît sur tout ce qui sort, les deux taux ensuite parce
+         * qu'ils chiffrent, le coefficient en dernier parce que son absence a un
+         * comportement défendable — proposer au coûtant — là où les autres
+         * produisent un document incomplet ou un calcul muet.
+         */
+        fun de(parametres: Parametres): List<ReglageManquant> = buildList {
+            if (parametres.entreprise.isBlank()) add(ENTREPRISE)
+            if (parametres.tauxHoraire <= 0.0) add(TAUX_HORAIRE)
+            if (parametres.coutHoraireInterne <= 0.0) add(COUT_HORAIRE)
+            if (parametres.coefficientMateriel <= 0.0) add(COEFFICIENT_MATERIEL)
+        }
+    }
+}
+
+/**
  * Tout ce que l'écran d'accueil affiche, réuni.
  *
  * Un seul objet plutôt que huit `StateFlow` : l'écran les lirait tous ensemble
@@ -70,6 +139,12 @@ data class EtatAujourdhui(
     /** Le chiffre d'affaires du mois : les devis acceptés, TTC. */
     val chiffreDuMois: Double = 0.0,
     val echeances: List<EcheanceFgas> = emptyList(),
+    /**
+     * Les réglages qu'il reste à poser. Vide dès qu'ils le sont tous, et le
+     * bandeau disparaît alors de lui-même : une alerte qu'on ne peut pas
+     * faire taire en la réglant est une alerte qu'on cesse de lire.
+     */
+    val reglagesManquants: List<ReglageManquant> = emptyList(),
 ) {
 
     val journeeVide: Boolean get() = nombreDuJour == 0
@@ -171,6 +246,7 @@ class AujourdhuiViewModel(
                     }
                     .sumOf { it.totalTtc },
                 echeances = echeancesProches(machines, parIdentifiant, jour),
+                reglagesManquants = ReglageManquant.de(parametres),
             )
         }
 

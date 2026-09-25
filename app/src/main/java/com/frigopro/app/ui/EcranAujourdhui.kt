@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -60,6 +63,11 @@ fun EcranAujourdhui(
     vue: VueTournee,
     onVue: (VueTournee) -> Unit,
     onOuvrir: (Intervention) -> Unit,
+    /**
+     * Démarrer le travail en un appui : le chronomètre part, l'intervention
+     * passe en cours, et sa fiche s'ouvre. Voir `InterventionViewModel.onDemarrer`.
+     */
+    onDemarrer: (Intervention) -> Unit,
     onItineraire: (Client) -> Unit,
     onVoirDevis: () -> Unit,
     modifier: Modifier = Modifier,
@@ -85,6 +93,8 @@ fun EcranAujourdhui(
      */
     manquants: List<ArticleEnStock> = emptyList(),
     onVoirMagasin: () -> Unit = {},
+    /** Ouvrir la page des Réglages où se pose un réglage qui manque. */
+    onReglage: (PageReglages) -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -113,6 +123,7 @@ fun EcranAujourdhui(
                 CarteEnAvant(
                     ligne = etat.enAvant,
                     onOuvrir = { onOuvrir(etat.enAvant.intervention) },
+                    onDemarrer = { onDemarrer(etat.enAvant.intervention) },
                     onItineraire = { etat.enAvant.client?.let(onItineraire) },
                 )
             } else {
@@ -131,6 +142,13 @@ fun EcranAujourdhui(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+
+            if (etat.reglagesManquants.isNotEmpty()) {
+                CarteReglagesManquants(
+                    manquants = etat.reglagesManquants,
+                    onReglage = onReglage,
+                )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -260,8 +278,69 @@ private fun EnTeteAccueil(etat: EtatAujourdhui) {
  * matin, et les faire chercher dans une liste coûterait plus cher que la place
  * qu'ils prennent.
  */
+/**
+ * Ce qu'il reste à régler, et ce que cela empêche.
+ *
+ * Elle se lit sur l'accueil et non dans les Réglages, et c'est tout l'intérêt :
+ * un réglage qui manque ne se découvre pas en ouvrant l'écran des réglages — on
+ * n'y va justement pas — mais en voyant un devis sortir à 0 €. L'accueil répond
+ * à « et maintenant ? », et « vos factures partent sans raison sociale » est une
+ * réponse à cette question, au même titre qu'un impayé de six semaines.
+ *
+ * Chaque ligne mène à la page qui la règle. Elle disparaît d'elle-même quand tout
+ * est posé : rien à fermer, rien à faire taire — un bandeau qu'on écarte d'un
+ * geste serait écarté une fois pour toutes, et la question reviendrait le jour
+ * du premier devis.
+ */
 @Composable
-private fun CarteEnAvant(ligne: LigneTournee, onOuvrir: () -> Unit, onItineraire: () -> Unit) {
+private fun CarteReglagesManquants(
+    manquants: List<ReglageManquant>,
+    onReglage: (PageReglages) -> Unit,
+) {
+    Carte(liseré = LocalStatuts.current.aValider) {
+        Text(
+            text = if (manquants.size == 1) "Un réglage à poser" else "${manquants.size} réglages à poser",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = "L'application ne devine aucun tarif : une valeur inventée partirait " +
+                "chez un vrai client sans que personne ne l'ait relue. Voici ce qu'elle " +
+                "attend, et ce que chacun débloque.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        manquants.forEach { manquant ->
+            Carte(relief = true, onClick = { onReglage(manquant.page) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = manquant.intitule,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text = manquant.consequence,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CarteEnAvant(
+    ligne: LigneTournee,
+    onOuvrir: () -> Unit,
+    onDemarrer: () -> Unit,
+    onItineraire: () -> Unit,
+) {
     val intervention = ligne.intervention
     val couleur = couleurStatut(intervention)
     Carte(relief = true, liseré = couleur, onClick = onOuvrir) {
@@ -305,14 +384,49 @@ private fun CarteEnAvant(ligne: LigneTournee, onOuvrir: () -> Unit, onItineraire
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // Le geste le plus fréquent de la journée, en premier et en plein : on
+        // se gare, on sort le téléphone, on démarre. Il demandait trois appuis —
+        // ouvrir la fiche, trouver le chronomètre dans le volet des relevés, le
+        // lancer — dont le premier n'apprenait rien à personne.
+        //
+        // Il disparaît dès que le temps tourne, et « Ouvrir la fiche » reprend
+        // alors la place : un bouton « Démarrer » sur une intervention en cours
+        // n'aurait su que la mettre en pause, ce que personne ne vient faire ici.
+        val aDemarrer = !ligne.intervention.chrono.enMarche &&
+            ligne.intervention.statut != StatutIntervention.TERMINEE
         Row(
             modifier = Modifier.padding(top = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            BoutonPlein(texte = "Ouvrir la fiche", onClick = onOuvrir, modifier = Modifier.weight(1.4f))
-            if (ligne.localisable) {
-                BoutonContour(texte = "Itinéraire", onClick = onItineraire, modifier = Modifier.weight(1f))
+            if (aDemarrer) {
+                BoutonPlein(
+                    texte = "Démarrer",
+                    onClick = onDemarrer,
+                    modifier = Modifier.weight(1.4f),
+                )
+            } else {
+                BoutonPlein(
+                    texte = "Ouvrir la fiche",
+                    onClick = onOuvrir,
+                    modifier = Modifier.weight(1.4f),
+                )
             }
+            if (ligne.localisable) {
+                BoutonContour(
+                    texte = "Itinéraire",
+                    onClick = onItineraire,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        // La fiche reste à un appui quand « Démarrer » occupe le bouton plein :
+        // la carte entière est cliquable, et ce second chemin le dit.
+        if (aDemarrer) {
+            BoutonContour(
+                texte = "Ouvrir la fiche sans démarrer",
+                onClick = onOuvrir,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -566,6 +680,7 @@ private fun ApercuAujourdhui() {
             vue = VueTournee.MAINTENANT,
             onVue = {},
             onOuvrir = {},
+            onDemarrer = {},
             onItineraire = {},
             onVoirDevis = {},
         )

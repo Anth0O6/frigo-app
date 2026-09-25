@@ -39,9 +39,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -91,6 +88,16 @@ enum class PageReglages(val titre: String) {
 /** Point d'entrée de l'onglet, branché sur le [ReglagesViewModel]. */
 @Composable
 fun ReglagesRoute(
+    /**
+     * La page ouverte, `null` pour le sommaire.
+     *
+     * Tenue par la coquille et non ici, parce que l'accueil doit pouvoir la
+     * désigner : son bandeau « à régler » mène droit à la page concernée, et un
+     * état posé dans cette route aurait été hors de sa portée. C'est le même
+     * motif que le carnet ouvert.
+     */
+    page: PageReglages?,
+    onPage: (PageReglages?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ReglagesViewModel = viewModel(factory = ReglagesViewModel.Factory),
 ) {
@@ -139,6 +146,8 @@ fun ReglagesRoute(
     }
 
     ReglagesScreen(
+        page = page,
+        onPage = onPage,
         types = types,
         parametres = parametres,
         onAjouterType = viewModel::onAjouterType,
@@ -233,6 +242,8 @@ private const val MESSAGE_TYPE_EXISTANT = "Ce type existe déjà."
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReglagesScreen(
+    page: PageReglages?,
+    onPage: (PageReglages?) -> Unit,
     types: List<TypeIntervention>,
     parametres: Parametres,
     onAjouterType: () -> Unit,
@@ -285,12 +296,10 @@ fun ReglagesScreen(
     sauvegarde: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var page by rememberSaveable { mutableStateOf<PageReglages?>(null) }
-
     // Une seule profondeur à défaire : la page ouverte remplace le sommaire, et
     // le retour système la referme. Toujours pas de graphe de navigation — c'est
     // le motif du devis ouvert, de la machine ouverte et de l'outil ouvert.
-    BackHandler(enabled = page != null) { page = null }
+    BackHandler(enabled = page != null) { onPage(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -306,7 +315,7 @@ fun ReglagesScreen(
                     // un geste qui ne se voit pas n'est pas une fonctionnalité,
                     // et c'est la règle que le projet suit partout.
                     if (page != null) {
-                        IconButton(onClick = { page = null }) {
+                        IconButton(onClick = { onPage(null) }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Revenir aux réglages",
@@ -354,7 +363,7 @@ fun ReglagesScreen(
                     parametres = parametres,
                     prestations = prestations,
                     types = types,
-                    onPage = { page = it },
+                    onPage = onPage,
                 )
 
                 PageReglages.TECHNICIEN -> item {
@@ -617,6 +626,8 @@ private fun ReglagesScreenPreview() {
     FrigoProTheme {
         Surface {
             ReglagesScreen(
+                page = null,
+                onPage = {},
                 types = listOf(
                     TypeIntervention(id = "t1", libelle = "Entretien annuel"),
                     TypeIntervention(id = "t2", libelle = "Fuite de fluide"),

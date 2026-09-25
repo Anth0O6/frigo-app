@@ -27,6 +27,8 @@ fun AujourdhuiRoute(
     onVue: (VueTournee) -> Unit,
     onVoirDevis: () -> Unit,
     onVoirMagasin: () -> Unit,
+    /** Ouvre la page des Réglages où se pose un réglage qui manque. */
+    onReglage: (PageReglages) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AujourdhuiViewModel = viewModel(factory = AujourdhuiViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
@@ -43,6 +45,7 @@ fun AujourdhuiRoute(
         vue = vue,
         onVue = onVue,
         onOuvrir = detail::onOuvrir,
+        onDemarrer = detail::onDemarrer,
         onItineraire = { client -> contexte.ouvrirItineraire(client.adresseComplete) },
         onVoirDevis = onVoirDevis,
         modifier = modifier,
@@ -55,5 +58,6 @@ fun AujourdhuiRoute(
         },
         manquants = manquants,
         onVoirMagasin = onVoirMagasin,
+        onReglage = onReglage,
     )
 }

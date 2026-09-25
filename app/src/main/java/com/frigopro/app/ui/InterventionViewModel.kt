@@ -2,6 +2,13 @@ package com.frigopro.app.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -51,17 +58,17 @@ import java.time.Duration
 import java.time.Instant
 
 /** Les quatre volets de l'écran d'une intervention. */
-enum class OngletIntervention(val libelle: String) {
+enum class OngletIntervention(val libelle: String, val icone: ImageVector) {
     /**
      * Ce qu'on lit en arrivant : le créneau, l'adresse, la machine, et la liste
      * à cocher. Il vient en premier parce que c'est l'ordre du terrain — on
      * regarde où l'on est et ce qu'on a à vérifier avant de sortir le manomètre.
      */
-    FICHE("Fiche"),
-    RELEVES("Relevés"),
-    PIECES("Pièces"),
-    PHOTOS("Photos"),
-    RAPPORT("Rapport"),
+    FICHE("Fiche", Icons.Filled.Assignment),
+    RELEVES("Relevés", Icons.Filled.Speed),
+    PIECES("Pièces", Icons.Filled.Build),
+    PHOTOS("Photos", Icons.Filled.PhotoCamera),
+    RAPPORT("Rapport", Icons.Filled.Draw),
 }
 
 /**
@@ -260,6 +267,37 @@ class InterventionViewModel(
         // l'intervention : une intervention saisie la semaine dernière doit la
         // recevoir aussi, et le dépôt ne la pose qu'une fois.
         viewModelScope.launch { suivi.preparerChecklist(intervention.id) }
+    }
+
+    /**
+     * Démarre le travail en un seul appui, depuis l'accueil.
+     *
+     * C'est le geste le plus fréquent de la journée, et il demandait trois
+     * appuis : ouvrir la fiche, trouver le chronomètre dans le volet des relevés,
+     * le lancer. Le premier de ces trois n'apprenait rien à personne — on sait
+     * chez qui l'on est, on vient de s'y garer — et le deuxième était à chercher.
+     *
+     * L'intervention passe **en cours** par le même chemin que le chronomètre du
+     * volet des relevés, [InterventionRepository.basculerChrono] : un seul
+     * endroit décide que le travail a commencé, et le statut suit le chronomètre
+     * plutôt que d'être posé à part. Le `chronoAuto` des Réglages n'a donc rien à
+     * voir ici — il vaut pour un statut changé à la main, où le chronomètre suit ;
+     * c'est l'inverse.
+     *
+     * Elle prend l'intervention **en paramètre** plutôt que de la lire dans
+     * `etat.value` : ce flux n'est collecté que par l'écran de l'intervention, et
+     * `.value` sur un flux que personne ne collecte reste à sa valeur initiale —
+     * ici `null` — pour toujours. C'est le défaut qui avait fait partir des
+     * factures sans logo.
+     *
+     * Un second appui ne met **pas** en pause : `basculerChrono` est une bascule,
+     * et le doigt qui insiste sur une carte ne veut jamais arrêter le temps qu'il
+     * vient de lancer.
+     */
+    fun onDemarrer(intervention: Intervention) {
+        onOuvrir(intervention)
+        if (intervention.chrono.enMarche) return
+        viewModelScope.launch { interventions.basculerChrono(intervention) }
     }
 
     fun onBasculerPoint(point: PointChecklist) {

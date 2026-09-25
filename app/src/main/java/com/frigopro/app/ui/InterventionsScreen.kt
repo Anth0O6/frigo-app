@@ -84,6 +84,11 @@ fun TourneeRoute(
     onAllerAuxDevis: () -> Unit,
     /** Le manque annoncé par l'accueil mène au magasin, dans un autre onglet. */
     onVoirMagasin: () -> Unit,
+    /**
+     * Le réglage qui manque, annoncé par l'accueil, mène à sa page des
+     * Réglages — dans un autre onglet, et donc par la coquille.
+     */
+    onReglage: (PageReglages) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
@@ -125,6 +130,7 @@ fun TourneeRoute(
             onVue = viewModel::onVue,
             onVoirDevis = onAllerAuxDevis,
             onVoirMagasin = onVoirMagasin,
+            onReglage = onReglage,
             modifier = modifier,
         )
 

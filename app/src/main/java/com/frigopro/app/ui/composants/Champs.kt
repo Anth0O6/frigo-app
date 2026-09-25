@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -236,6 +237,83 @@ fun <T> RangeePastilles(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                     maxLines = 1,
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Une rangée d'onglets à largeur égale : une icône, et son libellé dessous.
+ *
+ * Elle existe pour un cas que [RangeePastilles] ne sait pas tenir : **cinq**
+ * choix. Les volets d'une intervention s'appelaient Fiche, Relevés, Pièces,
+ * Photos et Rapport, et les cinq pastilles mises côte à côte faisaient près de
+ * quatre cents points de large pour trois cent vingt disponibles. La rangée
+ * défilait donc horizontalement, et « Rapport » — le volet où l'on fait signer
+ * et où l'on clôture, c'est-à-dire le dernier geste de chaque intervention —
+ * pouvait se trouver hors de l'écran, sans rien pour dire qu'il existait.
+ *
+ * Empiler l'icône et le libellé est ce qui fait tenir les cinq : la largeur d'un
+ * onglet n'est plus celle de son texte en corps courant mais celle de son
+ * libellé en petites capitales, et les cinq se partagent alors l'écran à parts
+ * égales. L'icône n'est pas là pour décorer — elle porte le sens à la place des
+ * lettres qu'on a retirées, et c'est pour cela qu'un onglet en a besoin d'une
+ * qui lui soit propre.
+ *
+ * Aucun défilement, et c'est la propriété à garder : tout ce qui est atteignable
+ * se voit. Un sixième volet demanderait de reprendre cette décision plutôt que
+ * de rétrécir celui-ci.
+ */
+@Composable
+fun <T> RangeeOnglets(
+    options: List<T>,
+    retenue: T,
+    libelle: (T) -> String,
+    icone: (T) -> ImageVector,
+    onChoisir: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        options.forEach { option ->
+            val choisie = option == retenue
+            val encre = if (choisie) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.secondary
+            }
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = MaterialTheme.shapes.small,
+                color = if (choisie) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+                onClick = { onChoisir(option) },
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        imageVector = icone(option),
+                        // Le libellé est juste dessous : le répéter en
+                        // description ferait tout lire deux fois à voix haute.
+                        contentDescription = null,
+                        tint = encre,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = libelle(option),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = encre,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }

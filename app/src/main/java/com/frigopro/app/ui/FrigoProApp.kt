@@ -92,6 +92,13 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
     // par `viewModel()`.
     var carnet by rememberSaveable { mutableStateOf(VueCarnet.CLIENTS) }
 
+    // La page des Réglages est tenue ici pour la même raison que le carnet, et
+    // c'est le bandeau de l'accueil qui l'exige : « une ligne de main-d'œuvre se
+    // chiffre à 0 € » n'est une réponse à « et maintenant ? » que si elle mène à
+    // la page qui le corrige, et un état posé dans `ReglagesRoute` aurait été
+    // hors d'atteinte de l'accueil.
+    var pageReglages by rememberSaveable { mutableStateOf<PageReglages?>(null) }
+
     Column(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -109,6 +116,10 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                         carnet = VueCarnet.MAGASIN
                         onglet = Onglet.CARNETS
                     },
+                    onReglage = { page ->
+                        pageReglages = page
+                        onglet = Onglet.REGLAGES
+                    },
                 )
 
                 Onglet.FACTURES -> FacturationRoute(
@@ -116,7 +127,10 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                 )
                 Onglet.CARNETS -> CarnetsRoute(vue = carnet, onVue = { carnet = it })
                 Onglet.OUTILS -> OutilsRoute()
-                Onglet.REGLAGES -> ReglagesRoute()
+                Onglet.REGLAGES -> ReglagesRoute(
+                    page = pageReglages,
+                    onPage = { pageReglages = it },
+                )
             }
         }
         NavigationBar {

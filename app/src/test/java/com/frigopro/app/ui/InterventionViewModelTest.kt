@@ -158,6 +158,47 @@ class InterventionViewModelTest {
         assertEquals(StatutIntervention.EN_COURS, ligne.statut)
     }
 
+    /**
+     * Le geste de l'accueil : un appui, et le travail a commencé.
+     *
+     * Il demandait trois appuis — ouvrir la fiche, trouver le chronomètre dans le
+     * volet des relevés, le lancer — et c'est le geste le plus fréquent de la
+     * journée. Il passe par le même chemin que le chronomètre du volet, si bien
+     * qu'un seul endroit décide que le travail a commencé.
+     */
+    @Test
+    fun `demarrer depuis l'accueil ouvre, met en cours et lance le chrono`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION)
+        val viewModel = creerViewModel()
+
+        viewModel.onDemarrer(INTERVENTION)
+        advanceUntilIdle()
+
+        assertEquals(INTERVENTION.id, viewModel.ouverte.value)
+        val ligne = daoInterventions.contenu.single()
+        assertTrue(ligne.chrono.enMarche)
+        assertEquals(StatutIntervention.EN_COURS, ligne.statut)
+    }
+
+    /**
+     * `basculerChrono` est une bascule, et le doigt qui insiste sur une carte ne
+     * veut jamais arrêter le temps qu'il vient de lancer. Sans ce garde-fou, deux
+     * appuis rapides sur « Démarrer » auraient remis l'intervention en pause en
+     * laissant croire qu'elle tournait.
+     */
+    @Test
+    fun `demarrer deux fois ne met pas en pause`() = runTest {
+        daoInterventions.enregistrer(INTERVENTION)
+        val viewModel = creerViewModel()
+
+        viewModel.onDemarrer(INTERVENTION)
+        advanceUntilIdle()
+        viewModel.onDemarrer(daoInterventions.contenu.single())
+        advanceUntilIdle()
+
+        assertTrue(daoInterventions.contenu.single().chrono.enMarche)
+    }
+
     @Test
     fun `basculer une seconde fois met en pause`() = runTest {
         daoInterventions.enregistrer(INTERVENTION)

@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -36,7 +34,7 @@ import com.frigopro.app.ui.composants.BarreActions
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.MargeEcran
-import com.frigopro.app.ui.composants.RangeePastilles
+import com.frigopro.app.ui.composants.RangeeOnglets
 import com.frigopro.app.ui.theme.AValider
 import com.frigopro.app.ui.theme.Urgence
 import com.frigopro.app.ui.theme.StyleChiffrePetit
@@ -103,10 +101,10 @@ data class ActionsIntervention(
 /**
  * L'écran d'une intervention : ce qui s'est vraiment passé sur place.
  *
- * Quatre volets, dans l'ordre où le travail se fait : on relève, on pose des
- * pièces, on photographie, on rend compte. Le chronomètre, lui, est visible
- * depuis les quatre — il tourne pendant tout ce temps, et c'est la valeur
- * qu'on oublie le plus facilement d'arrêter.
+ * Cinq volets, dans l'ordre où le travail se fait : on lit la fiche, on
+ * relève, on pose des pièces, on photographie, on rend compte. Le
+ * chronomètre, lui, est visible depuis les cinq — il tourne pendant tout ce
+ * temps, et c'est la valeur qu'on oublie le plus facilement d'arrêter.
  */
 @Composable
 fun EcranIntervention(
@@ -130,14 +128,17 @@ fun EcranIntervention(
         bottomBar = { BarreClotureIntervention(etat = etat, actions = actions) },
     ) { marges ->
         Column(modifier = Modifier.padding(marges)) {
-            RangeePastilles(
+            // Les cinq volets tiennent l'écran, sans défilement horizontal :
+            // « Rapport » est le volet où l'on fait signer et où l'on clôture,
+            // et il pouvait se trouver hors de l'écran, à droite, sans rien
+            // pour dire qu'il existait. Voir [RangeeOnglets].
+            RangeeOnglets(
                 options = OngletIntervention.entries,
                 retenue = onglet,
                 libelle = { it.libelle },
+                icone = { it.icone },
                 onChoisir = actions.onOnglet,
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = MargeEcran, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
             )
             Box(modifier = Modifier.weight(1f)) {
                 when (onglet) {
