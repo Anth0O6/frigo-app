@@ -69,6 +69,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Conversions.kt         # huit familles d'unités, affines
 │       │   │   ├── PuissanceEchangee.kt   # débit × ρ × cp × Δt, dans les trois sens
 │       │   │   ├── CourbesSaturation.kt   # bulle et rosée, calculées, 23 fluides
+│       │   │   ├── ChampMagnetique.kt     # ce qu'un magnétomètre sait dire, et pas plus
 │       │   │   ├── VerificationFluide.kt  # « j'ai recoupé cette courbe »
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
@@ -165,6 +166,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── EcranOutils.kt       # l'onglet Outils, et le cadre d'un outil
 │       │       ├── OutilsCalculs.kt     # convertisseur, bilan, F-Gas, fiche fluide
 │       │       ├── OutilSubstitution.kt # par quoi remplacer, et à quel prix
+│       │       ├── OutilChampMagnetique.kt # bobine alimentée, aimant, contacteur collé
+│       │       ├── LecteurChamp.kt     # la seule classe qui parle au magnétomètre
 │       │       ├── OutilsViewModel.kt
 │       │       ├── FicheMachine.kt      # plaque, fluide, étanchéité, tendance
 │       │       ├── SectionsReglages.kt  # une page des Réglages par section
@@ -776,6 +779,37 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   question de celle qui gagne. La **fiche fluide** met la classe de sécurité avant
   le GWP, et c'est volontaire : le GWP décide d'une paperasse, la classe décide de
   la façon de travailler et de ce qui peut prendre feu.
+  **Le champ magnétique est le seul outil qui *mesure*** plutôt que de calculer, et
+  c'est pour cela qu'il ferme la liste : les six autres répondent à une question
+  qu'on se pose de tête, celui-ci demande d'approcher le téléphone d'une bobine. Il
+  répond à quatre questions du terrain — cette bobine de solénoïde est-elle excitée,
+  ce contacteur a-t-il collé, où est passé l'aimant de ce contact de porte, ce câble
+  débite-t-il — qui se posent toutes capot fermé. `LecteurChamp` est la **seule**
+  pièce qui touche le magnétomètre, même motif qu'`ItineraireRelais` pour le réseau
+  et que `StockagePhotos` pour les images ; l'arithmétique qui décide de quelque
+  chose vit dans `ChampMagnetique` et s'éprouve sans téléphone. Aucune permission :
+  Android ne protège pas la boussole, et l'application en reste à ses deux.
+  Trois décisions le gouvernent. **Ce qui s'affiche est le dépassement de
+  l'ambiant**, pas le total : le champ terrestre est là de toute façon, et afficher
+  « 52 µT » en grand ferait lire la même chose devant une bobine morte que devant
+  rien. **L'ambiant se relève sur place** plutôt que d'être supposé, parce que la
+  tôle d'une armoire le décale de plusieurs dizaines de microteslas — supposer
+  48 µT permet seulement de servir dès l'ouverture. Et **l'agitation de la mesure
+  distingue l'alternatif du continu** : un aimant donne une valeur qui ne bouge pas,
+  une bobine en alternatif une valeur qui bat, parce que l'échantillonnage n'est pas
+  accroché au 50 Hz du réseau. Elle ne vaut que **comparée à celle de l'ambiant** —
+  une main qui tremble agite déjà la mesure, et sans point de comparaison le
+  tremblement passerait pour une bobine alimentée. Un test tient précisément cela.
+  Rien ne s'y affirme : « compatible avec une bobine alimentée » et « la bobine est
+  alimentée » ne s'écrivent pas de la même façon, et l'outil s'en tient à la
+  première — même règle que l'aide au dépannage, qui propose et ne tranche jamais.
+  Le niveau se dit en **quatre marches** et non en valeur, parce qu'un magnétomètre
+  de téléphone n'est pas calibré et que deux centimètres changent la mesure d'un
+  facteur dix : « champ net » répond à la question, « 340 µT » inventerait une
+  précision. La **saturation** est une marche à part, jugée contre la plage que
+  l'appareil déclare — de 2 000 à 4 900 µT selon les téléphones : sans elle, deux
+  aimants très différents afficheraient le même chiffre et on croirait l'instrument
+  précis là où il a décroché.
   `SectionDeplacement` est le déplacement dans la feuille d'un devis, posée juste
   avant les totaux : un déplacement se lit après ce qu'on est venu faire, et avant
   l'addition. Elle tient la **saisie en cours** en état local et n'écrit qu'à un
@@ -1109,6 +1143,7 @@ l'APK : un test rouge bloque la publication.
 | `DegressifTest` | Le prix par rang et non par tranche, le total qui ne décroît jamais quand on ajoute une unité, les rangs au même prix regroupés, la dégression devenue lignes de devis |
 | `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
+| `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
@@ -1638,6 +1673,41 @@ observées plutôt que lues une fois, pour que le premier mouvement d'une
 installation neuve fasse apparaître l'année sans relancer l'application. Le flux
 des interventions est le plus lourd du projet, mais il ne coule que tant que
 l'onglet est ouvert, et les Réglages sont l'onglet qu'on ouvre le moins.
+
+### Le sens de rotation, et pourquoi l'outil ne le donne pas
+
+C'est la demande qui a fait naître l'outil, et la réponse est **non** — pas « pas
+encore », pas « avec un meilleur algorithme ». Elle vaut d'être écrite ici pour ne
+pas être reposée.
+
+Le champ tournant d'un moteur triphasé en 50 Hz fait **cinquante tours par
+seconde**. Pour dire dans quel sens un vecteur tourne il faut au moins trois
+mesures par tour, et en pratique huit — soit **quatre cents mesures par seconde**.
+Un magnétomètre de téléphone en rend **cinquante à cent**, parce qu'il est conçu
+pour une boussole. À cinquante mesures pour cinquante tours on retombe au même
+point à chaque fois : le vecteur paraît immobile, et le sens n'est plus dans le
+signal. Ce n'est pas une approximation qu'on pourrait resserrer, c'est une
+information perdue **avant** d'arriver au code.
+
+L'intuition qui trompe est celle de l'aiguille, et elle mérite d'être démontée :
+une **vraie** aiguille de boussole ne tournerait pas davantage devant un moteur —
+son inertie l'empêche de suivre du 50 Hz, elle resterait plantée. Les indicateurs
+à disque tournant du commerce ne sont pas des boussoles : ce sont de petits
+moteurs à induction **raccordés aux trois phases**. C'est le raccordement qui fait
+le travail, jamais la proximité. Les applications qui affichent un disque qui
+tourne devant un moteur animent du bruit.
+
+L'enjeu interdit d'approximer : **un scroll ou une vis qui tourne à l'envers est
+détruit en quelques secondes.** Un outil qui devinerait le sens serait pire que
+pas d'outil — il ferait soit croiser deux phases sans raison, soit valider un sens
+faux.
+
+L'outil porte donc la réponse **en bas de son propre écran**, et pas seulement le
+constat : un compresseur ne se teste jamais en démarrant, son sens se contrôle
+avant le premier démarrage au contrôleur d'ordre des phases ; une pompe ou un
+ventilateur se jugent à la flèche moulée sur le corps, un démarrage bref ne cassant
+rien. C'est la règle du projet sur les messages d'échec : constater une
+impossibilité sans ouvrir de porte ne vaut rien.
 
 ## Icône
 

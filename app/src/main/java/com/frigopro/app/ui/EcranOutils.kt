@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.PublishedWithChanges
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -83,6 +84,21 @@ enum class Outil(
         "Par quoi, et ce que la conversion demande",
         Icons.Filled.PublishedWithChanges,
     ),
+
+    /**
+     * Le seul outil qui **mesure** quelque chose plutôt que de calculer.
+     *
+     * Il ferme la marche pour cette raison : les six autres répondent à une
+     * question qu'on se pose de tête, celui-ci demande d'approcher le téléphone
+     * d'une bobine. Son sous-titre dit ce qu'il trouve et non ce qu'il est — un
+     * « magnétomètre » ne dit rien à personne, « cette bobine est-elle
+     * alimentée ? » se reconnaît tout de suite.
+     */
+    CHAMP_MAGNETIQUE(
+        "Champ magnétique",
+        "Bobine alimentée, contacteur collé, aimant de contact",
+        Icons.Filled.Sensors,
+    ),
 }
 
 /**
@@ -125,6 +141,7 @@ fun OutilsRoute(
             Outil.FGAS -> OutilControleEtancheite()
             Outil.FICHE_FLUIDE -> OutilFicheFluide(verifies = verifies)
             Outil.SUBSTITUTION -> OutilSubstitution()
+            Outil.CHAMP_MAGNETIQUE -> OutilChampMagnetique()
         }
     }
 }
