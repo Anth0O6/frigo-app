@@ -10,8 +10,9 @@ import kotlinx.coroutines.flow.Flow
  * Accès SQL au carnet de clients.
  *
  * Une **classe abstraite** et non une interface, parce que supprimer un client
- * touche six tables d'un bloc : le carnet, ses sites, son parc, les photos de ce
- * parc, ses interventions, ses devis et ses factures. C'est le DAO le plus large
+ * touche huit tables d'un bloc : le carnet, ses sites, son parc, les photos de ce
+ * parc, le plan de maintenance de ce parc et son journal, ses interventions, ses
+ * devis et ses factures. C'est le DAO le plus large
  * du projet, et pour la raison qui a déjà fait de [EquipementDao] et de
  * [TypeInterventionDao] des classes abstraites — seul un `@Transaction` rend
  * l'enchaînement atomique, et un client à moitié supprimé serait pire qu'un
@@ -84,6 +85,27 @@ abstract class ClientDao {
     @Query("UPDATE interventions SET equipementId = NULL WHERE equipementId IN (SELECT id FROM equipements WHERE clientId = :id)")
     abstract suspend fun detacherMachinesDuParc(id: String)
 
+    /**
+     * Le plan de maintenance du parc part avec le parc.
+     *
+     * Même rôle qu'[EquipementDao.effacerPlanDe], une portée plus haut : la
+     * sous-requête vise les machines du client, et c'est la forme que ce DAO
+     * emploie déjà pour les photos. Elle doit courir **avant** [effacerParc],
+     * qui est précisément ce qu'elle interroge.
+     */
+    @Query(
+        "DELETE FROM affectations_gamme WHERE equipementId IN " +
+            "(SELECT id FROM equipements WHERE clientId = :id)",
+    )
+    abstract suspend fun effacerPlanDuParc(id: String)
+
+    /** Les visites du parc gardent leur ligne, et perdent leur lien. */
+    @Query(
+        "UPDATE releves_gamme SET equipementId = NULL WHERE equipementId IN " +
+            "(SELECT id FROM equipements WHERE clientId = :id)",
+    )
+    abstract suspend fun detacherVisitesDuParc(id: String)
+
     @Query("DELETE FROM equipements WHERE clientId = :id")
     abstract suspend fun effacerParc(id: String)
 
@@ -128,11 +150,13 @@ abstract class ClientDao {
      * Deux traitements opposés cohabitent ici, et c'est tout le sujet :
      *
      * - **Ce qui n'existe que par le client est effacé** : ses machines, leurs
-     *   photos, et ses sites. Une machine sans client ne se rattache à rien et
-     *   ne remonterait sur aucun écran ; un site est l'adresse d'un donneur
-     *   d'ordre et n'a pas de sens sans lui.
+     *   photos, le plan de maintenance qui les suivait, et ses sites. Une
+     *   machine sans client ne se rattache à rien et ne remonterait sur aucun
+     *   écran ; un site est l'adresse d'un donneur d'ordre et n'a pas de sens
+     *   sans lui.
      * - **Ce qui raconte ce qui s'est passé est gardé, lien coupé** : les
-     *   interventions, les devis, les factures. Chacun porte une copie du nom,
+     *   interventions, les devis, les factures, et les visites de maintenance
+     *   consignées sur son parc. Chacun porte une copie du nom,
      *   et la copie est précisément ce qui leur permet de survivre — même couple
      *   lien / copie que pour le type d'intervention et la machine.
      *
@@ -154,6 +178,8 @@ abstract class ClientDao {
     private suspend fun supprimerSeul(id: String) {
         detacherMachinesDuParc(id)
         effacerPhotosDuParc(id)
+        effacerPlanDuParc(id)
+        detacherVisitesDuParc(id)
         effacerParc(id)
         detacherInterventions(id)
         detacherSousTraitance(id)

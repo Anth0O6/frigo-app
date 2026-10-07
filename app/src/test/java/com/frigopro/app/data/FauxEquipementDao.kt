@@ -8,13 +8,21 @@ import kotlinx.coroutines.flow.update
 /**
  * Parc et photos en mémoire, reproduisant le contrat SQL du vrai DAO.
  *
- * Il reçoit le faux DAO d'interventions pour la même raison que
- * [FauxTypeInterventionDao] : le vrai écrit dans cette table, et la propagation
- * d'un renommage comme le détachement d'une machine supprimée sont précisément
- * ce qu'on veut pouvoir vérifier sans SQLite.
+ * Il reçoit les faux DAO d'interventions et de maintenance pour la même raison
+ * que [FauxTypeInterventionDao] : le vrai écrit dans leurs tables, et la
+ * propagation d'un renommage, le détachement d'une machine supprimée, le plan
+ * qui part avec elle et les visites qui restent sont précisément ce qu'on veut
+ * pouvoir vérifier sans SQLite.
  */
 class FauxEquipementDao(
     private val interventions: FauxInterventionDao = FauxInterventionDao(),
+    /**
+     * Le plan de maintenance, pour la même raison : supprimer une machine
+     * efface ses affectations et détache ses visites, et le vrai DAO le fait
+     * dans sa propre transaction. Le défaut laisse les tests qui ne suppriment
+     * aucune machine construire le parc comme avant.
+     */
+    private val maintenance: FauxMaintenanceDao = FauxMaintenanceDao(),
 ) : EquipementDao() {
 
     private val lignes = MutableStateFlow<List<Equipement>>(emptyList())
@@ -84,5 +92,23 @@ class FauxEquipementDao(
 
     override suspend fun effacer(id: String) {
         lignes.update { liste -> liste.filterNot { it.id == id } }
+    }
+
+    /**
+     * Les deux instructions du plan passent par les méthodes **publiques** du
+     * faux plan plutôt que par son stock : une seconde écriture directe dans sa
+     * liste aurait pu diverger de la première, et c'est exactement ce que le
+     * projet reproche à deux copies d'une même règle.
+     */
+    override suspend fun effacerPlanDe(id: String) {
+        maintenance.affectationsDe(id).forEach {
+            maintenance.retirerAffectation(it.equipementId, it.gammeId)
+        }
+    }
+
+    override suspend fun detacherVisitesDe(id: String) {
+        maintenance.tousLesReleves()
+            .filter { it.equipementId == id }
+            .forEach { maintenance.enregistrerReleve(it.copy(equipementId = null)) }
     }
 }

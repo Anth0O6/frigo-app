@@ -13,9 +13,11 @@ import java.time.LocalTime
 class EquipementRepositoryTest {
 
     private val daoInterventions = FauxInterventionDao()
-    private val dao = FauxEquipementDao(daoInterventions)
+    private val daoMaintenance = FauxMaintenanceDao()
+    private val dao = FauxEquipementDao(daoInterventions, daoMaintenance)
     private val stockage = FauxRangementPhotos()
     private val repository = EquipementRepository(dao, stockage)
+    private val plan = MaintenanceRepository(daoMaintenance)
 
     @Test
     fun `le parc demarre vide`() = runTest {
@@ -138,4 +140,63 @@ class EquipementRepositoryTest {
         equipementId = machine.id,
         equipementNom = machine.nom,
     )
+
+    /**
+     * **Le partage de la suppression, côté maintenance.** Une machine effacée
+     * emporte son plan et **garde ses visites**, lien coupé.
+     *
+     * Les deux moitiés comptent. L'affectation n'existe que par la machine :
+     * `PlanMaintenance.echeances` l'écarterait en silence, si bien qu'elle
+     * resterait en base et repartirait dans chaque archive sans qu'aucun écran
+     * ne puisse la montrer ni l'effacer. La visite, elle, est la preuve qu'une
+     * maintenance contractuelle a eu lieu : l'effacer parce que quelqu'un range
+     * son inventaire reviendrait à perdre ce qu'un contrôle vient chercher. Elle
+     * garde le nom de la machine, recopié sur elle, et se relit donc entière.
+     */
+    @Test
+    fun `supprimer une machine emporte son plan et garde ses visites`() = runTest {
+        val machine = repository.enregistrer(
+            Equipement(id = "eq-1", clientId = "cli-1", nom = "Centrale négatif"),
+        )
+        val gamme = GammeMaintenance(id = "ga-1", libelle = "Visite mensuelle")
+        plan.enregistrerGamme(gamme)
+        plan.affecter(machine.id, gamme.id, LocalDate.of(2026, 1, 15))
+        plan.consigner(machine, gamme, faitLe = LocalDate.of(2026, 3, 2))
+
+        repository.supprimer(machine.id)
+
+        assertTrue("le plan est parti", daoMaintenance.affectations.isEmpty())
+        val visite = daoMaintenance.releves.single()
+        assertNull("le lien est coupé", visite.equipementId)
+        assertEquals("le nom reste lisible", "Centrale négatif", visite.equipementNom)
+        assertEquals("Visite mensuelle", visite.gammeLibelle)
+        assertEquals(LocalDate.of(2026, 3, 2), visite.faitLe)
+    }
+
+    /**
+     * Les unités intérieures passent par le même chemin que leur groupe.
+     *
+     * Une unité se rattache à une gamme pour elle-même — on nettoie *ce*
+     * filtre —, et la laisser derrière aurait gardé une échéance sur une unité
+     * qui n'existe plus. C'est la même raison que pour ses photos, déjà tenue
+     * par un test au-dessus.
+     */
+    @Test
+    fun `supprimer un groupe emporte aussi le plan de ses unites`() = runTest {
+        val groupe = repository.enregistrer(
+            Equipement(id = "gr-1", clientId = "cli-1", nom = "Bi-split Daikin"),
+        )
+        val unite = repository.ajouterUnite(groupe, "Salon")
+        val gamme = GammeMaintenance(id = "ga-1", libelle = "Filtres")
+        plan.enregistrerGamme(gamme)
+        plan.affecter(groupe.id, gamme.id)
+        plan.affecter(unite.id, gamme.id)
+        plan.consigner(unite, gamme, faitLe = LocalDate.of(2026, 4, 9))
+
+        repository.supprimer(groupe.id)
+
+        assertTrue("les deux affectations sont parties", daoMaintenance.affectations.isEmpty())
+        assertNull(daoMaintenance.releves.single().equipementId)
+        assertEquals("Salon", daoMaintenance.releves.single().equipementNom)
+    }
 }

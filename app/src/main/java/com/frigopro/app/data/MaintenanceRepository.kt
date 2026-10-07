@@ -121,7 +121,4 @@ class MaintenanceRepository(private val dao: MaintenanceDao) {
      * pouvoir la retirer que vivre avec.
      */
     suspend fun retirerReleve(releveId: String) = dao.supprimerReleve(releveId)
-
-    /** Ce qu'une machine supprimée laisse de son plan. Voir [MaintenanceDao]. */
-    suspend fun oublierEquipement(equipementId: String) = dao.oublierEquipement(equipementId)
 }

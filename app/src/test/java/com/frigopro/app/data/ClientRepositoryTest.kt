@@ -16,7 +16,8 @@ import java.time.LocalTime
 class ClientRepositoryTest {
 
     private val interventions = FauxInterventionDao()
-    private val equipements = FauxEquipementDao(interventions)
+    private val maintenance = FauxMaintenanceDao()
+    private val equipements = FauxEquipementDao(interventions, maintenance)
     private val devis = FauxDevisDao()
     private val factures = FauxFactureDao()
     private val stockage = FauxRangementPhotos()
@@ -321,4 +322,65 @@ class ClientRepositoryTest {
         equipementId = equipementId,
         equipementNom = if (equipementId != null) "Chambre froide" else "",
     )
+
+    /**
+     * Supprimer un client emporte **le plan de maintenance de son parc**, et
+     * garde les visites qui y ont été faites.
+     *
+     * C'est le partage de la suppression, un rang au-dessus de la machine : ce
+     * qui n'existe que par le client est effacé, ce qui raconte ce qui s'est
+     * passé est gardé lien coupé. Et c'est une moitié qu'il était facile
+     * d'oublier : rien à l'écran ne montre une affectation orpheline — le calcul
+     * d'échéance l'écarte en silence —, si bien qu'elle resterait en base et
+     * repartirait dans chaque archive de sauvegarde sans que personne ne le voie.
+     */
+    @Test
+    fun `supprimer un client emporte le plan de son parc et garde ses visites`() = runTest {
+        val client = repository.trouverOuCreer("Boucherie Lemoine", "Rouen")
+        val machine = Equipement(id = "eq-1", clientId = client.id, nom = "Chambre froide")
+        equipements.enregistrer(machine)
+        val gamme = GammeMaintenance(id = "ga-1", libelle = "Visite semestrielle")
+        val plan = MaintenanceRepository(maintenance)
+        plan.enregistrerGamme(gamme)
+        plan.affecter(machine.id, gamme.id, LocalDate.of(2026, 2, 1))
+        plan.consigner(machine, gamme, faitLe = LocalDate.of(2026, 2, 3))
+
+        repository.supprimer(client)
+
+        assertTrue("le parc est parti", equipements.contenu.isEmpty())
+        assertTrue("son plan est parti", maintenance.affectations.isEmpty())
+        val visite = maintenance.releves.single()
+        assertNull("le lien est coupé", visite.equipementId)
+        assertEquals("Chambre froide", visite.equipementNom)
+        assertEquals("Visite semestrielle", visite.gammeLibelle)
+    }
+
+    /**
+     * Et un **site** emporte le plan de son propre parc, par le même chemin.
+     *
+     * La récursion de [ClientDao.supprimer] fait repasser chaque site par le
+     * traitement complet, et c'est ce qui compte ici : un site n'est pas qu'une
+     * adresse, il porte des machines, et ses machines portent un contrat.
+     */
+    @Test
+    fun `supprimer un donneur d'ordre emporte le plan du parc de ses sites`() = runTest {
+        val donneur = repository.trouverOuCreer("Groupe Pégase", "Paris")
+        val site = repository.enregistrer(
+            Client(id = "s-1", nom = "Part-Dieu", ville = "Lyon", parentId = donneur.id),
+        )
+        val machine = Equipement(id = "eq-1", clientId = site.id, nom = "Rooftop 1")
+        equipements.enregistrer(machine)
+        val gamme = GammeMaintenance(id = "ga-1", libelle = "Ronde du matin")
+        val plan = MaintenanceRepository(maintenance)
+        plan.enregistrerGamme(gamme)
+        plan.affecter(machine.id, gamme.id)
+        plan.consigner(machine, gamme, faitLe = LocalDate.of(2026, 5, 4))
+
+        repository.supprimer(donneur)
+
+        assertTrue("le site est parti", dao.contenu.isEmpty())
+        assertTrue("le plan de son parc est parti", maintenance.affectations.isEmpty())
+        assertNull(maintenance.releves.single().equipementId)
+        assertEquals("Rooftop 1", maintenance.releves.single().equipementNom)
+    }
 }

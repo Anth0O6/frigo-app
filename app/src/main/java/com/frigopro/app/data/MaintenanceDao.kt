@@ -15,6 +15,15 @@ import kotlinx.coroutines.flow.Flow
  * gamme touche trois tables, et une gamme à moitié supprimée serait pire qu'une
  * gamme qu'on ne peut pas supprimer. Le `@Transaction` est le seul moyen de
  * garantir que les trois avancent ou qu'aucune ne bouge.
+ *
+ * Le symétrique — ce qu'une **machine** supprimée laisse de son plan — n'est
+ * **pas** ici : c'est [EquipementDao.effacerPlanDe] et
+ * [EquipementDao.detacherVisitesDe], et [ClientDao.effacerPlanDuParc] un rang
+ * au-dessus. Le partage est le même que pour une gamme — l'affectation part,
+ * les visites restent lien coupé —, mais les instructions doivent vivre dans le
+ * DAO qui efface la machine : seul un `@Transaction` d'un même DAO est atomique,
+ * et une machine effacée dont le plan survivrait serait exactement l'incohérence
+ * que ces classes abstraites existent pour empêcher.
  */
 @Dao
 abstract class MaintenanceDao {
@@ -150,28 +159,4 @@ abstract class MaintenanceDao {
 
     @Query("DELETE FROM gammes WHERE id = :id")
     abstract suspend fun effacerGamme(id: String)
-
-    /**
-     * Ce qu'une machine supprimée laisse de son plan.
-     *
-     * Le même partage que pour une gamme, et que pour la suppression d'un client :
-     * l'**affectation est effacée**, parce qu'elle n'existe que par la machine — un
-     * plan de maintenance sur un équipement qui n'est plus là ne veut rien dire, et
-     * il resterait en base et dans les sauvegardes sans s'afficher nulle part. Les
-     * **visites sont gardées, lien coupé**, parce qu'elles sont la preuve qu'une
-     * maintenance contractuelle a eu lieu : les effacer parce que quelqu'un range
-     * l'inventaire reviendrait à perdre ce qu'un contrôle vient chercher. Elles
-     * gardent le nom de la machine, recopié, et se relisent donc entières.
-     */
-    @Transaction
-    open suspend fun oublierEquipement(equipementId: String) {
-        effacerAffectationsDeEquipement(equipementId)
-        detacherRelevesDeEquipement(equipementId)
-    }
-
-    @Query("DELETE FROM affectations_gamme WHERE equipementId = :equipementId")
-    abstract suspend fun effacerAffectationsDeEquipement(equipementId: String)
-
-    @Query("UPDATE releves_gamme SET equipementId = NULL WHERE equipementId = :equipementId")
-    abstract suspend fun detacherRelevesDeEquipement(equipementId: String)
 }

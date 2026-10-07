@@ -12,11 +12,13 @@ import kotlinx.coroutines.flow.map
  * exactement ce que `FauxMaterielDao` fait déjà pour l'unicité `(articleId, lieu)`
  * des stocks. Un faux plus permissif que la base est un faux qui ment.
  *
- * Les deux suppressions transactionnelles — `supprimerGamme` et
- * `oublierEquipement` — ne sont **pas** réécrites : elles sont `open` et non
- * `abstract` sur le vrai DAO, si bien que le faux hérite de la vraie logique et
- * que les tests éprouvent le partage effacé / détaché plutôt qu'une copie de
- * celui-ci.
+ * `supprimerGamme` n'est **pas** réécrite : elle est `open` et non `abstract`
+ * sur le vrai DAO, si bien que le faux hérite de la vraie logique et que les
+ * tests éprouvent le partage effacé / détaché plutôt qu'une copie de celui-ci.
+ *
+ * Ce qu'une **machine** supprimée laisse de son plan n'est pas ici non plus,
+ * pour la même raison qu'en production : c'est [FauxEquipementDao] qui le
+ * reproduit, en passant par les méthodes publiques de ce faux.
  */
 class FauxMaintenanceDao : MaintenanceDao() {
 
@@ -124,10 +126,6 @@ class FauxMaintenanceDao : MaintenanceDao() {
         lesAffectations.value = lesAffectations.value.filterNot { it.gammeId == gammeId }
     }
 
-    override suspend fun effacerAffectationsDeEquipement(equipementId: String) {
-        lesAffectations.value = lesAffectations.value.filterNot { it.equipementId == equipementId }
-    }
-
     // — Le journal ———————————————————————————————————————————————————————————
 
     override fun observerReleves(): Flow<List<ReleveGamme>> =
@@ -155,12 +153,6 @@ class FauxMaintenanceDao : MaintenanceDao() {
     override suspend fun detacherReleves(gammeId: String) {
         lesReleves.value = lesReleves.value.map {
             if (it.gammeId == gammeId) it.copy(gammeId = null) else it
-        }
-    }
-
-    override suspend fun detacherRelevesDeEquipement(equipementId: String) {
-        lesReleves.value = lesReleves.value.map {
-            if (it.equipementId == equipementId) it.copy(equipementId = null) else it
         }
     }
 }

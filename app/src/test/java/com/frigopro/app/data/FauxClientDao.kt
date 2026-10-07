@@ -71,6 +71,21 @@ class FauxClientDao(
         )
     }
 
+    /**
+     * La sous-requête du vrai DAO, à la main : les deux instructions passent par
+     * les primitives **par machine** du faux parc, si bien que la règle n'existe
+     * qu'une fois ici comme en production.
+     */
+    override suspend fun effacerPlanDuParc(id: String) {
+        equipements.contenu.filter { it.clientId == id }
+            .forEach { equipements.effacerPlanDe(it.id) }
+    }
+
+    override suspend fun detacherVisitesDuParc(id: String) {
+        equipements.contenu.filter { it.clientId == id }
+            .forEach { equipements.detacherVisitesDe(it.id) }
+    }
+
     override suspend fun effacerParc(id: String) {
         equipements.contenu.filter { it.clientId == id }.forEach { equipements.effacer(it.id) }
     }

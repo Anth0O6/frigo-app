@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.Flow
  *
  * Les photos sont servies par ce DAO plutôt que par un DAO à elles : une photo
  * n'a aucune vie en dehors de sa machine, et surtout supprimer une machine doit
- * effacer ses photos, détacher ses interventions et disparaître **d'un bloc**.
- * Trois tables touchées, donc, comme [TypeInterventionDao] en touche deux, et
- * pour la même raison : seul un DAO peut rendre l'enchaînement atomique.
+ * effacer ses photos, détacher ses interventions, emporter son plan de
+ * maintenance, détacher ses visites et disparaître **d'un bloc**. Cinq tables
+ * touchées, donc, comme [TypeInterventionDao] en touche deux, et pour la même
+ * raison : seul un DAO peut rendre l'enchaînement atomique.
  *
  * Les fichiers image, eux, ne sont pas du ressort de SQLite : c'est
  * [EquipementRepository] qui les efface après la transaction.
@@ -114,10 +115,45 @@ abstract class EquipementDao {
         unitesDe(id).forEach { unite ->
             detacher(unite.id)
             effacerPhotosDe(unite.id)
+            effacerPlanDe(unite.id)
+            detacherVisitesDe(unite.id)
             effacer(unite.id)
         }
         detacher(id)
         effacerPhotosDe(id)
+        effacerPlanDe(id)
+        detacherVisitesDe(id)
         effacer(id)
     }
+
+    /**
+     * Le plan de maintenance de la machine part avec elle.
+     *
+     * Une affectation n'existe que par sa machine — un contrat d'entretien sur
+     * un équipement qui n'est plus là ne veut rien dire —, et plus rien ne
+     * l'afficherait : `PlanMaintenance.echeances` écarte en silence une
+     * affectation dont la machine a disparu. Elle resterait donc en base et
+     * repartirait dans chaque archive de sauvegarde sans qu'aucun écran ne
+     * puisse la montrer ni l'effacer. C'est le même raisonnement que pour les
+     * photos, un rang au-dessus.
+     *
+     * Ces deux instructions vivent ici plutôt que dans [MaintenanceDao] pour
+     * une raison et une seule : seul un `@Transaction` d'un même DAO est
+     * atomique, et une machine effacée dont le plan survivrait serait
+     * exactement l'incohérence que ce DAO existe pour empêcher.
+     */
+    @Query("DELETE FROM affectations_gamme WHERE equipementId = :id")
+    abstract suspend fun effacerPlanDe(id: String)
+
+    /**
+     * Les visites, elles, sont **gardées, lien coupé**.
+     *
+     * C'est le partage de la suppression d'un client, et il compte autant ici :
+     * une ligne du journal est la preuve qu'une maintenance contractuelle a eu
+     * lieu, et l'effacer parce que quelqu'un range son inventaire reviendrait à
+     * perdre ce qu'un contrôle vient chercher. Elle garde le nom de la machine,
+     * recopié sur elle, et se relit donc entière.
+     */
+    @Query("UPDATE releves_gamme SET equipementId = NULL WHERE equipementId = :id")
+    abstract suspend fun detacherVisitesDe(id: String)
 }

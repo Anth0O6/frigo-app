@@ -43,7 +43,7 @@ class MaintenanceViewModelTest {
 
     private val daoInterventions = FauxInterventionDao()
     private val daoMaintenance = FauxMaintenanceDao()
-    private val daoEquipements = FauxEquipementDao(daoInterventions)
+    private val daoEquipements = FauxEquipementDao(daoInterventions, daoMaintenance)
     private val daoClients = FauxClientDao()
     private val daoTechniciens = FauxTechnicienDao(daoInterventions)
     private val daoParametres = FauxParametresDao()
