@@ -21,8 +21,15 @@ kilomètres et péages, au km, à l'heure ou les deux, avec un plancher et le ch
 de l'offrir. Il porte aussi les **factures** : une intervention terminée ou un
 devis accepté en devient une, elle s'envoie par courriel ou par message, se
 pointe payée, et se relance quand l'échéance est passée. Depuis la tournée,
-appeler un client ou ouvrir l'itinéraire tient en un geste. Les données sont
-persistées localement, et exportables dans une archive de sauvegarde.
+appeler un client ou ouvrir l'itinéraire tient en un geste.
+
+Un **plan de maintenance préventive** répond à l'autre question du métier : non
+plus « qu'est-ce qui est tombé en panne ? » mais « qu'est-ce que le calendrier me
+doit ? ». Des gammes — une liste de points et une cadence, de la ronde
+journalière au contrôle annuel — s'affectent à autant de machines qu'il faut, les
+échéances se déduisent de la dernière visite, et une attestation d'entretien se
+remet au client en fin d'année. Les données sont persistées localement, et
+exportables dans une archive de sauvegarde.
 
 ## Stack
 
@@ -89,6 +96,10 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── MaterielDao.kt
 │       │   │   ├── MaterielRepository.kt
 │       │   │   ├── Substitution.kt        # par quoi remplacer un fluide
+│       │   │   ├── Maintenance.kt         # gammes, cadences, échéances dérivées
+│       │   │   ├── MaintenanceDao.kt
+│       │   │   ├── MaintenanceRepository.kt
+│       │   │   ├── AttestationMaintenance.kt # ce qu'un contrat a reçu
 │       │   │   ├── CatalogueDao.kt
 │       │   │   ├── CatalogueRepository.kt
 │       │   │   ├── Initiales.kt           # « KB », une seule fois pour quatre écrans
@@ -163,6 +174,12 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── PdfDevis.kt          # le seul à connaître Canvas
 │       │       ├── EtatReglette.kt      # pression ↔ température, et le côté
 │       │       ├── FeuilleReglette.kt   # la réglette, curseur et avertissement
+│       │       ├── EcranPreventif.kt     # ce que le calendrier doit, par statut
+│       │       ├── FeuilleVisite.kt      # consigner une visite, et ses points
+│       │       ├── SectionPlanMachine.kt # le plan d'une machine, sur sa fiche
+│       │       ├── SectionGammes.kt      # créer et tenir une gamme
+│       │       ├── MaintenanceViewModel.kt
+│       │       ├── DocumentAttestation.kt # ce que l'attestation imprimée dit
 │       │       ├── EcranOutils.kt       # l'onglet Outils, et le cadre d'un outil
 │       │       ├── OutilsCalculs.kt     # convertisseur, bilan, F-Gas, fiche fluide
 │       │       ├── OutilSubstitution.kt # par quoi remplacer, et à quel prix
@@ -501,9 +518,11 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
 - **`ui`** — `FrigoProApp` est la coquille : cinq onglets, `Tournée`,
   `Factures`, `Carnets`, `Outils` et `Réglages`, et la barre qui en change.
   **Trois de ces onglets portent plusieurs vues sous une bascule** — la tournée
-  ses trois distances de lecture, la facturation ses deux documents, les carnets
-  ses trois listes — et c'est la réponse constante du projet au fait que la barre
-  est étroite : une bascule sous le titre plutôt qu'un onglet de plus.
+  ses trois distances de lecture plus le préventif, la facturation ses deux
+  documents, les carnets ses trois listes — et c'est la réponse constante du
+  projet au fait que la barre est étroite : une bascule sous le titre plutôt
+  qu'un onglet de plus. C'est aussi ce qui a permis au plan de maintenance
+  d'arriver sans sixième onglet.
   Ils étaient **six**, et c'était un de plus que ce que Material recommande. La
   contrepartie ne se payait pas où on l'avait écrite : elle se payait sur les
   **libellés**, abrégés au point de ne plus rien dire — « Auj. » — et sur l'un
@@ -514,10 +533,14 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   l'application, et c'était aussi le plus facile à ne pas voir de l'intérieur.
   Un menu « plus » reste exclu : un onglet derrière un menu n'est pas un onglet,
   et celui-ci doit s'atteindre d'un pouce, gants aux mains.
-  `VueTournee` porte les trois vues du premier onglet — `Maintenant`, `Jour`,
-  `Semaine` —, et elles ne sont pas trois écrans mais trois **distances de
-  lecture** de la même chose : « et maintenant ? », « et le reste de la
-  journée ? », « et le reste de la semaine ? ». L'état vit dans
+  `VueTournee` porte les vues du premier onglet — `Maintenant`, `Jour`,
+  `Semaine`, `Préventif`. Les trois premières ne sont pas trois écrans mais trois
+  **distances de lecture** de la même chose : « et maintenant ? », « et le reste
+  de la journée ? », « et le reste de la semaine ? ». La quatrième répond à une
+  question d'une autre nature — « qu'est-ce que le calendrier me doit ? » — et
+  c'est pourquoi elle ferme la rangée plutôt que de s'insérer entre les trois :
+  les autres montrent du travail **daté**, celle-ci du travail **dû**, qui n'a
+  pas encore d'heure. L'état vit dans
   `InterventionsViewModel` et non dans la coquille, à la différence du carnet
   ouvert : l'accueil et le planning partagent déjà ce ViewModel, si bien qu'une
   carte de l'accueil n'a rien à transporter pour ouvrir la semaine. On rouvre
@@ -714,9 +737,9 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   posé par-dessus les six n'ajoutait qu'un **type d'intervention**, c'est-à-dire
   l'avant-dernière chose de la page — une action flottante qui ne désigne pas ce
   qu'on regarde est une invitation à se tromper. `PageReglages` en nomme donc les
-  neuf pages, et chaque ligne du sommaire dit **ce que la page contient
+  dix pages, et chaque ligne du sommaire dit **ce que la page contient
   aujourd'hui** : « 0,00 € HT · coût interne non réglé » se lit d'un coup d'œil,
-  là où il aurait fallu ouvrir les neuf pour s'en assurer. C'est ce résumé qui
+  là où il aurait fallu ouvrir les dix pour s'en assurer. C'est ce résumé qui
   distingue un sommaire d'un menu, et rien n'en est stocké — il se relit dans les
   réglages courants. Une seule profondeur, un `BackHandler`, toujours pas de
   graphe de navigation ; et la page ouverte est tenue par **la coquille** et non
@@ -1038,6 +1061,24 @@ non « une heure ne coûte rien » — même choix que le taux de pénalités, e
 même raison : un chiffre inventé donnerait une marge fausse, et une marge fausse
 se paie sur la tarification de l'année suivante.
 
+`MIGRATION_16_17` apporte le matériel chiffré sur un devis : trois colonnes,
+aucune table. `prixAchat` est ajouté aux **deux** tables de lignes et pas
+seulement à celle des devis — un devis accepté devient une facture en recopiant
+ses lignes, et sans la colonne côté facture le coût se serait perdu exactement au
+moment où le document devient celui qui compte. `coefficientMateriel` arrive à
+**zéro**, qui veut dire « non réglé » : même choix que le taux de pénalités et le
+coût horaire interne, et c'est ce que l'accueil réclame désormais.
+
+`MIGRATION_17_18` apporte la maintenance préventive : quatre tables, six index,
+aucune reconstruction. L'index unique `(equipementId, gammeId)` d'`affectations_gamme`
+est le **deuxième unique du projet** après celui des stocks, et porte une règle du
+même ordre : une machine n'a qu'une affectation par gamme, et deux lignes
+donneraient deux échéances contradictoires sans que rien ne dise laquelle est
+bonne. `releves_gamme.equipementId` et `gammeId` arrivent **nullables**, et c'est
+ce qui permet à une visite de survivre à la suppression de la machine ou de la
+gamme qu'elle désignait — elle en garde une copie du nom, et reste donc une preuve
+lisible.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -1103,16 +1144,16 @@ l'APK : un test rouge bloque la publication.
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
 | `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
-| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées |
+| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées, suppression qui emporte le plan du parc — et celui du parc de chaque site — en gardant les visites |
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible |
-| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers |
+| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel et jamais ce qui a été fait, le nom de copie qui prend le rang suivant |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
-| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique |
+| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique, duplication qui ouvre la copie et non l'original |
 | `ChronoTest` | Reprise après pause, heure d'arrivée jamais réécrite, horloge qui recule |
 | `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, détecteur de fuite qui double les intervalles, classe de sécurité jamais devinée, silence quand la charge est inconnue |
 | `DepannageTest` | Le croisement surchauffe / sous-refroidissement, et le silence d'un relevé muet |
@@ -1144,6 +1185,9 @@ l'APK : un test rouge bloque la publication.
 | `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
+| `MaintenanceTest` | L'arithmétique du plan : un trimestre qui n'a pas quatre-vingt-dix jours, l'échéance tirée de la dernière visite ou de l'entrée au plan, le retard en jours, les occurrences attendues d'une machine arrivée en cours de route, le taux qui n'existe pas quand rien n'était attendu |
+| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
+| `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
@@ -1152,11 +1196,20 @@ l'APK : un test rouge bloque la publication.
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
 `FauxDevisDao`, `FauxParametresDao`, `FauxTechnicienDao`, `FauxPrestationDao`,
-`FauxVerificationFluideDao`, `FauxMaterielDao` — qui reproduisent le contrat SQL
-des vrais (celui du magasin recopie à la main l'unicité `(articleId, lieu)` que
-l'index porte en base : la laisser au hasard ferait passer des tests que la vraie
-base refuserait), et sur `FauxRangementPhotos`, une liste de noms de
-fichiers qui tient lieu de stockage d'images. Seul `MigrationTest` a besoin d'un
+`FauxVerificationFluideDao`, `FauxMaterielDao`, `FauxMaintenanceDao` — qui
+reproduisent le contrat SQL des vrais (celui du magasin recopie à la main
+l'unicité `(articleId, lieu)` et celui du plan l'unicité `(equipementId, gammeId)`
+que l'index porte en base : les laisser au hasard ferait passer des tests que la
+vraie base refuserait), et sur `FauxRangementPhotos`, une liste de noms de
+fichiers qui tient lieu de stockage d'images.
+
+Les faux se **tiennent les uns aux autres** quand la vraie base le fait :
+`FauxEquipementDao` reçoit le faux DAO d'interventions *et* celui du plan, parce
+que supprimer une machine détache ses interventions, efface ses affectations et
+détache ses visites dans une seule transaction ; `FauxClientDao` reçoit les
+quatre, et repasse par les primitives **par machine** du faux parc plutôt que
+d'écrire une seconde fois la même règle — c'est le reproche que le projet fait
+partout à deux copies d'un même traitement. Seul `MigrationTest` a besoin d'un
 vrai SQLite, fourni par Robolectric. Rien ne décode d'image : ce qui se vérifie
 sans téléphone est isolé dans `ReductionPhoto`.
 
@@ -1206,6 +1259,22 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 14 ajoute le **plan de maintenance** : les gammes, leurs points, les
+affectations et le journal des visites. Les trois premières sont une décision
+de l'entreprise — quelles machines sous quel contrat, et à quelle cadence —, et
+un technicien qui restaure et retrouve son parc sans son plan verrait toutes ses
+échéances disparaître sans rien pour le lui dire. Le **journal** y entre pour une
+raison plus forte : c'est la preuve qu'un contrat d'entretien a été exécuté, et
+c'est ce qu'un client réclame en fin d'année. Une périodicité inconnue ou une
+date illisible fait refuser le fichier entier, au même titre qu'un statut.
+
+Le format 13 ajoute les **prix d'achat des lignes de devis** et le coefficient
+matériel. Le prix d'achat y est pour la raison qui a fait entrer celui des pièces
+au format 12 — c'est le prix du jour du chiffrage, et rien ne le retrouve ; le
+coefficient est une décision commerciale, comme les prix du catalogue et les
+paliers dégressifs, et restaurer sans lui ferait chiffrer le matériel au prix
+coûtant sans qu'on s'en aperçoive.
 
 Le format 12 ajoute les deux prix d'achat des lignes d'intervention et le coût
 horaire interne. Les prix d'achat y sont sauvegardés pour la même raison qu'ils
@@ -1612,6 +1681,163 @@ découpage. L'estimation est volontairement **prudente** — sous-estimer fait
 perdre un peu de place à droite, surestimer ferait déborder le texte hors de la
 page, où il ne se voit pas du tout.
 
+## La maintenance préventive
+
+**Un site, une équipe, des centaines d'équipements, et six cadences.** C'est le
+besoin qui a fait naître cette partie : des machines à visiter chaque jour,
+chaque semaine, chaque mois, chaque trimestre, chaque semestre et chaque année,
+et aucun moyen de savoir ce qui tombe aujourd'hui autrement qu'un tableur tenu à
+la main — c'est-à-dire faux au bout de deux semaines.
+
+Elle n'est pas une sixième façon de noter une intervention. Une intervention est
+un **passage imprévu** qu'on datera, chronométrera et facturera ; une visite
+préventive est l'**exécution d'un contrat**, et ce qu'on en attend n'est pas le
+temps passé mais la preuve qu'elle a eu lieu. Les deux ne vivent donc pas dans
+les mêmes tables, et c'est délibéré : les réunir aurait demandé de rendre
+nullables la moitié des colonnes d'une intervention.
+
+### Le modèle, et la seule décision qui compte
+
+Quatre tables : `gammes`, `points_gamme`, `affectations_gamme`, `releves_gamme`.
+Une **gamme** est une liste de points et une cadence — « visite mensuelle groupe
+froid », « ronde du matin » —, décrite une fois et affectée ensuite à autant de
+machines qu'il faut. Une **affectation** rattache une machine à une gamme, à
+partir d'une date. Un **relevé** est une visite faite.
+
+**Aucune occurrence n'est stockée**, et c'est la décision centrale de toute cette
+partie. L'échéance de chaque machine se **déduit** de sa dernière visite — ou de
+son entrée au plan, faute de visite — par `Maintenance.echeance`, qui est une
+fonction pure. La table d'occurrences qu'on aurait pu générer aurait demandé
+d'être rattrapée à chaque changement : une cadence qui passe de trimestrielle à
+mensuelle, une machine retirée du contrat, une visite corrigée après coup. Ici il
+n'y a rien à rattraper — l'écran suivant recalcule. C'est la même règle que le
+retard d'une facture, le manque du magasin et les échéances F-Gas : un booléen en
+base serait faux le lendemain matin.
+
+`depuisLe` est l'autre décision, et elle paraît mineure jusqu'à ce qu'on
+l'oublie : c'est la date d'**entrée au plan**, et c'est elle qui empêche une
+machine de 2015 rattachée aujourd'hui à une gamme mensuelle de devoir cent trente
+visites en retard. Rattacher deux fois la même gamme **ne la remet pas à zéro**
+(`MaintenanceRepository.affecter` réutilise l'affectation existante) : c'est
+l'index unique `(equipementId, gammeId)` qui l'exige — une seconde ligne serait
+refusée par la base —, et le refus se produirait au geste le plus banal, cocher
+deux fois une case en balayant une liste de cent machines.
+
+Le **journal est une preuve**, et tout ce qui vient d'ailleurs y est **recopié** :
+le nom de la machine, l'intitulé de la gamme, sa périodicité, le nom du
+technicien. Même règle qu'une facture émise, et pour la même raison — la ligne
+doit rester lisible quand la gamme change de cadence, quand la machine est rangée
+et quand le technicien quitte l'entreprise. C'est pourquoi `equipementId` et
+`gammeId` y sont **nullables** : supprimer une gamme efface ses points et ses
+affectations et **détache** ses visites ; supprimer une machine fait de même
+(`EquipementDao.effacerPlanDe` et `detacherVisitesDe`, et
+`ClientDao.effacerPlanDuParc` un rang au-dessus). Ces instructions vivent dans le
+DAO qui efface la machine et non dans `MaintenanceDao`, parce que **seul un
+`@Transaction` d'un même DAO est atomique** : une machine effacée dont le plan
+survivrait serait exactement l'incohérence que ces classes abstraites existent
+pour empêcher.
+
+Un **trimestre n'a pas une longueur fixe**, et `Periodicite.prochaine` avance
+donc par `plusMonths` et non par quatre-vingt-dix jours : l'écart fait cinq jours
+par an, quinze sur trois ans, et une échéance trimestrielle qui dérive finit par
+tomber le mauvais mois. `occurrencesAttendues` parcourt les occurrences une à une
+pour la même raison, avec un garde-fou (`PAS_MAXIMUM`) sur une périodicité qui
+n'avancerait pas.
+
+### Les écrans
+
+**Le « Préventif »** est la quatrième vue de la tournée, groupée par statut : en
+retard, à faire, à venir — ce dernier replié, parce qu'une liste de trois cents
+échéances futures n'est pas une réponse à « et maintenant ? ». Les trois chiffres
+de l'en-tête comptent **tout le plan** et non la vue filtrée : une recherche en
+cours ne doit pas faire croire que le retard a diminué. Le préavis est porté par
+la cadence (`Periodicite.preavisJours`) — on prévient d'une visite annuelle un
+mois avant, d'une ronde journalière la veille.
+
+**La fiche d'une machine** porte le plan de celle-ci, avant ses photos : pendant
+une ronde, « cette machine est due » et le bouton qui l'éteint sont ce qu'on
+vient chercher. La section **disparaît entièrement tant qu'aucune gamme
+n'existe** — une entreprise sans contrat d'entretien n'a rien à lire là. Le
+journal y est plafonné à vingt lignes, et le compte complet annoncé au-dessus.
+
+**Consigner une visite** passe par une feuille qui montre les points de la gamme
+en cases à cocher, **non enregistrées** et le disant : ce qui part au journal est
+la visite, sa date, son auteur et ses remarques. Les conserver une à une aurait
+demandé une cinquième table pour une information que personne ne relit — à la
+différence de la checklist d'une intervention, qui part sur un compte-rendu signé
+par le client. La **date est modifiable**, et ce n'est pas un détail : on consigne
+sa tournée le soir, parfois le lendemain, et dater la visite du jour de la saisie
+décalerait tout le plan d'un jour à chaque fois. Même défaut que la date d'un
+mouvement de fluide au registre, où il a déjà fallu le corriger.
+
+**Affecter tout un parc d'un geste** (`onAffecterAuParc`) est ce qui rend la
+chose tenable sur un site de plusieurs centaines d'équipements : les rattacher un
+à un demanderait une soirée, et la soirée ne se prendrait pas. C'est aussi pour
+cela que **dupliquer une machine** ne recopie pas son plan — l'affectation en
+masse est la bonne réponse, là où une recopie machine par machine aurait fait
+dépendre le résultat de l'ordre des saisies.
+
+### Le taux de réalisation
+
+`RealisationGamme` porte **les deux nombres** — attendues, faites — et le
+pourcentage n'est qu'une commodité : « 23 faites sur 26 attendues » se vérifie,
+« 88 % » invite à croire à une précision que ce calcul n'a pas. Il mesure
+**combien** de visites ont été faites et non si elles l'ont été à l'heure, et
+l'écran le dit : juger la ponctualité demanderait d'apparier chaque visite à son
+occurrence et de décider d'une tolérance, ce qui est une autre question — et une
+tolérance inventée serait pire qu'un compte simple. Rien n'était attendu : le
+taux **n'existe pas**, il ne vaut pas zéro — une gamme créée la semaine dernière
+n'a rien à montrer, et « 0 % » la ferait passer pour négligée.
+
+Il est exposé en **`StateFlow`** et non par une fonction lisant `.value`, et
+c'est une leçon payée deux fois : le compte demande que trois flux soient
+collectés, et `.value` sur un flux que personne ne collecte reste à sa valeur
+initiale pour toujours. L'écran des Réglages n'observait pas le journal des
+visites, si bien que le taux y aurait annoncé zéro visite faite sur **toutes** les
+gammes — le genre de chiffre faux qu'on croit. C'est exactement le défaut qui
+avait fait partir des factures sans logo ; en flux, la dépendance est portée par
+le type et l'écran ne peut plus l'oublier.
+
+### L'attestation d'entretien
+
+Le **cinquième document** de la chaîne, et il répond à une question qu'aucun des
+quatre autres ne couvre : le devis dit ce qu'on propose, la facture ce qu'on
+réclame, le compte-rendu ce qui s'est passé lors d'*une* intervention, le registre
+ce que les fluides ont fait. Celui-ci dit **qu'un contrat a été exécuté**. C'est
+la pièce qu'un gérant demande en fin d'année, celle qu'une enseigne réclame à son
+prestataire, et celle qu'une assurance regarde après un sinistre.
+
+Il emprunte la mise en page du compte-rendu — des blocs, pas un tableau d'euros —
+comme le registre avant lui. Il a, lui, **un destinataire**, et c'est tout ce qui
+le sépare du registre : un registre est tenu par l'entreprise pour elle-même, une
+attestation se remet à quelqu'un. Elle vit donc sur la **fiche du client**, la
+seule surface qui désigne un client, là où le registre va aux Réglages. Les années
+proposées sont dérivées des visites de son parc, l'année courante toujours
+comprise — on remet l'attestation avec la facture de décembre.
+
+Trois règles, et chacune répare une façon de mentir :
+
+- **Il n'invente aucune visite.** Une machine suivie et jamais visitée le dit en
+  toutes lettres, et c'est précisément le cas où la tentation serait de taire la
+  ligne : un parc dont il manque une machine se lit « tout a été fait ». Et « pas
+  de contrat » ne s'écrit pas comme « contrat non honoré ».
+- **Toutes les dates y sont**, enveloppées sur plusieurs lignes au besoin : un
+  client qui conteste pointe une date, et « 12 visites » ne lui répondrait pas.
+- **Il ne dit pas « conforme », et ne se signe pas.** Un compte-rendu se signe
+  parce que le client reconnaît des travaux faits devant lui ; une attestation
+  porte une année de visites dont il n'a vu que quelques-unes, et lui faire signer
+  un récapitulatif qu'il ne peut pas vérifier serait lui faire attester le travail
+  de l'entreprise.
+
+Deux points de calcul, parce que tous deux produisent un chiffre faux qui part
+chez le client. **La période s'arrête à aujourd'hui** : un contrat mensuel sur
+2026 demande douze visites, mais au 15 juin il n'en a pu recevoir que cinq, et
+compter jusqu'au 31 décembre aurait annoncé 42 % sur un contrat parfaitement
+honoré — la même erreur qu'une quantité non arrondie sur un devis, qui ne se voit
+qu'une fois le document envoyé. Et **le dénominateur part du départ du plan de
+chaque machine** : une armoire rattachée en octobre doit deux visites sur l'année
+et non douze.
+
 ## Le registre des fluides
 
 **La traçabilité des fluides frigorigènes est une obligation** (règlement (UE)
@@ -1907,6 +2133,24 @@ place » venant en tête :
   porter le champ sur `Equipement` — par une migration — pour que l'accueil et la
   fiche machine en tiennent compte au lieu de retenir toujours la périodicité la
   plus exigeante.
+- **Les zones d'un site, si une ronde journalière porte sur cinquante machines.**
+  Le « Préventif » est une liste, et une liste de cinquante lignes à faire le
+  matin se parcourt mal : il faudrait une notion de zone ou de local, qui
+  n'existe pas dans le modèle — `Equipement` n'a pas d'emplacement, et la
+  photographier a longtemps suffi. C'est une migration et un champ, pas une
+  refonte, mais c'est à décider en sachant combien de machines portent un point
+  journalier : à une dizaine la liste suffit.
+- **Affecter une gamme depuis le carnet, en balayant une liste.**
+  `onAffecterAuParc` rattache tout le parc d'un geste et la fiche d'une machine
+  en rattache une ; entre les deux il manque le cas « ces douze meubles-là »,
+  qui demanderait une sélection multiple — le premier endroit de l'application
+  qui en aurait besoin.
+- **La ponctualité, et non seulement le compte.** `RealisationGamme` dit combien
+  de visites ont été faites, pas si elles l'ont été à l'heure : une visite
+  mensuelle faite trois fois en janvier puis plus rien jusqu'en mars compte trois
+  sur trois. Juger la ponctualité demanderait d'apparier chaque visite à son
+  occurrence et de **décider d'une tolérance**, qui est une clause de contrat et
+  non une constante d'application — c'est pour cela que ce n'est pas fait.
 - Plus d'un niveau de machines, si un jour un cas l'exige : `parentId` le
   permettrait, l'écran s'y refuse délibérément (voir « Architecture »).
 - Plusieurs relevés horodatés par intervention : la table les accepte déjà
