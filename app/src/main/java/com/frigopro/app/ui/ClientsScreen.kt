@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.GroupeClients
 import com.frigopro.app.data.GroupeMachines
+import com.frigopro.app.data.SuiviMaintenance
 import com.frigopro.app.data.initialesDe
 import com.frigopro.app.data.nomDeCopie
 import com.frigopro.app.ui.composants.ChampRecherche
@@ -115,6 +117,10 @@ fun ClientsRoute(
     val gammes by maintenance.gammes.collectAsStateWithLifecycle()
     val pointsGammes by maintenance.points.collectAsStateWithLifecycle()
     val visites by maintenance.releves.collectAsStateWithLifecycle()
+    val affectations by maintenance.affectations.collectAsStateWithLifecycle()
+    val documentPret by maintenance.documentPret.collectAsStateWithLifecycle()
+    val echecExport by maintenance.echecExport.collectAsStateWithLifecycle()
+    val contexte = LocalContext.current
     var ficheOuverte by remember { mutableStateOf(false) }
 
     // L'échéance dont on vient de toucher « Fait », en attente de sa feuille.
@@ -149,6 +155,36 @@ fun ClientsRoute(
         val categorie = categorieGalerie
         if (source != null && categorie != null) machines.onPhotoChoisie(categorie, source)
         categorieGalerie = null
+    }
+
+    // Le partage s'ouvre dès que le PDF est écrit, puis le ViewModel oublie le
+    // document : sans cet oubli, revenir sur l'onglet rouvrirait le sélecteur.
+    // Même chaîne que le registre des fluides dans les Réglages.
+    LaunchedEffect(documentPret) {
+        val fichier = documentPret ?: return@LaunchedEffect
+        contexte.envoyerDocument(
+            document = fichier,
+            objet = "Attestation d'entretien",
+            corps = "Récapitulatif des visites de maintenance préventive ci-joint.",
+        )
+        maintenance.onDocumentPartage()
+    }
+
+    if (echecExport) {
+        AlertDialog(
+            onDismissRequest = maintenance::onEchecVu,
+            title = { Text(text = "Export impossible") },
+            text = {
+                Text(
+                    text = "L'attestation n'a pas pu être écrite. Il manque peut-être de la " +
+                        "place sur le téléphone : rien de ce qui est consigné n'est perdu, " +
+                        "et le document se refait à l'identique.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = maintenance::onEchecVu) { Text(text = "Fermer") }
+            },
+        )
     }
 
     BackHandler(enabled = ouverte != null) { machines.onFermer() }
@@ -237,12 +273,28 @@ fun ClientsRoute(
         )
 
         fiche?.let { etat ->
+            val client = etat.versClient()
+            // Les années ne sont proposées que si le parc de ce client suit
+            // vraiment une gamme : un bouton qui ne produirait qu'un document
+            // blanc vaut moins que pas de bouton, et c'est la même règle que la
+            // section de plan absente d'une fiche machine tant qu'aucune gamme
+            // n'existe.
+            val siennes = parc.filter { it.clientId == client.id }.map { it.id }.toSet()
+            val suivi = affectations.any { it.equipementId in siennes }
             FicheClient(
                 etat = etat,
                 onEtatChange = viewModel::onFicheChange,
                 onEnregistrer = viewModel::onEnregistrerFiche,
                 onFermer = viewModel::onFermerFiche,
-                onSupprimer = { aSupprimer = etat.versClient() },
+                onSupprimer = { aSupprimer = client },
+                attestation = ActionsAttestation(
+                    annees = if (suivi) {
+                        SuiviMaintenance.anneesDe(setOf(client.id), parc, visites)
+                    } else {
+                        emptyList()
+                    },
+                    onExporter = { annee -> maintenance.onExporterAttestation(client, annee) },
+                ),
             )
         }
     }

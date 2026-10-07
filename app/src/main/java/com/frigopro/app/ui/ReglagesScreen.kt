@@ -52,6 +52,7 @@ import com.frigopro.app.data.GammeMaintenance
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.PointGamme
 import com.frigopro.app.data.Prestation
+import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.MargeEcran
@@ -121,6 +122,7 @@ fun ReglagesRoute(
     val gammes by plan.gammes.collectAsStateWithLifecycle()
     val pointsGamme by plan.points.collectAsStateWithLifecycle()
     val affectations by plan.affectations.collectAsStateWithLifecycle()
+    val realisationParGamme by plan.realisations.collectAsStateWithLifecycle()
     val gammeOuverte by plan.gammeOuverte.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
@@ -227,6 +229,7 @@ fun ReglagesRoute(
             onAjouterPoint = plan::onAjouterPoint,
             onSupprimerPoint = plan::onSupprimerPoint,
         ),
+        realisationParGamme = realisationParGamme,
         modifier = modifier,
     )
 
@@ -329,6 +332,8 @@ fun ReglagesScreen(
     machinesParGamme: Map<String, Int> = emptyMap(),
     gammeOuverte: String? = null,
     actionsGammes: ActionsGammes = ActionsGammes(),
+    /** Le taux de réalisation de chaque gamme. Voir [SectionGammes]. */
+    realisationParGamme: Map<String, RealisationGamme> = emptyMap(),
     modifier: Modifier = Modifier,
 ) {
     // Une seule profondeur à défaire : la page ouverte remplace le sommaire, et
@@ -461,6 +466,7 @@ fun ReglagesScreen(
                         gammes = gammes,
                         points = pointsGamme,
                         machinesParGamme = machinesParGamme,
+                        realisationParGamme = realisationParGamme,
                         gammeOuverte = gammeOuverte,
                         actions = actionsGammes,
                     )

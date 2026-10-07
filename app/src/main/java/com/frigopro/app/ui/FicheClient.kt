@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Button
@@ -76,6 +77,18 @@ fun FicheClient(
      * l'affaire de la route : c'est elle qui sait compter ce qui disparaît.
      */
     onSupprimer: (() -> Unit)? = null,
+    /**
+     * L'attestation d'entretien de ce client : les années à proposer, et
+     * l'export.
+     *
+     * Elle vit sur la fiche du client parce que c'est **la seule surface qui
+     * désigne un client** : le registre des fluides est tenu par l'entreprise et
+     * va donc aux Réglages, une attestation se remet à quelqu'un et se cherche
+     * là où ce quelqu'un est fiché. Le défaut vide la rend absente, ce qui est le
+     * cas de tout parc qui ne suit aucune gamme — un bouton qui ne produirait
+     * qu'un document blanc vaut moins que pas de bouton.
+     */
+    attestation: ActionsAttestation = ActionsAttestation(),
 ) {
     val contexte = LocalContext.current
     val client = etat.versClient()
@@ -171,6 +184,10 @@ fun FicheClient(
                 }
             }
 
+            if (!etat.estCreation && attestation.annees.isNotEmpty()) {
+                SectionAttestation(attestation = attestation)
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -201,6 +218,53 @@ fun FicheClient(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+            }
+        }
+    }
+}
+
+/** Les deux rappels de l'attestation : ce qu'on peut proposer, et l'export. */
+data class ActionsAttestation(
+    val annees: List<Int> = emptyList(),
+    val onExporter: (Int) -> Unit = {},
+)
+
+/**
+ * L'attestation d'entretien, sur la fiche du client.
+ *
+ * Les années sont **dérivées des visites** de son parc, comme celles du registre
+ * le sont des mouvements : proposer trois années dont deux sont vides ferait
+ * ouvrir deux documents blancs. L'année courante y est toujours, parce qu'une
+ * attestation demandée en cours d'année est le cas ordinaire — on la remet avec
+ * la facture de décembre.
+ *
+ * La phrase au-dessus dit **ce que le document n'est pas**, et c'est délibéré :
+ * on hésite à envoyer une pièce dont on ne sait pas ce qu'elle engage, et
+ * « elle rapporte des dates » est ce qui permet de le faire sans relire le PDF.
+ */
+@Composable
+private fun SectionAttestation(attestation: ActionsAttestation) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(text = "Attestation d'entretien", style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = "Récapitulatif des visites de maintenance préventive consignées sur " +
+                "le parc de ce client. Elle rapporte des dates et ne vaut pas certificat " +
+                "de conformité.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        attestation.annees.forEach { annee ->
+            OutlinedButton(
+                onClick = { attestation.onExporter(annee) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Description,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Attestation $annee")
             }
         }
     }

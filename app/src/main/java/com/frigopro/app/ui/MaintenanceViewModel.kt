@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -7,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.AffectationGamme
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Equipement
@@ -20,6 +22,7 @@ import com.frigopro.app.data.PointGamme
 import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.ReleveGamme
 import com.frigopro.app.data.StatutEcheance
+import com.frigopro.app.data.SuiviMaintenance
 import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TechnicienRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +51,8 @@ class MaintenanceViewModel(
     private val clients: ClientRepository,
     private val techniciens: TechnicienRepository,
     private val parametres: ParametresRepository,
+    /** Même interface, et même raison, que dans [DevisViewModel]. */
+    private val pdf: ProducteurPdf,
     /**
      * Le jour courant, relu à chaque collecte plutôt que figé à la construction :
      * le ViewModel survit à une mise en arrière-plan, et l'application rouverte le
@@ -119,17 +124,43 @@ class MaintenanceViewModel(
     fun compte(statut: StatutEcheance): Int =
         echeances.value.count { it.statut(aujourdhui()) == statut }
 
-    /** Le taux de réalisation d'une gamme sur les douze derniers mois. */
-    fun realisation(gamme: GammeMaintenance): RealisationGamme {
+    /**
+     * Le taux de réalisation de chaque gamme sur les douze derniers mois, par
+     * identifiant de gamme.
+     *
+     * **Un flux et non une fonction qui lirait `.value`**, et la distinction est
+     * celle qui avait fait partir des factures sans logo : le compte demande que
+     * trois flux soient collectés, et `.value` sur un flux que personne ne
+     * collecte reste à sa valeur initiale pour toujours. L'écran des Réglages
+     * n'observait pas le journal des visites — le taux y aurait affiché zéro
+     * visite faite sur toutes les gammes, ce qui est le genre de chiffre faux
+     * qu'on croit. En flux, la dépendance est portée par le type et l'écran ne
+     * peut plus l'oublier.
+     *
+     * Douze mois glissants, et rien n'en est stocké : un taux en base aurait
+     * cessé d'être juste le lendemain. Même règle que le retard d'une facture et
+     * que les échéances F-Gas.
+     */
+    val realisations: StateFlow<Map<String, RealisationGamme>> = combine(
+        maintenance.gammes,
+        maintenance.affectations,
+        maintenance.releves,
+    ) { lesGammes, lesAffectations, lesReleves ->
         val fin = aujourdhui()
-        return PlanMaintenance.realisation(
-            gamme = gamme,
-            affectations = affectations.value,
-            releves = releves.value,
-            debut = fin.minusYears(1),
-            fin = fin,
-        )
-    }
+        lesGammes.associate { gamme ->
+            gamme.id to PlanMaintenance.realisation(
+                gamme = gamme,
+                affectations = lesAffectations,
+                releves = lesReleves,
+                debut = fin.minusYears(1),
+                fin = fin,
+            )
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+        emptyMap(),
+    )
 
     // — Les gammes et leurs points ———————————————————————————————————————————
 
@@ -254,6 +285,65 @@ class MaintenanceViewModel(
         viewModelScope.launch { maintenance.retirerReleve(releve.id) }
     }
 
+    // — L'attestation d'entretien ————————————————————————————————————————————
+
+    private val _documentPret = MutableStateFlow<Uri?>(null)
+
+    /** Le PDF écrit, tant que l'écran ne l'a pas partagé. Même motif qu'ailleurs. */
+    val documentPret: StateFlow<Uri?> = _documentPret.asStateFlow()
+
+    private val _echecExport = MutableStateFlow(false)
+
+    val echecExport: StateFlow<Boolean> = _echecExport.asStateFlow()
+
+    /**
+     * Sort l'attestation d'entretien d'un client, sur une année.
+     *
+     * Les quatre listes sont prises **au moment de l'export** et non observées
+     * en permanence, comme pour le registre des fluides : une attestation est une
+     * photographie datée, et l'écran n'a rien à afficher d'elles entre deux
+     * exports.
+     *
+     * **La fin de la période s'arrête à aujourd'hui**, et c'est le point le plus
+     * facile à rater de tout le document : un contrat mensuel sur l'année 2026
+     * demande douze visites, mais au 7 octobre il n'en a pu recevoir que neuf.
+     * Compter jusqu'au 31 décembre aurait affiché « 9 sur 12 », soit 75 %, sur un
+     * contrat parfaitement honoré — et ce chiffre-là part chez le client. C'est
+     * la même erreur que de facturer une quantité non arrondie : elle ne se voit
+     * qu'une fois le document envoyé.
+     */
+    fun onExporterAttestation(client: Client, annee: Int) {
+        viewModelScope.launch {
+            val jour = aujourdhui()
+            val attestation = SuiviMaintenance.attestation(
+                clientNom = client.nom,
+                clientAdresse = client.adresseComplete,
+                // Le seul client, sans ses sites : chaque site est une adresse
+                // distincte avec son propre parc, et c'est le gérant de *ce*
+                // magasin qui demande l'attestation de son magasin.
+                clientIds = setOf(client.id),
+                equipements = equipements.equipements.first(),
+                gammes = maintenance.gammes.first(),
+                affectations = maintenance.affectations.first(),
+                releves = maintenance.releves.first(),
+                debut = LocalDate.of(annee, 1, 1),
+                fin = minOf(LocalDate.of(annee, 12, 31), jour),
+            )
+            val document = DocumentAttestation.de(attestation, parametres.lire(), jour)
+            val produit = pdf.produire(document)
+            if (produit != null) _documentPret.value = produit else _echecExport.value = true
+        }
+    }
+
+    /** L'écran a ouvert le partage : le document n'a plus à être annoncé. */
+    fun onDocumentPartage() {
+        _documentPret.value = null
+    }
+
+    fun onEchecVu() {
+        _echecExport.value = false
+    }
+
     companion object {
 
         /** Même raison que dans [InterventionsViewModel]. */
@@ -269,6 +359,7 @@ class MaintenanceViewModel(
                     conteneur.clients,
                     conteneur.techniciens,
                     conteneur.parametres,
+                    ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                 )
             }
         }

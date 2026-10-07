@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.GammeMaintenance
 import com.frigopro.app.data.Periodicite
+import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.PointGamme
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
@@ -52,6 +53,12 @@ fun SectionGammes(
     points: List<PointGamme>,
     /** Combien de machines suivent chaque gamme, par identifiant de gamme. */
     machinesParGamme: Map<String, Int>,
+    /**
+     * Le taux de réalisation de chaque gamme sur les douze derniers mois, par
+     * identifiant. Une donnée et non un rappel, comme [machinesParGamme] : il se
+     * recalcule à partir des flux observés et ne se stocke jamais.
+     */
+    realisationParGamme: Map<String, RealisationGamme>,
     gammeOuverte: String?,
     actions: ActionsGammes,
     modifier: Modifier = Modifier,
@@ -101,6 +108,7 @@ fun SectionGammes(
                 gamme = gamme,
                 points = points.filter { it.gammeId == gamme.id }.sortedBy { it.rang },
                 machines = machinesParGamme[gamme.id] ?: 0,
+                realisation = realisationParGamme[gamme.id] ?: RealisationGamme(0, 0),
                 actions = actions,
             )
         }
@@ -210,11 +218,60 @@ private fun DialogueNouvelleGamme(
 }
 
 /** Une gamme ouverte : son intitulé, sa cadence, ses points. */
+/**
+ * Le taux de réalisation d'une gamme sur les douze derniers mois.
+ *
+ * **Les deux nombres avant le pourcentage**, et c'est la règle du document
+ * imprimé reprise à l'écran : « 23 faites sur 26 attendues » se vérifie, « 88 % »
+ * invite à croire à une précision que ce calcul n'a pas. Il mesure **combien** de
+ * visites ont été faites et non si elles l'ont été à l'heure, et la phrase le dit
+ * — juger la ponctualité demanderait d'apparier chaque visite à son occurrence et
+ * de décider d'une tolérance, ce qui est une autre question.
+ *
+ * Rien n'était attendu : **pas de taux**, et non zéro. Une gamme créée la semaine
+ * dernière n'a rien à montrer, et « 0 % » la ferait passer pour négligée — même
+ * règle que l'équivalent CO₂ d'un fluide hors catalogue.
+ */
+@Composable
+private fun Realisation(realisation: RealisationGamme, machines: Int) {
+    val taux = realisation.tauxPlafonne
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Sur les 12 derniers mois",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Puce(
+                texte = if (taux == null) {
+                    "aucune visite attendue"
+                } else {
+                    "${realisation.faites} / ${realisation.attendues} · " +
+                        "${Math.round(taux * 100)} %"
+                },
+                chiffre = true,
+            )
+        }
+        Text(
+            text = if (machines == 0) {
+                "Aucune machine ne suit cette gamme : rien n'est attendu d'elle."
+            } else {
+                "Nombre de visites consignées rapporté à ce que la cadence demandait, " +
+                    "machine par machine. Il ne juge pas la ponctualité."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun DialogueGamme(
     gamme: GammeMaintenance,
     points: List<PointGamme>,
     machines: Int,
+    realisation: RealisationGamme,
     actions: ActionsGammes,
 ) {
     var nouveauPoint by remember { mutableStateOf("") }
@@ -235,6 +292,8 @@ private fun DialogueGamme(
                     retenue = gamme.periodicite,
                     onChoisir = { actions.onPeriodicite(gamme, it) },
                 )
+
+                Realisation(realisation = realisation, machines = machines)
 
                 Text(
                     text = if (points.isEmpty()) {

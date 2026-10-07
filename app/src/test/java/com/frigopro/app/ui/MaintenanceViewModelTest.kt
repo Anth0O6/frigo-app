@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
@@ -323,6 +324,94 @@ class MaintenanceViewModelTest {
     }
 
     /**
+     * Le taux de réalisation d'une gamme, sur douze mois glissants.
+     *
+     * Il est exposé en **flux** et non par une fonction qui lirait `.value` :
+     * trois flux doivent être collectés pour que le compte soit juste, et
+     * `.value` sur un flux que personne ne collecte reste à sa valeur initiale
+     * pour toujours. L'écran des Réglages n'observait pas le journal des visites,
+     * et le taux y aurait affiché zéro visite faite sur toutes les gammes — le
+     * genre de chiffre faux qu'on croit. Le flux porte la dépendance dans son
+     * type, et l'écran ne peut plus l'oublier.
+     */
+    @Test
+    fun `le taux de realisation compte les visites des douze derniers mois`() = runTest {
+        val jour = LocalDate.of(2026, 6, 15)
+        val viewModel = creerViewModel(jour = jour)
+        collecter(viewModel)
+        daoEquipements.enregistrer(MACHINE)
+        viewModel.onCreerGamme("Visite mensuelle", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecter(MACHINE.id, gamme.id)
+        advanceUntilIdle()
+        daoMaintenance.enregistrerAffectation(
+            daoMaintenance.affectations.single().copy(depuisLe = LocalDate.of(2026, 1, 1)),
+        )
+        // Cinq attendues — février à juin — et trois faites.
+        listOf(2, 3, 4).forEach { mois ->
+            viewModel.onConsigner(MACHINE, gamme, faitLe = LocalDate.of(2026, mois, 10))
+        }
+        // Et une hors fenêtre, qui ne doit pas compter.
+        viewModel.onConsigner(MACHINE, gamme, faitLe = LocalDate.of(2025, 2, 10))
+        advanceUntilIdle()
+
+        val taux = viewModel.realisations.value[gamme.id]!!
+        assertEquals(5, taux.attendues)
+        assertEquals(3, taux.faites)
+    }
+
+    /**
+     * **L'attestation s'arrête à aujourd'hui**, et c'est le point le plus facile
+     * à rater de tout le document.
+     *
+     * Un contrat mensuel sur l'année 2026 demande douze visites ; au 15 juin il
+     * n'en a pu recevoir que cinq. Compter jusqu'au 31 décembre aurait annoncé
+     * « 5 sur 12 » — 42 % — sur un contrat parfaitement honoré, et ce chiffre-là
+     * part chez le client. C'est la même erreur que de facturer une quantité non
+     * arrondie : elle ne se voit qu'une fois le document envoyé.
+     */
+    @Test
+    fun `l'attestation d'une annee en cours s'arrete a aujourd'hui`() = runTest {
+        val jour = LocalDate.of(2026, 6, 15)
+        val viewModel = creerViewModel(jour = jour)
+        collecter(viewModel)
+        val client = Client(id = "cl-1", nom = "Boucherie Morel", ville = "Lyon")
+        daoClients.enregistrer(client)
+        daoEquipements.enregistrer(MACHINE)
+        viewModel.onCreerGamme("Visite mensuelle", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecter(MACHINE.id, gamme.id)
+        advanceUntilIdle()
+        daoMaintenance.enregistrerAffectation(
+            daoMaintenance.affectations.single().copy(depuisLe = LocalDate.of(2026, 1, 1)),
+        )
+        // Cinq visites, une par mois de février à juin : le contrat est tenu.
+        (2..6).forEach { mois ->
+            viewModel.onConsigner(MACHINE, gamme, faitLe = LocalDate.of(2026, mois, 10))
+        }
+        advanceUntilIdle()
+
+        viewModel.onExporterAttestation(client, 2026)
+        advanceUntilIdle()
+
+        val document = imprime!!
+        assertEquals("ATTESTATION D'ENTRETIEN", document.titre)
+        assertTrue("la période s'arrête au jour courant", "au 15/06/2026" in document.dates)
+        val bilan = document.blocs.first().lignes.map { "${it.intitule} ${it.valeur}" }
+        assertTrue(
+            "cinq attendues et non douze : $bilan",
+            bilan.any { it.contains("5 / 5 attendues") },
+        )
+        assertTrue(bilan.any { it.contains("100 %") })
+        // Le faux producteur rend `null` : l'échec est annoncé, et aucun
+        // document n'est proposé au partage.
+        assertTrue(viewModel.echecExport.value)
+        assertNull(viewModel.documentPret.value)
+    }
+
+    /**
      * Les flux passent par `stateIn(WhileSubscribed)` : ils n'observent la base
      * que tant que quelqu'un écoute, et `.value` sur un flux que personne ne
      * collecte resterait à sa valeur initiale pour toujours.
@@ -339,7 +428,13 @@ class MaintenanceViewModelTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.echeances.collect { }
         }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.realisations.collect { }
+        }
     }
+
+    /** Le dernier document que l'export a produit, pour l'éprouver sans téléphone. */
+    private var imprime: DocumentImprime? = null
 
     private fun TestScope.creerViewModel(
         jour: LocalDate = LocalDate.of(2026, 6, 15),
@@ -352,6 +447,13 @@ class MaintenanceViewModelTest {
             ClientRepository(daoClients, stockage),
             TechnicienRepository(daoTechniciens),
             ParametresRepository(daoParametres, stockage),
+            // Le PDF ne se dessine pas sans téléphone : le faux retient le
+            // document et rend `null`, ce qui fait prendre au ViewModel la
+            // branche d'échec. C'est le texte qui s'éprouve ici, pas le dessin.
+            ProducteurPdf { document ->
+                imprime = document
+                null
+            },
         ) { jour }
     }
 
