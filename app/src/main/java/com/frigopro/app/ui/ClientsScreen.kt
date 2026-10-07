@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.GroupeClients
 import com.frigopro.app.data.GroupeMachines
@@ -89,6 +90,15 @@ fun ClientsRoute(
     modifier: Modifier = Modifier,
     viewModel: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
+    /**
+     * Le plan de maintenance préventive. `viewModel()` rend une seule
+     * instance par classe, si bien que c'est **le même** que celui du
+     * « Préventif » de la tournée : une gamme rattachée ici se voit là sans que
+     * rien ne transporte d'état, et une visite consignée ici éteint l'échéance
+     * qui paraissait dans la liste. C'est le mécanisme qui fait déjà passer le
+     * formulaire d'intervention de l'accueil au planning.
+     */
+    maintenance: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
 ) {
     val carnet by viewModel.groupes.collectAsStateWithLifecycle()
     val fiche by viewModel.fiche.collectAsStateWithLifecycle()
@@ -100,7 +110,16 @@ fun ClientsRoute(
     val photos by machines.photosOuvertes.collectAsStateWithLifecycle()
     val historique by machines.historique.collectAsStateWithLifecycle()
     val relevesMachine by machines.relevesMachine.collectAsStateWithLifecycle()
+    val echeances by maintenance.echeances.collectAsStateWithLifecycle()
+    val gammes by maintenance.gammes.collectAsStateWithLifecycle()
+    val pointsGammes by maintenance.points.collectAsStateWithLifecycle()
+    val visites by maintenance.releves.collectAsStateWithLifecycle()
     var ficheOuverte by remember { mutableStateOf(false) }
+
+    // L'échéance dont on vient de toucher « Fait », en attente de sa feuille.
+    // Tenue par la route comme la feuille du formulaire d'intervention : elle se
+    // superpose à la fiche, et la fiche n'a pas à savoir qu'elle existe.
+    var visite by remember { mutableStateOf<EcheanceMaintenance?>(null) }
 
     // Le client dont on vient de demander la suppression, en attente de
     // confirmation. Tenu par la route et non par la feuille : c'est ici qu'on a
@@ -142,6 +161,21 @@ fun ClientsRoute(
             photos = photos,
             historique = historique,
             releves = relevesMachine,
+            // Filtré ici plutôt que par un flux de plus dans le ViewModel : les
+            // trois listes sont déjà observées par cet écran, et un
+            // `flatMapLatest` sur la machine ouverte aurait ajouté trois flux
+            // pour une liste qui tient en mémoire.
+            plan = PlanMachine(
+                echeances = echeances.filter { it.equipement.id == machineOuverte.id },
+                gammes = gammes,
+                visites = visites.filter { it.equipementId == machineOuverte.id },
+            ),
+            actionsPlan = ActionsPlanMachine(
+                onSuivre = { gammeId -> maintenance.onAffecter(machineOuverte.id, gammeId) },
+                onNePlusSuivre = { gammeId -> maintenance.onRetirer(machineOuverte.id, gammeId) },
+                onConsigner = { visite = it },
+                onRetirerVisite = maintenance::onRetirerVisite,
+            ),
             chargerPhoto = machines::charger,
             onPhotographier = { categorie ->
                 val prise = machines.preparerCapture()
@@ -163,6 +197,18 @@ fun ClientsRoute(
             onFermer = machines::onFermer,
             modifier = modifier,
         )
+
+        visite?.let { echeance ->
+            FeuilleVisite(
+                echeance = echeance,
+                points = pointsGammes.filter { it.gammeId == echeance.gamme.id },
+                onConsigner = { faitLe, notes ->
+                    maintenance.onConsigner(echeance.equipement, echeance.gamme, faitLe, notes)
+                    visite = null
+                },
+                onFermer = { visite = null },
+            )
+        }
 
         if (ficheOuverte) {
             DialogueFicheMachine(

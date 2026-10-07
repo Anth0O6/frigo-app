@@ -224,6 +224,88 @@ class MaintenanceViewModelTest {
     }
 
     /**
+     * Retirer une gamme **d'une machine** — le geste de sa fiche — n'est pas
+     * supprimer la gamme : elle continue de courir sur le reste du parc, et les
+     * visites déjà faites sur celle-ci restent au journal, lien intact.
+     *
+     * C'est la distinction que la fiche doit tenir : une armoire sortie du
+     * contrat d'entretien cesse d'être réclamée, elle ne cesse pas d'avoir été
+     * entretenue.
+     */
+    @Test
+    fun `retirer une gamme d'une machine laisse ses visites et l'autre machine`() = runTest {
+        val viewModel = creerViewModel()
+        collecter(viewModel)
+        val autre = MACHINE.copy(id = "eq-2", nom = "Chambre froide")
+        daoEquipements.enregistrer(MACHINE)
+        daoEquipements.enregistrer(autre)
+        viewModel.onCreerGamme("Visite", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecter(MACHINE.id, gamme.id)
+        viewModel.onAffecter(autre.id, gamme.id)
+        viewModel.onConsigner(MACHINE, gamme, faitLe = LocalDate.of(2026, 6, 10))
+        advanceUntilIdle()
+
+        viewModel.onRetirer(MACHINE.id, gamme.id)
+        advanceUntilIdle()
+
+        assertEquals("la gamme reste", 1, daoMaintenance.gammes.size)
+        assertEquals(
+            "seule l'autre machine la suit encore",
+            listOf(autre.id),
+            daoMaintenance.affectations.map { it.equipementId },
+        )
+        val visite = daoMaintenance.releves.single()
+        assertEquals("la visite reste au journal", MACHINE.id, visite.equipementId)
+        assertEquals("et garde son lien de gamme", gamme.id, visite.gammeId)
+        assertEquals(
+            "plus rien n'est réclamé à la machine retirée",
+            listOf(autre.id),
+            viewModel.echeances.value.map { it.equipement.id },
+        )
+    }
+
+    /**
+     * Une visite cochée sur la mauvaise machine se retire, et l'échéance revient
+     * où elle était.
+     *
+     * C'est ce qui distingue le journal des visites d'une facture émise : il
+     * n'ouvre aucune séquence numérotée, et une case touchée par mégarde
+     * fausserait l'échéance **et** le taux de réalisation. Vivre avec serait pire
+     * que de pouvoir l'effacer.
+     */
+    @Test
+    fun `retirer une visite consignee par erreur ramene l'echeance`() = runTest {
+        // La visite est datée de cinq jours avant la saisie — on consigne sa
+        // tournée le dimanche —, sans quoi elle tomberait sur le départ du plan
+        // et le test ne prouverait rien de la date.
+        val jour = LocalDate.of(2026, 6, 25)
+        val viewModel = creerViewModel(jour = jour)
+        collecter(viewModel)
+        daoEquipements.enregistrer(MACHINE)
+        viewModel.onCreerGamme("Visite", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecter(MACHINE.id, gamme.id)
+        advanceUntilIdle()
+        val attendue = viewModel.echeances.value.single().echeance
+        assertEquals(LocalDate.of(2026, 7, 25), attendue)
+
+        viewModel.onConsigner(MACHINE, gamme, faitLe = LocalDate.of(2026, 6, 20))
+        advanceUntilIdle()
+        assertEquals(LocalDate.of(2026, 7, 20), viewModel.echeances.value.single().echeance)
+
+        viewModel.onRetirerVisite(daoMaintenance.releves.single())
+        advanceUntilIdle()
+
+        assertTrue("le journal est vide", daoMaintenance.releves.isEmpty())
+        val echeance = viewModel.echeances.value.single()
+        assertEquals("l'échéance est revenue où elle était", attendue, echeance.echeance)
+        assertTrue("la machine redevient jamais visitée", echeance.jamaisVisitee)
+    }
+
+    /**
      * Une échéance jamais visitée le dit, parce que c'est une information : une
      * machine qu'on vient de rattacher n'a pas été négligée.
      */

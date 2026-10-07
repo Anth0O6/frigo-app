@@ -87,6 +87,9 @@ fun EcranEquipement(
     photos: List<Photo>,
     historique: List<Intervention>,
     releves: List<Releve>,
+    /** Ce que cette machine doit au calendrier, et ce qu'elle a reçu. */
+    plan: PlanMachine,
+    actionsPlan: ActionsPlanMachine,
     chargerPhoto: suspend (String, Int) -> Bitmap?,
     onPhotographier: (CategoriePhoto) -> Unit,
     onChoisirImage: (CategoriePhoto) -> Unit,
@@ -192,6 +195,17 @@ fun EcranEquipement(
                     )
                 }
             }
+            // Le plan avant les photos : pendant une ronde, « cette machine est
+            // due » et le bouton qui l'éteint sont ce qu'on vient chercher, et
+            // les photos servent à se repérer une fois. Il ne s'affiche que si
+            // des gammes existent — voir [SectionPlanMachine].
+            item(key = "plan") {
+                SectionPlanMachine(
+                    plan = plan,
+                    actions = actionsPlan,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
             if (releves.isNotEmpty()) {
                 item(key = "tendance") {
                     TendanceReleves(
@@ -231,6 +245,17 @@ fun EcranEquipement(
                 items(items = historique, key = { it.id }) { intervention ->
                     LigneHistorique(intervention = intervention)
                 }
+            }
+            // Les visites préventives **après** les interventions, et non
+            // mêlées à elles : une intervention est un passage imprévu, une
+            // visite l'exécution d'un contrat, et les confondre rendrait
+            // illisible la question que chacune des deux listes répond.
+            item(key = "visites") {
+                HistoriqueVisites(
+                    visites = plan.visites,
+                    onRetirer = actionsPlan.onRetirerVisite,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
         }
     }
@@ -474,6 +499,12 @@ private fun EcranEquipementPreview() {
                     ),
                 ),
                 releves = emptyList(),
+                plan = PlanMachine(
+                    echeances = emptyList(),
+                    gammes = emptyList(),
+                    visites = emptyList(),
+                ),
+                actionsPlan = ActionsPlanMachine({}, {}, {}, {}),
                 chargerPhoto = { _, _ -> null },
                 onPhotographier = {},
                 onChoisirImage = {},
