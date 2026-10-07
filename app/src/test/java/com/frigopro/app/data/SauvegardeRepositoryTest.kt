@@ -27,6 +27,7 @@ class SauvegardeRepositoryTest {
     private val daoVerifications = FauxVerificationFluideDao()
     private val daoFactures = FauxFactureDao()
     private val daoMateriel = FauxMaterielDao()
+    private val daoMaintenance = FauxMaintenanceDao()
     private val repository =
         SauvegardeRepository(
             daoInterventions,
@@ -41,7 +42,66 @@ class SauvegardeRepositoryTest {
             daoVerifications,
             daoFactures,
             daoMateriel,
+            daoMaintenance,
         )
+
+    /**
+     * Le plan de maintenance fait l'aller-retour entier, journal compris.
+     *
+     * Il part dans l'archive pour la raison qui y a fait entrer les paliers
+     * dégressifs et les seuils du magasin — ce n'est pas une donnée qu'on
+     * retrouve —, et le journal pour une raison plus forte : c'est la preuve
+     * qu'une maintenance contractuelle a été faite. Perdre une gamme coûte une
+     * saisie ; perdre le journal coûte la pièce qu'un contrôle réclamera.
+     */
+    @Test
+    fun `le plan de maintenance fait l'aller-retour sans perte`() = runTest {
+        daoMaintenance.enregistrerGamme(GAMME)
+        daoMaintenance.enregistrerPoint(POINT_GAMME)
+        daoMaintenance.enregistrerAffectation(AFFECTATION)
+        daoMaintenance.enregistrerReleve(VISITE)
+
+        val contenu = repository.exporter().contenu
+        val neuf = FauxMaintenanceDao()
+        val accueil = SauvegardeRepository(
+            FauxInterventionDao(),
+            FauxClientDao(),
+            FauxTypeInterventionDao(),
+            FauxEquipementDao(),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(),
+            FauxPrestationDao(),
+            FauxVerificationFluideDao(),
+            FauxFactureDao(),
+            FauxMaterielDao(),
+            neuf,
+        )
+        accueil.restaurer(contenu)
+
+        assertEquals(listOf(GAMME), neuf.gammes)
+        assertEquals(listOf(POINT_GAMME), neuf.points)
+        assertEquals(listOf(AFFECTATION), neuf.affectations)
+        assertEquals(listOf(VISITE), neuf.releves)
+    }
+
+    /**
+     * Une périodicité qu'on ne sait pas lire fait refuser **le fichier entier**,
+     * avant toute écriture. Même règle qu'un statut d'intervention inconnu : une
+     * périodicité est une valeur fixe de l'application, et un plan dont une
+     * cadence manquerait réclamerait des visites à la mauvaise date.
+     */
+    @Test
+    fun `une periodicite inconnue fait refuser l'archive`() = runTest {
+        daoMaintenance.enregistrerGamme(GAMME)
+        val contenu = repository.exporter().contenu
+            .replace("\"MENSUEL\"", "\"TOUS_LES_TROIS_JEUDIS\"")
+
+        val resultat = vierge().restaurer(contenu)
+
+        assertEquals(ResultatRestauration.Illisible, resultat)
+    }
 
     @Test
     fun `ce qui est exporte revient identique`() = runTest {
@@ -92,6 +152,7 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         ).restaurer(contenu)
 
         assertEquals(CLIENT, autreClients.contenu.single())
@@ -124,6 +185,7 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         ).restaurer(contenu)
 
         assertEquals(EQUIPEMENT, autreEquipements.contenu.single())
@@ -170,6 +232,7 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -371,6 +434,7 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         ).restaurer(contenu)
 
         assertEquals(ResultatRestauration.Illisible, resultat)
@@ -422,6 +486,7 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         ).restaurer(export.contenu)
 
         assertEquals(2, export.types)
@@ -649,6 +714,7 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         )
     }
 
@@ -667,10 +733,49 @@ class SauvegardeRepositoryTest {
             FauxVerificationFluideDao(),
             FauxFactureDao(),
             FauxMaterielDao(),
+            FauxMaintenanceDao(),
         )
     }
 
     private companion object {
+
+        val GAMME = GammeMaintenance(
+            id = "g-1",
+            libelle = "Visite mensuelle groupe froid",
+            periodicite = Periodicite.MENSUEL,
+            rang = 1,
+            modifieLe = Instant.ofEpochMilli(18),
+        )
+
+        val POINT_GAMME = PointGamme(
+            id = "pg-1",
+            gammeId = "g-1",
+            libelle = "Nettoyer le condenseur",
+            rang = 0,
+            modifieLe = Instant.ofEpochMilli(18),
+        )
+
+        val AFFECTATION = AffectationGamme(
+            id = "ag-1",
+            equipementId = "eq-1",
+            gammeId = "g-1",
+            depuisLe = LocalDate.of(2026, 6, 1),
+            modifieLe = Instant.ofEpochMilli(18),
+        )
+
+        val VISITE = ReleveGamme(
+            id = "rg-1",
+            equipementId = "eq-1",
+            equipementNom = "Centrale négatif",
+            gammeId = "g-1",
+            gammeLibelle = "Visite mensuelle groupe froid",
+            periodicite = Periodicite.MENSUEL,
+            faitLe = LocalDate.of(2026, 7, 2),
+            technicienId = null,
+            technicienNom = "Anthony O.",
+            notes = "Condenseur encrassé, nettoyé",
+            modifieLe = Instant.ofEpochMilli(18),
+        )
 
         val CLIENT = Client(
             id = "cl-1",

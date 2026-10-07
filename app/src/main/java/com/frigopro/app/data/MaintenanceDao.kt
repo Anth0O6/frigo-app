@@ -94,6 +94,37 @@ abstract class MaintenanceDao {
     @Query("DELETE FROM releves_gamme WHERE id = :id")
     abstract suspend fun supprimerReleve(id: String)
 
+    // — Ce que la sauvegarde lit, et ce qu'elle réécrit ————————————————————
+    //
+    // Les écritures de restauration passent par le DAO et non par le dépôt, qui
+    // horodaterait chaque ligne et effacerait le `modifieLe` transporté par le
+    // fichier — or c'est précisément lui qui départagera deux versions d'une même
+    // ligne le jour où deux téléphones fusionneront leurs archives.
+
+    @Query("SELECT * FROM gammes")
+    abstract suspend fun toutesLesGammes(): List<GammeMaintenance>
+
+    @Query("SELECT * FROM points_gamme")
+    abstract suspend fun tousLesPoints(): List<PointGamme>
+
+    @Query("SELECT * FROM affectations_gamme")
+    abstract suspend fun toutesLesAffectations(): List<AffectationGamme>
+
+    @Query("SELECT * FROM releves_gamme")
+    abstract suspend fun tousLesReleves(): List<ReleveGamme>
+
+    @Upsert
+    abstract suspend fun enregistrerGammes(gammes: List<GammeMaintenance>)
+
+    @Upsert
+    abstract suspend fun enregistrerPoints(points: List<PointGamme>)
+
+    @Upsert
+    abstract suspend fun enregistrerAffectations(affectations: List<AffectationGamme>)
+
+    @Upsert
+    abstract suspend fun enregistrerReleves(releves: List<ReleveGamme>)
+
     // — Les deux suppressions qui touchent plusieurs tables ————————————————
 
     /**

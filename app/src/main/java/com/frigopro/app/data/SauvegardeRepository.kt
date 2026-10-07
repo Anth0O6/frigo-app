@@ -72,6 +72,7 @@ class SauvegardeRepository(
     private val verificationFluideDao: VerificationFluideDao,
     private val factureDao: FactureDao,
     private val materielDao: MaterielDao,
+    private val maintenanceDao: MaintenanceDao,
     private val maintenant: () -> Instant = { Instant.now() },
 ) {
 
@@ -98,6 +99,10 @@ class SauvegardeRepository(
         val articles = materielDao.tousLesArticles()
         val stocks = materielDao.tousLesStocks()
         val paliers = prestationDao.tousLesPaliers()
+        val gammes = maintenanceDao.toutesLesGammes()
+        val pointsGamme = maintenanceDao.tousLesPoints()
+        val affectations = maintenanceDao.toutesLesAffectations()
+        val relevesGamme = maintenanceDao.tousLesReleves()
         val sauvegarde = Sauvegarde(
             format = FORMAT_COURANT,
             exporteeLe = maintenant().toString(),
@@ -123,6 +128,10 @@ class SauvegardeRepository(
             articles = articles.map { it.versSauvegarde() },
             stocks = stocks.map { it.versSauvegarde() },
             paliers = paliers.map { it.versSauvegarde() },
+            gammes = gammes.map { it.versSauvegarde() },
+            pointsGamme = pointsGamme.map { it.versSauvegarde() },
+            affectationsGamme = affectations.map { it.versSauvegarde() },
+            relevesGamme = relevesGamme.map { it.versSauvegarde() },
         )
 
         // Les signatures sont des images comme les autres, rangées au même
@@ -179,6 +188,12 @@ class SauvegardeRepository(
         if (fournisseurs.any { it == null }) return ResultatRestauration.Illisible
         val stocks = sauvegarde.stocks.map { it.versStock() }
         if (stocks.any { it == null }) return ResultatRestauration.Illisible
+        val gammes = sauvegarde.gammes.map { it.versGamme() }
+        if (gammes.any { it == null }) return ResultatRestauration.Illisible
+        val affectations = sauvegarde.affectationsGamme.map { it.versAffectation() }
+        if (affectations.any { it == null }) return ResultatRestauration.Illisible
+        val relevesGamme = sauvegarde.relevesGamme.map { it.versReleveGamme() }
+        if (relevesGamme.any { it == null }) return ResultatRestauration.Illisible
 
         val reglages = sauvegarde.parametres?.versParametres()
         if (sauvegarde.parametres != null && reglages == null) {
@@ -226,6 +241,16 @@ class SauvegardeRepository(
         materielDao.enregistrerFournisseurs(fournisseurs.filterNotNull())
         materielDao.enregistrerArticles(sauvegarde.articles.map { it.versArticle() })
         materielDao.enregistrerStocks(stocks.filterNotNull())
+        // Le plan de maintenance en dernier : les points et les affectations
+        // portent l'identifiant d'une gamme, et les affectations celui d'une
+        // machine. Même règle que partout — rien ne doit désigner une ligne que
+        // la base ne contient pas encore. Le journal vient après tout le reste,
+        // ses deux liens étant nullables : il se relit entier même quand la
+        // gamme ou la machine qu'il nommait a disparu entre-temps.
+        maintenanceDao.enregistrerGammes(gammes.filterNotNull())
+        maintenanceDao.enregistrerPoints(sauvegarde.pointsGamme.map { it.versPointGamme() })
+        maintenanceDao.enregistrerAffectations(affectations.filterNotNull())
+        maintenanceDao.enregistrerReleves(relevesGamme.filterNotNull())
         reglages?.let { parametresDao.enregistrer(it) }
 
         return ResultatRestauration.Reussie(

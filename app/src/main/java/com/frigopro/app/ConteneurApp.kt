@@ -5,6 +5,7 @@ import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FactureRepository
+import com.frigopro.app.data.MaintenanceRepository
 import com.frigopro.app.data.FichiersExternes
 import com.frigopro.app.data.FrigoProDatabase
 import com.frigopro.app.data.InterventionRepository
@@ -93,7 +94,16 @@ class ConteneurApp(private val contexte: Context) {
             base.verificationFluideDao(),
             base.factureDao(),
             base.materielDao(),
+            base.maintenanceDao(),
         )
+    }
+
+    /**
+     * Le plan de maintenance préventive : les gammes, leurs affectations, et le
+     * journal des visites. Voir `Maintenance.kt`.
+     */
+    val maintenance: MaintenanceRepository by lazy {
+        MaintenanceRepository(base.maintenanceDao())
     }
 
     /**

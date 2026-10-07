@@ -45,6 +45,10 @@ data class Sauvegarde(
     val articles: List<ArticleSauvegarde> = emptyList(),
     val stocks: List<StockSauvegarde> = emptyList(),
     val paliers: List<PalierSauvegarde> = emptyList(),
+    val gammes: List<GammeSauvegarde> = emptyList(),
+    val pointsGamme: List<PointGammeSauvegarde> = emptyList(),
+    val affectationsGamme: List<AffectationGammeSauvegarde> = emptyList(),
+    val relevesGamme: List<ReleveGammeSauvegarde> = emptyList(),
 )
 
 /**
@@ -546,7 +550,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 13
+const val FORMAT_COURANT: Int = 14
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -742,6 +746,168 @@ internal fun FournisseurSauvegarde.versFournisseur(): Fournisseur? {
         siteCatalogue = siteCatalogue,
         prefere = prefere,
         notes = notes,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+/**
+ * Une gamme de maintenance, dans l'archive.
+ *
+ * Le plan de maintenance part dans la sauvegarde pour la raison qui y a fait
+ * entrer les paliers dégressifs et les seuils du magasin : **ce n'est pas une
+ * donnée qu'on retrouve.** Les points d'une visite mensuelle sont le fruit d'un
+ * contrat négocié et de ce qu'on a appris du site ; un technicien qui restaure et
+ * voit son plan effacé repartirait de zéro sur des centaines de machines.
+ *
+ * Le **journal** y entre pour une raison plus forte encore, celle qui vaut pour
+ * les factures émises : c'est la preuve qu'une maintenance contractuelle a été
+ * faite. Perdre une gamme coûte une saisie à refaire ; perdre le journal coûte la
+ * pièce qu'un client ou un contrôle réclamera.
+ */
+@Serializable
+data class GammeSauvegarde(
+    val id: String,
+    val libelle: String,
+    val periodicite: String,
+    val rang: Int = 0,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class PointGammeSauvegarde(
+    val id: String,
+    val gammeId: String,
+    val libelle: String,
+    val rang: Int = 0,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class AffectationGammeSauvegarde(
+    val id: String,
+    val equipementId: String,
+    val gammeId: String,
+    /**
+     * Le point de départ du plan, **indispensable** : sans lui une machine
+     * restaurée réclamerait toutes les visites depuis sa mise en service. Voir
+     * [Maintenance.echeance].
+     */
+    val depuisLe: String,
+    val modifieLe: Long = 0L,
+)
+
+@Serializable
+data class ReleveGammeSauvegarde(
+    val id: String,
+    val equipementId: String? = null,
+    val equipementNom: String = "",
+    val gammeId: String? = null,
+    val gammeLibelle: String = "",
+    val periodicite: String,
+    val faitLe: String,
+    val technicienId: String? = null,
+    val technicienNom: String = "",
+    val notes: String = "",
+    val interventionId: String? = null,
+    val modifieLe: Long = 0L,
+)
+
+internal fun GammeMaintenance.versSauvegarde(): GammeSauvegarde = GammeSauvegarde(
+    id = id,
+    libelle = libelle,
+    periodicite = periodicite.name,
+    rang = rang,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/**
+ * `null` sur une périodicité inconnue, ce qui fait refuser **le fichier entier**.
+ *
+ * Même règle qu'un statut d'intervention ou qu'une catégorie de photo : une
+ * périodicité est une valeur fixe de l'application, pas un intitulé libre, et une
+ * valeur qu'on ne sait pas lire ne se devine pas. Une archive à moitié restaurée
+ * serait pire qu'une restauration refusée — ici, un plan dont une cadence
+ * manquerait réclamerait des visites à la mauvaise date.
+ */
+internal fun GammeSauvegarde.versGamme(): GammeMaintenance? {
+    val pas = Periodicite.entries.firstOrNull { it.name == periodicite } ?: return null
+    return GammeMaintenance(
+        id = id,
+        libelle = libelle,
+        periodicite = pas,
+        rang = rang,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun PointGamme.versSauvegarde(): PointGammeSauvegarde = PointGammeSauvegarde(
+    id = id,
+    gammeId = gammeId,
+    libelle = libelle,
+    rang = rang,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+internal fun PointGammeSauvegarde.versPointGamme(): PointGamme = PointGamme(
+    id = id,
+    gammeId = gammeId,
+    libelle = libelle,
+    rang = rang,
+    modifieLe = Instant.ofEpochMilli(modifieLe),
+)
+
+internal fun AffectationGamme.versSauvegarde(): AffectationGammeSauvegarde =
+    AffectationGammeSauvegarde(
+        id = id,
+        equipementId = equipementId,
+        gammeId = gammeId,
+        depuisLe = depuisLe.toString(),
+        modifieLe = modifieLe.toEpochMilli(),
+    )
+
+/** `null` sur une date illisible : voir [GammeSauvegarde.versGamme]. */
+internal fun AffectationGammeSauvegarde.versAffectation(): AffectationGamme? {
+    val depart = runCatching { LocalDate.parse(depuisLe) }.getOrNull() ?: return null
+    return AffectationGamme(
+        id = id,
+        equipementId = equipementId,
+        gammeId = gammeId,
+        depuisLe = depart,
+        modifieLe = Instant.ofEpochMilli(modifieLe),
+    )
+}
+
+internal fun ReleveGamme.versSauvegarde(): ReleveGammeSauvegarde = ReleveGammeSauvegarde(
+    id = id,
+    equipementId = equipementId,
+    equipementNom = equipementNom,
+    gammeId = gammeId,
+    gammeLibelle = gammeLibelle,
+    periodicite = periodicite.name,
+    faitLe = faitLe.toString(),
+    technicienId = technicienId,
+    technicienNom = technicienNom,
+    notes = notes,
+    interventionId = interventionId,
+    modifieLe = modifieLe.toEpochMilli(),
+)
+
+/** `null` sur une périodicité ou une date illisible. Voir [GammeSauvegarde.versGamme]. */
+internal fun ReleveGammeSauvegarde.versReleveGamme(): ReleveGamme? {
+    val pas = Periodicite.entries.firstOrNull { it.name == periodicite } ?: return null
+    val jour = runCatching { LocalDate.parse(faitLe) }.getOrNull() ?: return null
+    return ReleveGamme(
+        id = id,
+        equipementId = equipementId,
+        equipementNom = equipementNom,
+        gammeId = gammeId,
+        gammeLibelle = gammeLibelle,
+        periodicite = pas,
+        faitLe = jour,
+        technicienId = technicienId,
+        technicienNom = technicienNom,
+        notes = notes,
+        interventionId = interventionId,
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }
