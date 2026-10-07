@@ -42,6 +42,12 @@ object Convertisseurs {
     fun versInstant(valeur: Long?): Instant? = valeur?.let(Instant::ofEpochMilli)
 
     @TypeConverter
+    fun depuisPeriodicite(periodicite: Periodicite?): String? = periodicite?.name
+
+    @TypeConverter
+    fun versPeriodicite(valeur: String?): Periodicite? = valeur?.let(Periodicite::valueOf)
+
+    @TypeConverter
     fun depuisCategorie(categorie: CategoriePhoto?): String? = categorie?.name
 
     @TypeConverter

@@ -834,3 +834,85 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
         )
     }
 }
+
+/**
+ * Le plan de maintenance préventive : quatre tables, **six index**, aucune
+ * reconstruction — et c'est le signe que le modèle s'y prêtait.
+ *
+ * L'index unique d'`affectations_gamme` est le **deuxième du projet**, après celui
+ * des stocks, et il porte une règle plutôt qu'une optimisation : deux affectations
+ * de la même gamme à la même machine donneraient deux échéances contradictoires
+ * sans que rien ne dise laquelle est bonne. La base le refuse, plutôt que de
+ * compter sur le dépôt pour y penser.
+ *
+ * Les quatre tables arrivent **vides**, et il n'y a donc aucun défaut à justifier :
+ * les points d'une visite mensuelle sont ceux d'un contrat et d'un site, pas ceux
+ * d'un métier, et en livrer d'office aurait fait cocher des points que personne
+ * n'a relus. Même raison que la liste des types d'intervention, vide au premier
+ * lancement.
+ *
+ * `releves_gamme.equipementId` et `gammeId` sont **nullables** à dessein : une
+ * ligne de ce journal est la preuve qu'une maintenance contractuelle a été faite,
+ * et supprimer une gamme ou ranger l'inventaire coupe le lien sans effacer
+ * l'histoire. Les intitulés sont recopiés sur la ligne pour qu'elle reste lisible.
+ */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `gammes` (" +
+                "`id` TEXT NOT NULL, `libelle` TEXT NOT NULL, " +
+                "`periodicite` TEXT NOT NULL, `rang` INTEGER NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `points_gamme` (" +
+                "`id` TEXT NOT NULL, `gammeId` TEXT NOT NULL, " +
+                "`libelle` TEXT NOT NULL, `rang` INTEGER NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_points_gamme_gammeId` " +
+                "ON `points_gamme` (`gammeId`)",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `affectations_gamme` (" +
+                "`id` TEXT NOT NULL, `equipementId` TEXT NOT NULL, " +
+                "`gammeId` TEXT NOT NULL, `depuisLe` TEXT NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_affectations_gamme_equipementId_gammeId` " +
+                "ON `affectations_gamme` (`equipementId`, `gammeId`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_affectations_gamme_gammeId` " +
+                "ON `affectations_gamme` (`gammeId`)",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `releves_gamme` (" +
+                "`id` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`equipementNom` TEXT NOT NULL, `gammeId` TEXT, " +
+                "`gammeLibelle` TEXT NOT NULL, `periodicite` TEXT NOT NULL, " +
+                "`faitLe` TEXT NOT NULL, `technicienId` TEXT, " +
+                "`technicienNom` TEXT NOT NULL, `notes` TEXT NOT NULL, " +
+                "`interventionId` TEXT, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_releves_gamme_equipementId` " +
+                "ON `releves_gamme` (`equipementId`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_releves_gamme_gammeId` " +
+                "ON `releves_gamme` (`gammeId`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_releves_gamme_faitLe` " +
+                "ON `releves_gamme` (`faitLe`)",
+        )
+    }
+}
