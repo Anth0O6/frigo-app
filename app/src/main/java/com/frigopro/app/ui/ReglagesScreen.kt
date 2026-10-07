@@ -48,7 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.PalierPrestation
+import com.frigopro.app.data.GammeMaintenance
 import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.PointGamme
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.composants.Carte
@@ -79,6 +81,7 @@ enum class PageReglages(val titre: String) {
     TARIFS("Tarifs et paiement"),
     DEPLACEMENT("Déplacement"),
     CATALOGUE("Catalogue des prestations"),
+    GAMMES("Gammes de maintenance"),
     AFFICHAGE("Affichage"),
     TYPES("Types d'intervention"),
     SAUVEGARDE("Sauvegarde"),
@@ -100,6 +103,12 @@ fun ReglagesRoute(
     onPage: (PageReglages?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ReglagesViewModel = viewModel(factory = ReglagesViewModel.Factory),
+    /**
+     * Le plan de maintenance, partagé avec la vue Préventif de la tournée :
+     * `viewModel()` rend une seule instance par classe, si bien qu'une gamme
+     * créée ici est déjà celle que l'autre écran montre.
+     */
+    plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
 ) {
     val types by viewModel.types.collectAsStateWithLifecycle()
     val dialogue by viewModel.dialogue.collectAsStateWithLifecycle()
@@ -109,6 +118,10 @@ fun ReglagesRoute(
     val anneesRegistre by viewModel.anneesRegistre.collectAsStateWithLifecycle()
     val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
     val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
+    val gammes by plan.gammes.collectAsStateWithLifecycle()
+    val pointsGamme by plan.points.collectAsStateWithLifecycle()
+    val affectations by plan.affectations.collectAsStateWithLifecycle()
+    val gammeOuverte by plan.gammeOuverte.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // Le logo vient de la galerie : aucune permission, le sélecteur du système
@@ -197,6 +210,23 @@ fun ReglagesRoute(
         // l'écran l'héberge sans la connaître, exactement comme la barre de la
         // tournée le faisait avant elle.
         sauvegarde = { SectionSauvegarde() },
+        gammes = gammes,
+        pointsGamme = pointsGamme,
+        // Combien de machines suivent chaque gamme : dérivé des affectations,
+        // jamais stocké — un compteur en base serait faux au premier
+        // rattachement fait depuis l'autre écran.
+        machinesParGamme = affectations.groupingBy { it.gammeId }.eachCount(),
+        gammeOuverte = gammeOuverte,
+        actionsGammes = ActionsGammes(
+            onOuvrir = plan::onOuvrirGamme,
+            onFermer = plan::onFermerGamme,
+            onCreer = plan::onCreerGamme,
+            onRenommer = plan::onRenommerGamme,
+            onPeriodicite = plan::onPeriodicite,
+            onSupprimer = plan::onSupprimerGamme,
+            onAjouterPoint = plan::onAjouterPoint,
+            onSupprimerPoint = plan::onSupprimerPoint,
+        ),
         modifier = modifier,
     )
 
@@ -294,6 +324,11 @@ fun ReglagesScreen(
      * employait déjà pour le même composant.
      */
     sauvegarde: @Composable () -> Unit = {},
+    gammes: List<GammeMaintenance> = emptyList(),
+    pointsGamme: List<PointGamme> = emptyList(),
+    machinesParGamme: Map<String, Int> = emptyMap(),
+    gammeOuverte: String? = null,
+    actionsGammes: ActionsGammes = ActionsGammes(),
     modifier: Modifier = Modifier,
 ) {
     // Une seule profondeur à défaire : la page ouverte remplace le sommaire, et
@@ -363,6 +398,8 @@ fun ReglagesScreen(
                     parametres = parametres,
                     prestations = prestations,
                     types = types,
+                    gammes = gammes,
+                    machinesParGamme = machinesParGamme,
                     onPage = onPage,
                 )
 
@@ -416,6 +453,16 @@ fun ReglagesScreen(
                         paliers = paliers,
                         onDefinirPalier = onDefinirPalier,
                         onSupprimerPalier = onSupprimerPalier,
+                    )
+                }
+
+                PageReglages.GAMMES -> item {
+                    SectionGammes(
+                        gammes = gammes,
+                        points = pointsGamme,
+                        machinesParGamme = machinesParGamme,
+                        gammeOuverte = gammeOuverte,
+                        actions = actionsGammes,
                     )
                 }
 
@@ -477,6 +524,8 @@ private fun LazyListScope.sommaire(
     parametres: Parametres,
     prestations: List<Prestation>,
     types: List<TypeIntervention>,
+    gammes: List<GammeMaintenance>,
+    machinesParGamme: Map<String, Int>,
     onPage: (PageReglages) -> Unit,
 ) {
     val tarifes = prestations.count { it.prixUnitaire > 0.0 }
@@ -504,6 +553,18 @@ private fun LazyListScope.sommaire(
                 "tarif non réglé"
             },
         ).joinToString(" · "),
+        PageReglages.GAMMES to when {
+            gammes.isEmpty() -> "Aucune gamme"
+            else -> {
+                val suivies = machinesParGamme.values.sum()
+                "${gammes.size} gamme${pluriel(gammes.size)}, " +
+                    if (suivies == 0) {
+                        "aucune machine suivie"
+                    } else {
+                        "$suivies machine${pluriel(suivies)} suivie${pluriel(suivies)}"
+                    }
+            }
+        },
         PageReglages.CATALOGUE to when {
             prestations.isEmpty() -> "Catalogue vide"
             tarifes == 0 -> "${prestations.size} prestations, aucune tarifée"

@@ -1,0 +1,276 @@
+package com.frigopro.app.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.AffectationGamme
+import com.frigopro.app.data.ClientRepository
+import com.frigopro.app.data.EcheanceMaintenance
+import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.GammeMaintenance
+import com.frigopro.app.data.MaintenanceRepository
+import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.Periodicite
+import com.frigopro.app.data.PlanMaintenance
+import com.frigopro.app.data.PointGamme
+import com.frigopro.app.data.RealisationGamme
+import com.frigopro.app.data.ReleveGamme
+import com.frigopro.app.data.StatutEcheance
+import com.frigopro.app.data.Technicien
+import com.frigopro.app.data.TechnicienRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+
+/**
+ * Le plan de maintenance préventive : les gammes qu'on tient, et ce que le
+ * calendrier doit.
+ *
+ * Il observe cinq flux et n'en garde aucun calcul : les échéances se recomposent
+ * par [PlanMaintenance.echeances], qui est une fonction pure. C'est ce qui permet
+ * de changer la périodicité d'une gamme sans rien régénérer — l'écran suivant la
+ * recalcule, et aucune table d'occurrences n'a besoin d'être rattrapée.
+ */
+class MaintenanceViewModel(
+    private val maintenance: MaintenanceRepository,
+    private val equipements: EquipementRepository,
+    private val clients: ClientRepository,
+    private val techniciens: TechnicienRepository,
+    private val parametres: ParametresRepository,
+    /**
+     * Le jour courant, relu à chaque collecte plutôt que figé à la construction :
+     * le ViewModel survit à une mise en arrière-plan, et l'application rouverte le
+     * lendemain matin doit compter le retard du lendemain. Même raison que dans
+     * [AujourdhuiViewModel].
+     */
+    private val aujourdhui: () -> LocalDate = { LocalDate.now() },
+) : ViewModel() {
+
+    val gammes: StateFlow<List<GammeMaintenance>> = maintenance.gammes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    val points: StateFlow<List<PointGamme>> = maintenance.points
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    val affectations: StateFlow<List<AffectationGamme>> = maintenance.affectations
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    val releves: StateFlow<List<ReleveGamme>> = maintenance.releves
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    /**
+     * Toutes les échéances du parc, la plus urgente d'abord.
+     *
+     * Cinq flux croisés en mémoire plutôt qu'une jointure SQL, pour la raison de
+     * `LigneTournee` : ils sont déjà observés, et le calcul d'échéance est en
+     * Kotlin. Sur un site de plusieurs centaines d'équipements cela fait quelques
+     * milliers de comparaisons à chaque écriture, ce qui est sans conséquence — là
+     * où une vue SQL aurait demandé d'y porter aussi l'arithmétique des mois.
+     */
+    val echeances: StateFlow<List<EcheanceMaintenance>> = combine(
+        equipements.equipements,
+        maintenance.gammes,
+        maintenance.affectations,
+        maintenance.releves,
+        clients.clients,
+    ) { parc, lesGammes, lesAffectations, lesReleves, carnet ->
+        val noms = carnet.associate { it.id to it.nom }
+        PlanMaintenance.echeances(
+            equipements = parc,
+            gammes = lesGammes,
+            affectations = lesAffectations,
+            releves = lesReleves,
+            nomDuClient = { id -> noms[id].orEmpty() },
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+        emptyList(),
+    )
+
+    /**
+     * Ce qui appelle une action : en retard, puis dû dans le préavis de sa cadence.
+     *
+     * Le jour est relu à chaque émission et non capturé une fois : l'application
+     * rouverte le lendemain matin doit compter le retard du lendemain, et le flux
+     * ne réémet que sur une écriture — c'est pourquoi l'écran appelle aussi
+     * [compte] à l'affichage plutôt que de lire un chiffre figé.
+     */
+    val aFaire: StateFlow<List<EcheanceMaintenance>> = echeances
+        .map { liste -> liste.filter { it.statut(aujourdhui()).appelleUneAction } }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            emptyList(),
+        )
+
+    /** Combien d'échéances par statut, pour les trois chiffres de l'en-tête. */
+    fun compte(statut: StatutEcheance): Int =
+        echeances.value.count { it.statut(aujourdhui()) == statut }
+
+    /** Le taux de réalisation d'une gamme sur les douze derniers mois. */
+    fun realisation(gamme: GammeMaintenance): RealisationGamme {
+        val fin = aujourdhui()
+        return PlanMaintenance.realisation(
+            gamme = gamme,
+            affectations = affectations.value,
+            releves = releves.value,
+            debut = fin.minusYears(1),
+            fin = fin,
+        )
+    }
+
+    // — Les gammes et leurs points ———————————————————————————————————————————
+
+    private val _gammeOuverte = MutableStateFlow<String?>(null)
+
+    /**
+     * La gamme en cours d'édition, **retenue par son identifiant** et non par sa
+     * valeur : ce qu'affiche la boîte vient alors toujours de la base, si bien
+     * qu'un renommage s'y voit sans rien recopier et qu'une suppression la referme
+     * d'elle-même. Même motif que la fiche machine ouverte.
+     */
+    val gammeOuverte: StateFlow<String?> = _gammeOuverte.asStateFlow()
+
+    fun onOuvrirGamme(gammeId: String?) {
+        _gammeOuverte.value = gammeId
+    }
+
+    fun onFermerGamme() {
+        _gammeOuverte.value = null
+    }
+
+    /** Crée une gamme et l'ouvre : on vient d'en créer une pour la garnir. */
+    fun onCreerGamme(libelle: String, periodicite: Periodicite) {
+        val gamme = GammeMaintenance(
+            libelle = libelle,
+            periodicite = periodicite,
+            rang = gammes.value.size,
+        )
+        viewModelScope.launch {
+            if (maintenance.enregistrerGamme(gamme)) _gammeOuverte.value = gamme.id
+        }
+    }
+
+    fun onRenommerGamme(gamme: GammeMaintenance, libelle: String) {
+        viewModelScope.launch { maintenance.enregistrerGamme(gamme.copy(libelle = libelle)) }
+    }
+
+    /**
+     * Change la cadence d'une gamme.
+     *
+     * Rien n'est régénéré, et c'est tout l'intérêt de ne stocker aucune
+     * occurrence : la prochaine échéance de chaque machine se recalcule au pas
+     * nouveau, à partir de sa dernière visite. Les visites déjà faites gardent la
+     * cadence qu'elles portaient — elles ont été faites sous l'ancien contrat.
+     */
+    fun onPeriodicite(gamme: GammeMaintenance, periodicite: Periodicite) {
+        viewModelScope.launch { maintenance.enregistrerGamme(gamme.copy(periodicite = periodicite)) }
+    }
+
+    fun onSupprimerGamme(gamme: GammeMaintenance) {
+        if (_gammeOuverte.value == gamme.id) _gammeOuverte.value = null
+        viewModelScope.launch { maintenance.supprimerGamme(gamme.id) }
+    }
+
+    fun onAjouterPoint(gammeId: String, libelle: String) {
+        val siens = points.value.count { it.gammeId == gammeId }
+        viewModelScope.launch {
+            maintenance.enregistrerPoint(
+                PointGamme(gammeId = gammeId, libelle = libelle, rang = siens),
+            )
+        }
+    }
+
+    fun onSupprimerPoint(point: PointGamme) {
+        viewModelScope.launch { maintenance.supprimerPoint(point.id) }
+    }
+
+    // — Le plan d'une machine ————————————————————————————————————————————————
+
+    fun onAffecter(equipementId: String, gammeId: String) {
+        viewModelScope.launch { maintenance.affecter(equipementId, gammeId, aujourdhui()) }
+    }
+
+    fun onRetirer(equipementId: String, gammeId: String) {
+        viewModelScope.launch { maintenance.retirer(equipementId, gammeId) }
+    }
+
+    /**
+     * Rattache une gamme à **tout un parc** d'un seul geste.
+     *
+     * C'est le geste qui rend la GMAO tenable sur un site de plusieurs centaines
+     * d'équipements : les rattacher un à un demanderait une soirée, et la soirée
+     * ne se prendrait pas. Les unités intérieures sont incluses — un split suivi
+     * sans ses unités ne voudrait rien dire.
+     */
+    fun onAffecterAuParc(equipements: List<Equipement>, gammeId: String) {
+        val jour = aujourdhui()
+        viewModelScope.launch {
+            equipements.forEach { machine -> maintenance.affecter(machine.id, gammeId, jour) }
+        }
+    }
+
+    /**
+     * Consigne une visite faite.
+     *
+     * Le technicien des Réglages est recopié sur la ligne faute de mieux : c'est
+     * le seul nom que l'application connaisse avec certitude, et une visite sans
+     * auteur perdrait la moitié de sa valeur de preuve.
+     */
+    fun onConsigner(
+        equipement: Equipement,
+        gamme: GammeMaintenance,
+        faitLe: LocalDate? = null,
+        notes: String = "",
+    ) {
+        viewModelScope.launch {
+            val nom = parametres.lire().technicien
+            val connus = techniciens.techniciens.first()
+            val auteur = connus.firstOrNull { it.nom == nom }
+                ?: nom.takeIf { it.isNotBlank() }?.let { Technicien(nom = it) }
+            maintenance.consigner(
+                equipement = equipement,
+                gamme = gamme,
+                faitLe = faitLe ?: aujourdhui(),
+                technicien = auteur,
+                notes = notes,
+            )
+        }
+    }
+
+    fun onRetirerVisite(releve: ReleveGamme) {
+        viewModelScope.launch { maintenance.retirerReleve(releve.id) }
+    }
+
+    companion object {
+
+        /** Même raison que dans [InterventionsViewModel]. */
+        private const val TEMPS_ARRET_COLLECTE_MS = 5_000L
+
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                val conteneur = (application as FrigoProApplication).conteneur
+                MaintenanceViewModel(
+                    conteneur.maintenance,
+                    conteneur.equipements,
+                    conteneur.clients,
+                    conteneur.techniciens,
+                    conteneur.parametres,
+                )
+            }
+        }
+    }
+}
