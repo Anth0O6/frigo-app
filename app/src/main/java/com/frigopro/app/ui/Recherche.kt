@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.DevisChiffre
+import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.FactureChiffree
 import java.text.Normalizer
 
@@ -134,4 +135,26 @@ internal fun LigneTournee.correspondA(recherche: String): Boolean = Recherche.co
     intervention.notes,
     client?.nom,
     client?.ville,
+)
+
+/**
+ * Ce à quoi se compare une recherche du plan de maintenance.
+ *
+ * Le nom de la machine, celui du client et l'intitulé de la gamme — les trois
+ * façons dont on désigne une visite : « la centrale », « Carrefour », « la
+ * mensuelle ». La marque et le modèle en font partie parce que sur un linéaire de
+ * douze meubles identiques, le nom d'usage est souvent le seul à varier et la
+ * référence le seul repère commun.
+ *
+ * Pas la périodicité : « mensuel » tapé dans le champ remonterait la moitié du
+ * site, ce qui n'est pas une recherche mais un filtre — et un filtre se met sur
+ * des pastilles, pas dans un champ de texte.
+ */
+internal fun EcheanceMaintenance.correspondA(recherche: String): Boolean = Recherche.correspond(
+    recherche,
+    equipement.nom,
+    equipement.designation,
+    equipement.numeroSerie,
+    clientNom,
+    gamme.libelle,
 )

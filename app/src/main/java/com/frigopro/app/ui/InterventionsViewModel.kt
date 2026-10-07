@@ -50,6 +50,24 @@ enum class VueTournee(val libelle: String) {
     MAINTENANT("Maintenant"),
     JOUR("Jour"),
     SEMAINE("Semaine"),
+
+    /**
+     * Ce que le calendrier doit, et qui n'est pas encore un rendez-vous.
+     *
+     * Les trois premières vues sont des **distances de lecture** du même
+     * travail — « et maintenant ? », « et le reste de la journée ? », « et le
+     * reste de la semaine ? » — et toutes trois montrent des interventions
+     * **posées sur une date**. Celle-ci répond à une autre question : « qu'est-ce
+     * que le calendrier me doit ? ». C'est du travail dû et non planifié, et c'est
+     * ce qui en fait la quatrième vue de cet onglet plutôt qu'un onglet de plus :
+     * de là on planifie une intervention, qui retombe alors dans les trois
+     * premières. Le même geste que depuis un devis accepté.
+     *
+     * Elle ferme la marche parce qu'on l'ouvre le moins souvent : une ronde se
+     * fait tous les matins, mais on ne consulte le plan entier qu'en préparant une
+     * semaine.
+     */
+    PREVENTIF("Préventif"),
 }
 
 /**

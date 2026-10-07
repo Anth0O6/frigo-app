@@ -51,6 +51,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.enDuree
@@ -96,6 +97,12 @@ fun TourneeRoute(
     viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
     devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
+    /**
+     * Le plan de maintenance, partagé avec la page des Réglages qui tient les
+     * gammes : `viewModel()` rend une seule instance par classe, si bien qu'une
+     * gamme créée là est déjà celle que le Préventif applique.
+     */
+    plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
 ) {
     val jour by viewModel.jour.collectAsStateWithLifecycle()
     val lignes by viewModel.lignes.collectAsStateWithLifecycle()
@@ -105,6 +112,11 @@ fun TourneeRoute(
     val semaine by viewModel.semaine.collectAsStateWithLifecycle()
     val recherche by viewModel.recherche.collectAsStateWithLifecycle()
     val trouvees by viewModel.trouvees.collectAsStateWithLifecycle()
+    val echeances by plan.echeances.collectAsStateWithLifecycle()
+    val pointsGamme by plan.points.collectAsStateWithLifecycle()
+    // La visite ouverte vit ici et non dans le ViewModel : c'est une feuille
+    // de saisie, pas un état du plan — même motif que le sélecteur de date.
+    var visite by remember { mutableStateOf<EcheanceMaintenance?>(null) }
 
     // Le retour système ramène à « Maintenant », qui est le point de départ de
     // l'onglet. Une seule profondeur à défaire : toujours pas de graphe de
@@ -168,6 +180,15 @@ fun TourneeRoute(
             modifier = modifier,
         )
 
+        vue == VueTournee.PREVENTIF -> EcranPreventif(
+            echeances = echeances,
+            vue = vue,
+            onVue = viewModel::onVue,
+            onOuvrir = { visite = it },
+            modifier = modifier,
+            onVoirReglages = { onReglage(PageReglages.GAMMES) },
+        )
+
         else -> InterventionsScreen(
             vue = vue,
             onVue = viewModel::onVue,
@@ -190,6 +211,19 @@ fun TourneeRoute(
     }
 
     FeuilleFormulaireIntervention(viewModel)
+
+    visite?.let { echeance ->
+        FeuilleVisite(
+            echeance = echeance,
+            points = pointsGamme.filter { it.gammeId == echeance.gamme.id }
+                .sortedBy { it.rang },
+            onConsigner = { faitLe, notes ->
+                plan.onConsigner(echeance.equipement, echeance.gamme, faitLe, notes)
+                visite = null
+            },
+            onFermer = { visite = null },
+        )
+    }
 }
 
 /**
