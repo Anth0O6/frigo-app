@@ -123,3 +123,44 @@ data class GroupeMachines(
             else -> "${unites.size} unités intérieures"
         }
 }
+
+/**
+ * Le nom à proposer pour la copie d'une machine.
+ *
+ * « Vitrine 1 » donne « Vitrine 2 », « Vitrine 2 » donne « Vitrine 3 », et
+ * « Chambre froide » donne « Chambre froide 2 ». Le rang est **incrémenté
+ * jusqu'au premier libre**, de sorte que dupliquer trois fois la même vitrine
+ * produise 2, 3 puis 4 au lieu de buter trois fois sur le même doublon.
+ *
+ * Ce n'est pas une facilité de saisie, c'est la raison d'être de la
+ * duplication : un linéaire est fait de meubles identiques numérotés à la
+ * suite, et c'est ce qui fait la différence entre douze gestes et douze
+ * saisies complètes. Le nom reste **proposé et non imposé** — la boîte s'ouvre
+ * dessus et il se corrige, parce qu'un linéaire se nomme parfois par travée.
+ *
+ * Elle est pure, et c'est volontaire : le test du doublon est passé en lambda
+ * plutôt que lu en base, si bien que le périmètre — le parc d'un client pour un
+ * groupe, le groupe pour une unité — reste la décision de l'appelant, comme
+ * pour `DialogueIntitule`.
+ */
+fun nomDeCopie(nom: String, estPris: (String) -> Boolean): String {
+    val source = nom.trim()
+    // Le rang collé à la fin, s'il y en a un : « Vitrine 12 » se lit « Vitrine »
+    // et douze, pas « Vitrine 1 » et deux.
+    val rang = RANG_FINAL.find(source)
+    val racine = rang?.let { source.removeRange(it.range).trimEnd() } ?: source
+    val depart = rang?.groupValues?.get(1)?.toIntOrNull() ?: 1
+    // Borné : un nom déjà pris cent fois est le signe qu'on cherche autre chose,
+    // et une boucle sans fin sur un prédicat toujours vrai serait pire qu'un
+    // doublon que l'utilisateur voit et corrige.
+    for (suivant in (depart + 1)..(depart + ESSAIS_MAXIMUM)) {
+        val candidat = if (racine.isEmpty()) "$suivant" else "$racine $suivant"
+        if (!estPris(candidat)) return candidat
+    }
+    return if (racine.isEmpty()) source else "$racine ${depart + 1}"
+}
+
+/** « Vitrine 2 », « Travée 12 » : un nombre en fin de nom, séparé ou non. */
+private val RANG_FINAL = Regex("""\s*(\d+)$""")
+
+private const val ESSAIS_MAXIMUM = 100

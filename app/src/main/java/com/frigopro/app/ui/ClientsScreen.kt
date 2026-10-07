@@ -66,6 +66,7 @@ import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.GroupeClients
 import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.initialesDe
+import com.frigopro.app.data.nomDeCopie
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -193,6 +194,7 @@ fun ClientsRoute(
             onAjouterUnite = { machines.onAjouterUnite(machineOuverte) },
             onRenommer = { machines.onRenommerMachine(machineOuverte) },
             onModifierFiche = { ficheOuverte = true },
+            onDupliquer = { machines.onDupliquerMachine(machineOuverte) },
             onSupprimer = { machines.onSupprimerMachine(machineOuverte) },
             onFermer = machines::onFermer,
             modifier = modifier,
@@ -307,6 +309,37 @@ private fun DialoguesMachine(
             onValider = viewModel::onValiderNom,
             onFermer = viewModel::onFermerDialogue,
         )
+
+        // Le périmètre du doublon est celui de la machine copiée : chez le client
+        // pour un groupe, dans le groupe pour une unité. C'est le même partage
+        // que pour la création, et le réécrire ici l'aurait fait diverger.
+        is DialogueEquipement.Duplication -> {
+            val source = dialogue.equipement
+            val parent = source.parentId
+            val pris: (String) -> Boolean = { nom ->
+                if (parent == null) {
+                    dejaPris(source.clientId, nom, null)
+                } else {
+                    parc.any { it.parentId == parent && it.nom.equals(nom, ignoreCase = true) }
+                }
+            }
+            DialogueIntitule(
+                titre = if (parent == null) "Dupliquer la machine" else "Dupliquer l'unité",
+                libelleAction = "Dupliquer",
+                libelleChamp = if (parent == null) "Nom de la copie" else "Nom de l'unité",
+                messageConflit = if (parent == null) {
+                    MESSAGE_MACHINE_EXISTANTE
+                } else {
+                    "Ce groupe a déjà une unité de ce nom."
+                },
+                // Calculé une fois : `dejaPris` balaie le parc, et un parc de
+                // trois cents machines le ferait à chaque recomposition.
+                intituleInitial = remember(source.id, parc) { nomDeCopie(source.nom, pris) },
+                estDejaPris = pris,
+                onValider = viewModel::onValiderNom,
+                onFermer = viewModel::onFermerDialogue,
+            )
+        }
 
         is DialogueEquipement.Renommage -> DialogueIntitule(
             titre = "Renommer la machine",

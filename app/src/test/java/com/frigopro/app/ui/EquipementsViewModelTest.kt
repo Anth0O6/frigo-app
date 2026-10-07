@@ -310,6 +310,40 @@ class EquipementsViewModelTest {
         assertTrue(daoEquipements.contenu.isEmpty())
     }
 
+    /**
+     * **La copie est ouverte aussitôt**, comme une gamme qu'on vient de créer.
+     *
+     * On duplique pour renseigner ce qui *diffère* — le numéro de série, qui
+     * n'est précisément pas recopié —, et refermer sur le carnet aurait obligé à
+     * retrouver la copie dans une liste de trois cents machines. L'écran reste
+     * sur la machine qu'on vient de faire naître.
+     */
+    @Test
+    fun `dupliquer une machine ouvre la copie et non l'original`() = runTest {
+        val viewModel = creerViewModel()
+        val source = Equipement(
+            id = "eq-1",
+            clientId = "cl-1",
+            nom = "Vitrine 1",
+            marque = "Costan",
+            numeroSerie = "4821007",
+        )
+        daoEquipements.enregistrer(source)
+        viewModel.onOuvrir(source)
+        advanceUntilIdle()
+
+        viewModel.onDupliquerMachine(source)
+        viewModel.onValiderNom("Vitrine 2")
+        advanceUntilIdle()
+
+        assertNull("la boîte est refermée", viewModel.dialogue.value)
+        val ouverte = viewModel.ouverte.value
+        assertEquals("Vitrine 2", ouverte?.nom)
+        assertEquals("Costan", ouverte?.marque)
+        assertEquals("le numéro de série reste à renseigner", "", ouverte?.numeroSerie)
+        assertEquals("l'original est toujours là", 2, daoEquipements.contenu.size)
+    }
+
     private fun intervention(machine: Equipement): Intervention = Intervention(
         id = "id-1",
         date = LocalDate.of(2026, 3, 9),

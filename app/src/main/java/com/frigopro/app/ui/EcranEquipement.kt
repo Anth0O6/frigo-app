@@ -23,8 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -98,6 +100,7 @@ fun EcranEquipement(
     onAjouterUnite: () -> Unit,
     onRenommer: () -> Unit,
     onModifierFiche: () -> Unit,
+    onDupliquer: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -142,24 +145,12 @@ fun EcranEquipement(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onRenommer) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = "Renommer la machine",
-                        )
-                    }
-                    IconButton(onClick = onModifierFiche) {
-                        Icon(
-                            imageVector = Icons.Filled.Tune,
-                            contentDescription = "Plaque signalétique et fluide",
-                        )
-                    }
-                    IconButton(onClick = onSupprimer) {
-                        Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = "Supprimer la machine",
-                        )
-                    }
+                    MenuMachine(
+                        onRenommer = onRenommer,
+                        onModifierFiche = onModifierFiche,
+                        onDupliquer = onDupliquer,
+                        onSupprimer = onSupprimer,
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -465,6 +456,88 @@ private fun SectionUnites(
     }
 }
 
+/**
+ * Les quatre gestes d'une machine, derrière un seul bouton.
+ *
+ * Ils étaient **trois icônes côte à côte** sur la rangée du titre, et le compte
+ * ne tenait plus : le titre y porte le nom de la machine *et* sa plaque en
+ * sous-titre — « Groupe Daikin bi-split » puis « Bitzer 4FES-3Y · n° 4821007 » —,
+ * les deux coupés à l'ellipse pendant que trois boutons carrés se partageaient
+ * le tiers droit. C'est le défaut que la barre de la tournée avait déjà : un
+ * libellé qui paie la place qu'on a donnée aux boutons, et c'est le libellé qui
+ * compte — on ouvre une fiche pour savoir quelle machine on regarde.
+ *
+ * Un menu les rend **tous lisibles en entier**, là où une icône demandait de
+ * deviner, et c'est ce qui a permis d'en ajouter un quatrième sans rien
+ * reprendre. Ce n'est pas le « menu plus » que la barre d'onglets s'interdit :
+ * une destination derrière un menu n'est pas une destination, mais une action
+ * nommée derrière un menu reste une action — et aucune des quatre ne se fait
+ * gants aux mains en pleine tournée.
+ *
+ * « Supprimer » est en dernier et séparé, pour la raison qui le met sur la fiche
+ * ouverte plutôt qu'en appui long sur une carte : c'est le seul des quatre qui ne
+ * se défait pas.
+ */
+@Composable
+private fun MenuMachine(
+    onRenommer: () -> Unit,
+    onModifierFiche: () -> Unit,
+    onDupliquer: () -> Unit,
+    onSupprimer: () -> Unit,
+) {
+    var ouvert by remember { mutableStateOf(false) }
+
+    IconButton(onClick = { ouvert = true }) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = "Actions sur la machine",
+        )
+    }
+    DropdownMenu(expanded = ouvert, onDismissRequest = { ouvert = false }) {
+        DropdownMenuItem(
+            text = { Text(text = "Renommer") },
+            leadingIcon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = null) },
+            onClick = {
+                ouvert = false
+                onRenommer()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(text = "Plaque et fluide") },
+            leadingIcon = { Icon(imageVector = Icons.Filled.Tune, contentDescription = null) },
+            onClick = {
+                ouvert = false
+                onModifierFiche()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(text = "Dupliquer") },
+            leadingIcon = {
+                Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+            },
+            onClick = {
+                ouvert = false
+                onDupliquer()
+            },
+        )
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text(text = "Supprimer") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            },
+            onClick = {
+                ouvert = false
+                onSupprimer()
+            },
+        )
+    }
+}
+
 @Composable
 private fun TitreSection(texte: String, modifier: Modifier = Modifier) {
     Text(
@@ -513,6 +586,7 @@ private fun EcranEquipementPreview() {
                 onAjouterUnite = {},
                 onRenommer = {},
                 onModifierFiche = {},
+                onDupliquer = {},
                 onSupprimer = {},
                 onFermer = {},
                 modifier = Modifier.height(600.dp),

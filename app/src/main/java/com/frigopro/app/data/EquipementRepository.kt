@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.map
 import java.text.Collator
 import java.time.Instant
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Le parc de machines et leurs photos.
@@ -95,6 +96,76 @@ class EquipementRepository(
 
     /** Les unités d'un groupe, pour qui n'observe pas tout le parc. */
     suspend fun unitesDe(groupeId: String): List<Equipement> = dao.unitesDe(groupeId)
+
+    /**
+     * Recopie une machine sous un nouveau nom, **avec ses unités intérieures**.
+     *
+     * C'est le geste qui rend un inventaire de plusieurs centaines d'équipements
+     * tenable : un linéaire est fait de meubles identiques, et saisir douze fois
+     * la même marque, le même modèle, le même fluide et la même charge est le
+     * genre de travail qui ne se fait pas — on en saisit trois, et le parc est
+     * faux pour toujours.
+     *
+     * **Ce qui est recopié est une caractéristique ; ce qui ne l'est pas est un
+     * acte.** C'est toute la règle, et elle se lit ligne par ligne :
+     *
+     * - La marque, le modèle, le fluide et la charge **suivent** : ce sont les
+     *   propriétés du matériel, identiques d'un meuble à l'autre du linéaire.
+     * - La **mise en service** suit aussi : un linéaire est posé le même jour, et
+     *   c'est un fait d'installation, pas un relevé.
+     * - Le **numéro de série** ne suit pas : il est unique par définition, et le
+     *   recopier aurait rempli le parc de doublons qui désignent une seule
+     *   machine — avec, au bout, une pièce commandée pour le mauvais meuble.
+     * - Le **dernier contrôle d'étanchéité** ne suit pas : c'est un acte
+     *   réglementaire fait sur *une* machine, et le dater sur la copie
+     *   reviendrait à attester un contrôle qui n'a pas eu lieu. La conséquence
+     *   est exactement celle que l'application refuse partout ailleurs : une
+     *   échéance repoussée à tort, c'est-à-dire une obligation manquée.
+     * - Les **photos** ne suivent pas : la plaque du meuble 1 n'est pas celle du
+     *   meuble 2, et la copier mettrait en image un numéro de série faux. Même
+     *   raison que le numéro, en pire — une photo fait foi.
+     * - Le **plan de maintenance** ne suit pas non plus, et c'est le seul point
+     *   où le choix est discutable : les douze meubles suivront les mêmes gammes.
+     *   Mais `MaintenanceViewModel.onAffecterAuParc` rattache **tout le parc**
+     *   d'un geste, ce qui est la bonne réponse sur un site de plusieurs
+     *   centaines — là où une recopie machine par machine aurait laissé
+     *   l'affectation du dernier meuble dépendre de l'ordre des saisies.
+     *
+     * Les unités intérieures gardent leur nom — « Salon », « Chambre » se
+     * répètent d'un appartement à l'autre, et c'est le cas ordinaire d'un
+     * immeuble — et leur plaque, suivant la même règle que leur groupe.
+     */
+    suspend fun dupliquer(source: Equipement, nom: String): Equipement {
+        val copie = enregistrer(
+            caracteristiques(source).copy(
+                id = UUID.randomUUID().toString(),
+                clientId = source.clientId,
+                parentId = source.parentId,
+                nom = nom,
+            ),
+        )
+        // Une unité ne porte pas d'unité : la boucle ne descend donc jamais plus
+        // d'un rang, et c'est la hiérarchie à un seul niveau qui le garantit.
+        if (!source.estUnite) {
+            dao.unitesDe(source.id).forEach { unite ->
+                enregistrer(
+                    caracteristiques(unite).copy(
+                        id = UUID.randomUUID().toString(),
+                        clientId = copie.clientId,
+                        parentId = copie.id,
+                        nom = unite.nom,
+                    ),
+                )
+            }
+        }
+        return copie
+    }
+
+    /** Ce qu'une copie hérite : le matériel, et rien de ce qui a été fait. */
+    private fun caracteristiques(source: Equipement): Equipement = source.copy(
+        numeroSerie = "",
+        dernierControleLe = null,
+    )
 
     /**
      * Retire la machine du parc, avec ses photos. Les interventions qui la

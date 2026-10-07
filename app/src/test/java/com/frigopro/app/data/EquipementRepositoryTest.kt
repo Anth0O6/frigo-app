@@ -3,6 +3,7 @@ package com.frigopro.app.data
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -198,5 +199,125 @@ class EquipementRepositoryTest {
         assertTrue("les deux affectations sont parties", daoMaintenance.affectations.isEmpty())
         assertNull(daoMaintenance.releves.single().equipementId)
         assertEquals("Salon", daoMaintenance.releves.single().equipementNom)
+    }
+
+    /**
+     * Le nom proposé pour une copie, qui est la raison d'être de la
+     * duplication : un linéaire est fait de meubles numérotés à la suite, et
+     * trois duplications donnent 2, 3 puis 4 — et non trois fois 2, c'est-à-dire
+     * trois fois le même doublon à corriger à la main.
+     */
+    @Test
+    fun `le nom d'une copie prend le rang suivant, jusqu'au premier libre`() {
+        val pris = mutableSetOf("Vitrine 1")
+
+        repeat(3) { pris += nomDeCopie("Vitrine 1") { candidat -> candidat in pris } }
+
+        assertEquals(setOf("Vitrine 1", "Vitrine 2", "Vitrine 3", "Vitrine 4"), pris)
+        assertEquals("Chambre froide 2", nomDeCopie("Chambre froide") { false })
+        assertEquals("Vitrine 13", nomDeCopie("Vitrine 12") { false })
+        assertEquals("Armoire 10", nomDeCopie("  Armoire 9  ") { false })
+    }
+
+    /**
+     * **Ce qui est recopié est une caractéristique ; ce qui ne l'est pas est un
+     * acte.** C'est toute la règle de la duplication, et les deux moitiés
+     * comptent autant.
+     *
+     * Le numéro de série est unique par définition, et le recopier aurait rempli
+     * le parc de doublons désignant une seule machine — avec, au bout, une pièce
+     * commandée pour le mauvais meuble. Le dernier contrôle d'étanchéité est un
+     * acte réglementaire fait sur *une* machine : le dater sur la copie
+     * reviendrait à attester un contrôle qui n'a pas eu lieu, et donc à repousser
+     * une échéance, c'est-à-dire à manquer une obligation.
+     */
+    @Test
+    fun `dupliquer recopie le materiel et jamais ce qui a ete fait`() = runTest {
+        val source = repository.enregistrer(
+            Equipement(
+                id = "eq-1",
+                clientId = "cli-1",
+                nom = "Vitrine 1",
+                marque = "Costan",
+                modele = "Gazelle",
+                numeroSerie = "4821007",
+                fluide = "R449A",
+                chargeKg = 3.4,
+                misEnServiceLe = LocalDate.of(2024, 5, 12),
+                dernierControleLe = LocalDate.of(2026, 2, 18),
+            ),
+        )
+
+        val copie = repository.dupliquer(source, "Vitrine 2")
+
+        assertNotEquals("la copie est une autre machine", source.id, copie.id)
+        assertEquals("Vitrine 2", copie.nom)
+        assertEquals("cli-1", copie.clientId)
+        assertEquals("Costan", copie.marque)
+        assertEquals("Gazelle", copie.modele)
+        assertEquals("R449A", copie.fluide)
+        assertEquals(3.4, copie.chargeKg!!, 0.0)
+        assertEquals(
+            "un linéaire est posé le même jour",
+            LocalDate.of(2024, 5, 12),
+            copie.misEnServiceLe,
+        )
+        assertEquals("le numéro de série ne se recopie pas", "", copie.numeroSerie)
+        assertNull("ni le contrôle d'étanchéité", copie.dernierControleLe)
+        assertEquals(
+            "la source n'a pas bougé",
+            "4821007",
+            dao.contenu.first { it.id == source.id }.numeroSerie,
+        )
+    }
+
+    /**
+     * Un multi-split dupliqué arrive **avec ses unités**, qui gardent leur nom :
+     * « Salon » et « Chambre » se répètent d'un appartement à l'autre, et c'est
+     * le cas ordinaire d'un immeuble. Elles pendent du nouveau groupe, et non de
+     * l'ancien — sans quoi la copie serait un groupe vide et l'original en
+     * porterait quatre.
+     */
+    @Test
+    fun `dupliquer un multi-split emporte ses unites sous la copie`() = runTest {
+        val groupe = repository.enregistrer(
+            Equipement(id = "gr-1", clientId = "cli-1", nom = "Daikin 1", marque = "Daikin"),
+        )
+        repository.ajouterUnite(groupe, "Salon")
+        repository.ajouterUnite(groupe, "Chambre")
+
+        val copie = repository.dupliquer(groupe, "Daikin 2")
+
+        val unitesCopie = dao.unitesDe(copie.id)
+        val unitesSource = dao.unitesDe(groupe.id).map { it.id }
+        assertEquals(listOf("Chambre", "Salon"), unitesCopie.map { it.nom }.sorted())
+        assertEquals("Daikin", copie.marque)
+        assertEquals("l'original garde les siennes", 2, unitesSource.size)
+        assertTrue(
+            "aucune unité n'est restée accrochée aux deux",
+            unitesCopie.none { it.id in unitesSource },
+        )
+    }
+
+    /**
+     * Dupliquer une **unité** crée une sœur sous le même groupe, et non un
+     * groupe de plus : la hiérarchie n'a qu'un niveau, et la copie d'une unité
+     * reste une unité.
+     */
+    @Test
+    fun `dupliquer une unite la laisse sous son groupe`() = runTest {
+        val groupe = repository.enregistrer(
+            Equipement(id = "gr-1", clientId = "cli-1", nom = "Daikin 1"),
+        )
+        val unite = repository.ajouterUnite(groupe, "Chambre 1")
+
+        val copie = repository.dupliquer(unite, "Chambre 2")
+
+        assertEquals(groupe.id, copie.parentId)
+        assertEquals(3, dao.contenu.size)
+        assertEquals(
+            listOf("Chambre 1", "Chambre 2"),
+            dao.unitesDe(groupe.id).map { it.nom }.sorted(),
+        )
     }
 }

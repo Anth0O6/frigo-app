@@ -45,6 +45,16 @@ sealed interface DialogueEquipement {
 
     data class Renommage(val equipement: Equipement) : DialogueEquipement
 
+    /**
+     * Recopier une machine sous un autre nom.
+     *
+     * Elle passe par la même boîte que la création et le renommage, parce que
+     * c'est la même question — nommer, et refuser un doublon —, et elle s'ouvre
+     * sur le nom **proposé** par [nomDeCopie] : « Vitrine 1 » appelle
+     * « Vitrine 2 », et c'est tout l'intérêt sur un linéaire de douze meubles.
+     */
+    data class Duplication(val equipement: Equipement) : DialogueEquipement
+
     data class Suppression(val equipement: Equipement) : DialogueEquipement
 }
 
@@ -207,6 +217,17 @@ class EquipementsViewModel(
         _dialogue.value = DialogueEquipement.Renommage(equipement)
     }
 
+    /**
+     * Ouvre la boîte de duplication.
+     *
+     * Le geste est sur la **fiche ouverte** et non sur la carte du carnet, comme
+     * la suppression d'un client et pour une raison voisine : on duplique une
+     * machine après en avoir vérifié la plaque, et c'est la fiche qui la montre.
+     */
+    fun onDupliquerMachine(equipement: Equipement) {
+        _dialogue.value = DialogueEquipement.Duplication(equipement)
+    }
+
     fun onSupprimerMachine(equipement: Equipement) {
         _dialogue.value = DialogueEquipement.Suppression(equipement)
     }
@@ -234,6 +255,14 @@ class EquipementsViewModel(
 
                 is DialogueEquipement.Renommage ->
                     equipements.enregistrer(ouvert.equipement.copy(nom = nom))
+
+                // La copie est **ouverte aussitôt**, comme une gamme qu'on vient
+                // de créer : on duplique pour renseigner ce qui diffère — le
+                // numéro de série, qui n'est pas recopié —, et refermer sur le
+                // carnet aurait obligé à la retrouver dans une liste de trois
+                // cents machines.
+                is DialogueEquipement.Duplication ->
+                    _ouverte.value = equipements.dupliquer(ouvert.equipement, nom).id
 
                 is DialogueEquipement.Suppression -> Unit
             }
