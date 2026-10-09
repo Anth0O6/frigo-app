@@ -245,6 +245,7 @@ class EquipementRepositoryTest {
                 chargeKg = 3.4,
                 misEnServiceLe = LocalDate.of(2024, 5, 12),
                 dernierControleLe = LocalDate.of(2026, 2, 18),
+                zone = "Linéaire surgelés",
             ),
         )
 
@@ -262,6 +263,7 @@ class EquipementRepositoryTest {
             LocalDate.of(2024, 5, 12),
             copie.misEnServiceLe,
         )
+        assertEquals("et les douze meubles sont dans le même linéaire", "Linéaire surgelés", copie.zone)
         assertEquals("le numéro de série ne se recopie pas", "", copie.numeroSerie)
         assertNull("ni le contrôle d'étanchéité", copie.dernierControleLe)
         assertEquals(
@@ -319,5 +321,28 @@ class EquipementRepositoryTest {
             listOf("Chambre 1", "Chambre 2"),
             dao.unitesDe(groupe.id).map { it.nom }.sorted(),
         )
+    }
+
+    /**
+     * Les zones employées se **dérivent du parc**, triées en français et sans les
+     * vides.
+     *
+     * Vide veut dire « non rangée » : la faire figurer comme une zone aurait
+     * produit un groupe sans nom en tête de l'écran, et un filtre qui ne filtre
+     * rien. Et le tri passe par un `Collator` comme le carnet — « Étuve » n'est
+     * pas après « Zone 2 ».
+     */
+    @Test
+    fun `les zones du parc sont derivees, triees et sans les vides`() = runTest {
+        listOf("Zone 2", "Étuve", "", "Toiture", "  ", "Toiture", "Atelier")
+            .forEachIndexed { rang, zone ->
+                repository.enregistrer(
+                    Equipement(id = "eq-$rang", clientId = "cli-1", nom = "m$rang", zone = zone),
+                )
+            }
+
+        val zones = zonesDe(repository.equipements.first())
+
+        assertEquals(listOf("Atelier", "Étuve", "Toiture", "Zone 2"), zones)
     }
 }

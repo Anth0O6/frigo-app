@@ -916,3 +916,28 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
         )
     }
 }
+
+/**
+ * La zone d'une machine : **une colonne, et rien d'autre**.
+ *
+ * C'est la plus petite migration du projet, et c'est le signe que le modèle s'y
+ * prêtait : une zone est une étiquette sur une machine, pas une entité. Elle
+ * n'a donc ni table, ni index — on ne cherche jamais « toutes les machines de
+ * la toiture » en SQL, le parc tient en mémoire et le filtrage comme le
+ * groupement se font côté Kotlin, exactement comme le tri du carnet.
+ *
+ * Le défaut `''` veut dire **non rangée**, et c'est ce qui rend juste tout parc
+ * déjà saisi sans le toucher : une machine d'avant la migration n'est pas dans
+ * une zone qui s'appellerait « vide », elle n'est dans aucune zone, et l'écran
+ * la range sous « Sans zone » plutôt que de la perdre.
+ *
+ * L'entité, elle, **ne déclare pas** ce défaut : Room ne compare un défaut que
+ * lorsqu'il vient de l'entité, si bien qu'un défaut côté base qu'aucune entité
+ * ne déclare est ignoré à la validation. C'est déjà le cas des colonnes de tarif
+ * de [MIGRATION_9_10] et des deux colonnes de [MIGRATION_11_12].
+ */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `equipements` ADD COLUMN `zone` TEXT NOT NULL DEFAULT ''")
+    }
+}

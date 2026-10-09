@@ -3,8 +3,10 @@ package com.frigopro.app.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.text.Collator
 import java.time.Instant
 import java.time.LocalDate
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -76,6 +78,32 @@ data class Equipement(
     val chargeKg: Double? = null,
     val misEnServiceLe: LocalDate? = null,
     val dernierControleLe: LocalDate? = null,
+    /**
+     * Où la machine se trouve sur le site : « toiture », « linéaire surgelés »,
+     * « local technique ».
+     *
+     * C'est la **maintenance préventive** qui l'a rendue nécessaire, et à partir
+     * d'un seuil précis : une ronde journalière sur cinquante machines produit
+     * chaque matin une liste de cinquante lignes, qu'on ne parcourt pas — on
+     * parcourt un site **zone par zone**, et la liste doit suivre le trajet des
+     * pieds plutôt que l'ordre alphabétique. En dessous d'une dizaine la question
+     * ne se posait pas, et c'est pourquoi ce champ n'existait pas.
+     *
+     * **Du texte libre, et non une table.** Une zone n'a ni adresse, ni
+     * historique, ni photos : ce n'est pas une entité, c'est une étiquette. Lui
+     * donner sa table aurait demandé un écran pour la créer, une règle pour la
+     * supprimer et une propagation de renommage — tout cela pour une chaîne. La
+     * contrepartie est connue : le texte libre dérive, « Toiture » et « toit »
+     * cohabitent. C'est pour cela que la saisie **propose les zones déjà
+     * employées** (voir [zonesDe]), exactement comme l'écran des fournisseurs
+     * filtre sur la ville, qui est aussi du texte libre sur `Client`.
+     *
+     * Vide veut dire **non rangée**, et non « zone sans nom » : une machine sans
+     * zone remonte dans un groupe « Sans zone » plutôt que de disparaître, parce
+     * qu'une machine qu'on ne voit nulle part est une machine qu'on n'entretient
+     * pas.
+     */
+    val zone: String = "",
     val modifieLe: Instant = Instant.EPOCH,
 ) {
 
@@ -122,6 +150,27 @@ data class GroupeMachines(
             1 -> "1 unité intérieure"
             else -> "${unites.size} unités intérieures"
         }
+}
+
+/**
+ * Les zones employées dans un parc, triées en français et sans les vides.
+ *
+ * **Dérivée, jamais stockée** : la liste des zones *est* l'ensemble des valeurs
+ * posées sur les machines, et une table à côté aurait pu contenir une zone que
+ * plus rien n'emploie — ou, pire, manquer celle qu'une restauration de
+ * sauvegarde vient d'apporter. Même raisonnement que le compte d'unités d'un
+ * groupe et que les années du registre des fluides.
+ *
+ * Le tri passe par un `Collator` français comme le carnet et le parc : « Étuve »
+ * n'est pas après « Zone 2 ».
+ */
+fun zonesDe(equipements: List<Equipement>): List<String> {
+    val collateur = Collator.getInstance(Locale.FRENCH)
+    return equipements
+        .map { it.zone.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .sortedWith { a, b -> collateur.compare(a, b) }
 }
 
 /**
