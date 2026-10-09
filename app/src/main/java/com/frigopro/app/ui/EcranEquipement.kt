@@ -123,7 +123,14 @@ fun EcranEquipement(
                         // Le groupe passe devant la plaque : « Salon » tout seul ne
                         // se retrouve pas dans un parc de vingt machines, et c'est
                         // l'appareil dont elle dépend qui la situe.
-                        val sousTitre = listOfNotNull(groupe?.let { "Unité de ${it.nom}" }, plaque)
+                        // La zone passe devant tout : sur un site rangé, c'est
+                        // elle qui dit où aller, et on ouvre une fiche depuis une
+                        // liste où dix machines se ressemblent.
+                        val sousTitre = listOfNotNull(
+                            equipement.zone,
+                            groupe?.let { "Unité de ${it.nom}" },
+                            plaque,
+                        )
                             .filter { it.isNotBlank() }
                             .joinToString(" · ")
                         if (sousTitre.isNotEmpty()) {
@@ -503,7 +510,7 @@ private fun MenuMachine(
             },
         )
         DropdownMenuItem(
-            text = { Text(text = "Plaque et fluide") },
+            text = { Text(text = "Zone et plaque") },
             leadingIcon = { Icon(imageVector = Icons.Filled.Tune, contentDescription = null) },
             onClick = {
                 ouvert = false

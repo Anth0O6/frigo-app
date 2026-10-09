@@ -22,6 +22,8 @@ import java.time.LocalDate
 data class LigneAttestation(
     val machineNom: String,
     val machineDesignation: String,
+    /** Où la machine se trouve, vide si le parc n'est pas rangé par zones. */
+    val machineZone: String,
     val gammeLibelle: String,
     val periodicite: Periodicite,
     /** Les dates des visites consignées sur la période, chronologiques. */
@@ -141,6 +143,7 @@ object SuiviMaintenance {
                 LigneAttestation(
                     machineNom = machine.nom,
                     machineDesignation = machine.designation,
+                    machineZone = machine.zone,
                     gammeLibelle = gamme.libelle,
                     periodicite = gamme.periodicite,
                     visites = visites[machine.id to gamme.id]?.sorted().orEmpty(),
@@ -152,12 +155,19 @@ object SuiviMaintenance {
                     ),
                 )
             }
-            // Par machine puis par cadence : le document se lit machine par
-            // machine — c'est ainsi qu'un gérant le parcourt, en cherchant la
-            // sienne —, et les gammes d'une même machine se suivent de la plus
-            // fréquente à la plus rare, qui est l'ordre du rang des gammes.
+            // **Par zone, puis par machine, puis par cadence.** Le document se
+            // lit machine par machine — c'est ainsi qu'un gérant le parcourt, en
+            // cherchant la sienne —, et la zone vient devant parce que c'est
+            // ainsi qu'il connaît son site : il demande ce qui a été fait « en
+            // chambre froide », pas ce qui a été fait sur « VIT-02 ». Les
+            // machines **non rangées** passent en dernier, comme à l'écran : une
+            // zone vide en tête aurait ouvert le document sur un bloc sans nom.
+            // Les gammes d'une même machine se suivent de la plus fréquente à la
+            // plus rare, qui est l'ordre du rang des périodicités.
             .sortedWith(
                 compareBy(
+                    { it.machineZone.isEmpty() },
+                    { it.machineZone.lowercase() },
                     { it.machineNom.lowercase() },
                     { it.periodicite.ordinal },
                     { it.gammeLibelle.lowercase() },

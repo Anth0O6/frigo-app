@@ -155,6 +155,11 @@ internal fun EcheanceMaintenance.correspondA(recherche: String): Boolean = Reche
     equipement.nom,
     equipement.designation,
     equipement.numeroSerie,
+    // La zone est cherchable, et c'est l'autre moitié de la réponse aux
+    // cinquante machines : le groupement dit l'ordre dans lequel marcher, la
+    // recherche isole la zone où l'on se trouve déjà. Taper « toiture » rend le
+    // toit, sans qu'il ait fallu un filtre de plus à l'écran.
+    equipement.zone,
     clientNom,
     gamme.libelle,
 )

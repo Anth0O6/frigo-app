@@ -72,4 +72,26 @@ class RechercheTest {
     fun `rien ne se trouve dans un texte qui ne le contient pas`() {
         assertFalse(Recherche.correspond("chambre froide", "Carrefour Market", "Clim de toiture"))
     }
+
+    /**
+     * **La zone est cherchable**, et c'est la seconde moitié de la réponse aux
+     * cinquante machines d'une ronde journalière : le groupement par zone dit
+     * l'ordre dans lequel marcher, la recherche isole la zone où l'on se trouve
+     * déjà. Taper « toiture » rend le toit, sans qu'il ait fallu un filtre de
+     * plus à l'écran — et « toiture clim » le restreint encore, puisque les mots
+     * se cherchent séparément et dans n'importe lequel des champs.
+     */
+    @Test
+    fun `une zone se cherche comme le reste, accents replies`() {
+        assertTrue(Recherche.correspond("toiture", "Rooftop 1", "Toiture"))
+        assertTrue(Recherche.correspond("surgeles", "Vitrine 2", "Linéaire surgelés"))
+        assertTrue(
+            "les mots traversent les champs",
+            Recherche.correspond("toiture rooftop", "Rooftop 1", "Toiture"),
+        )
+        assertFalse(
+            "et une zone qui n'est pas la sienne ne la trouve pas",
+            Recherche.correspond("cuisine", "Rooftop 1", "Toiture"),
+        )
+    }
 }

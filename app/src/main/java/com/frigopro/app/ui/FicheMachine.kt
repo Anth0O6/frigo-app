@@ -1,6 +1,8 @@
 package com.frigopro.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +34,7 @@ import com.frigopro.app.data.Fluides
 import com.frigopro.app.data.Releve
 import com.frigopro.app.data.arrondiDixieme
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
@@ -151,7 +154,17 @@ fun DialogueFicheMachine(
     equipement: Equipement,
     onValider: (Equipement) -> Unit,
     onFermer: () -> Unit,
+    /**
+     * Les zones déjà employées dans le parc, proposées sous le champ.
+     *
+     * C'est le garde-fou du texte libre, et le seul qu'il y ait : sans elles
+     * « Toiture », « toiture » et « toit » deviendraient trois zones, et un
+     * groupement par zone qui éclate en trois ne range plus rien. Proposer
+     * plutôt qu'imposer, parce qu'il faut bien pouvoir en créer une.
+     */
+    zones: List<String> = emptyList(),
 ) {
+    var zone by remember { mutableStateOf(equipement.zone) }
     var marque by remember { mutableStateOf(equipement.marque) }
     var modele by remember { mutableStateOf(equipement.modele) }
     var numeroSerie by remember { mutableStateOf(equipement.numeroSerie) }
@@ -162,13 +175,25 @@ fun DialogueFicheMachine(
 
     AlertDialog(
         onDismissRequest = onFermer,
-        title = { Text(text = "Plaque et fluide") },
+        title = { Text(text = "Zone, plaque et fluide") },
         text = {
             // Le contenu dépasse la hauteur d'écran sur un petit téléphone.
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // La zone en premier, et c'est un choix de tâche plutôt que de
+                // maquette : ranger un parc de cinquante machines veut dire ouvrir
+                // cinquante fois cette boîte pour un seul champ, et le mettre
+                // sous la plaque aurait demandé de faire défiler chaque fois.
+                ChampTexte(
+                    libelle = "Zone (toiture, linéaire surgelés…)",
+                    valeur = zone,
+                    onValeur = { zone = it },
+                )
+                if (zones.isNotEmpty()) {
+                    ZonesProposees(zones = zones, onChoisir = { zone = it })
+                }
                 ChampTexte(libelle = "Marque", valeur = marque, onValeur = { marque = it })
                 ChampTexte(libelle = "Modèle", valeur = modele, onValeur = { modele = it })
                 ChampTexte(
@@ -224,6 +249,7 @@ fun DialogueFicheMachine(
                 onClick = {
                     onValider(
                         equipement.copy(
+                            zone = zone.trim(),
                             marque = marque.trim(),
                             modele = modele.trim(),
                             numeroSerie = numeroSerie.trim(),
@@ -241,6 +267,32 @@ fun DialogueFicheMachine(
         dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
+}
+
+/**
+ * Les zones déjà employées, à toucher pour remplir le champ.
+ *
+ * Elle **défile horizontalement**, et c'est le second endroit du projet à
+ * l'assumer après les pastilles de périodicité : les intitulés sont libres, un
+ * parc en porte parfois huit, et les faire tenir aurait demandé de les tronquer
+ * — une zone tronquée ne se reconnaît pas, là où une zone hors cadre se ramène
+ * d'un doigt. Rien n'est caché derrière : le champ au-dessus reste la saisie,
+ * celles-ci ne sont qu'un raccourci.
+ */
+@Composable
+private fun ZonesProposees(zones: List<String>, onChoisir: (String) -> Unit) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        zones.forEach { zone ->
+            Puce(
+                texte = zone,
+                modifier = Modifier.clickable { onChoisir(zone) },
+                couleur = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 /** Une date saisie, ou `null` si elle est incomplète ou mal formée. */

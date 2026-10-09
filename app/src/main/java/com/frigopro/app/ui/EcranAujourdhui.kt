@@ -599,7 +599,15 @@ private fun LignePreventif(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = listOf(echeance.clientNom, echeance.gamme.libelle)
+                    // La zone en premier : sur un site unique le nom du client se
+                    // répète d'une ligne à l'autre et n'apprend rien, alors que la
+                    // zone dit où aller. Trois lignes au plus, donc la place est
+                    // comptée et l'ordre décide de ce qui survit à l'ellipse.
+                    text = listOf(
+                        echeance.equipement.zone,
+                        echeance.clientNom,
+                        echeance.gamme.libelle,
+                    )
                         .filter { it.isNotBlank() }
                         .joinToString("  ·  "),
                     style = MaterialTheme.typography.bodySmall,

@@ -49,6 +49,7 @@ class DocumentAttestationTest {
         nom = "Vitrine salle 2",
         marque = "Costan",
         modele = "Gazelle",
+        zone = "Surgelés",
     )
 
     private fun visite(
@@ -126,8 +127,8 @@ class DocumentAttestationTest {
 
         val lignes = lignesDe(document)
         assertTrue(
-            "la machine a son bloc",
-            document.blocs.any { it.intitule.startsWith("Vitrine salle 2") },
+            "la machine a son bloc, précédé de sa zone",
+            document.blocs.any { it.intitule.startsWith("Surgelés — Vitrine salle 2") },
         )
         assertTrue(lignes.any { it.contains("aucune visite consignée") })
         assertTrue(
@@ -283,27 +284,36 @@ class DocumentAttestationTest {
      * parcourt le document, en cherchant la sienne.
      */
     @Test
-    fun `les lignes sont rangees par machine puis par cadence`() {
-        val chambre = Equipement(id = "eq-2", clientId = "cl-1", nom = "Chambre froide")
+    fun `les lignes sont rangees par zone, puis machine, puis cadence`() {
+        // « Froid » vient avant « Surgelés », et le rooftop non rangé en dernier.
+        val chambre = Equipement(id = "eq-2", clientId = "cl-1", nom = "Chambre 1", zone = "Froid")
+        val rooftop = Equipement(id = "eq-3", clientId = "cl-1", nom = "Rooftop")
         val resultat = attestation(
-            equipements = listOf(vitrine, chambre),
+            equipements = listOf(vitrine, chambre, rooftop),
             gammes = listOf(annuelle, mensuelle),
             affectations = listOf(
                 AffectationGamme("af-1", vitrine.id, annuelle.id, LocalDate.of(2025, 1, 1)),
                 AffectationGamme("af-2", vitrine.id, mensuelle.id, LocalDate.of(2025, 1, 1)),
                 AffectationGamme("af-3", chambre.id, mensuelle.id, LocalDate.of(2025, 1, 1)),
+                AffectationGamme("af-4", rooftop.id, mensuelle.id, LocalDate.of(2025, 1, 1)),
             ),
         )
 
         assertEquals(
             listOf(
-                "Chambre froide" to "Visite mensuelle",
-                "Vitrine salle 2" to "Visite mensuelle",
-                "Vitrine salle 2" to "Contrôle annuel",
+                "Froid" to "Chambre 1",
+                "Surgelés" to "Vitrine salle 2",
+                "Surgelés" to "Vitrine salle 2",
+                "" to "Rooftop",
             ),
-            resultat.lignes.map { it.machineNom to it.gammeLibelle },
+            resultat.lignes.map { it.machineZone to it.machineNom },
         )
-        assertEquals(listOf("Chambre froide", "Vitrine salle 2"), resultat.machines)
+        assertEquals(
+            "et la gamme la plus fréquente d'abord, au sein d'une machine",
+            listOf("Visite mensuelle", "Contrôle annuel"),
+            resultat.lignes.filter { it.machineNom == "Vitrine salle 2" }.map { it.gammeLibelle },
+        )
+        assertEquals(listOf("Chambre 1", "Vitrine salle 2", "Rooftop"), resultat.machines)
     }
 
     /**

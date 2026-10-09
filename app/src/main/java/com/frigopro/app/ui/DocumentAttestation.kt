@@ -77,7 +77,17 @@ object DocumentAttestation {
             val siennes = attestation.lignes.filter { it.machineNom == machine }
             add(
                 BlocImprime(
-                    intitule = listOf(machine, siennes.first().machineDesignation)
+                    // La zone d'abord, parce que c'est ainsi que le client
+                    // connaît son site : il cherche « chambre froide » et non
+                    // « VIT-02 ». Elle est portée par le titre du bloc plutôt que
+                    // par un niveau de groupement de plus — un document imprimé
+                    // n'a pas de bloc dans un bloc, et le tri des lignes met déjà
+                    // les machines d'une même zone à la suite.
+                    intitule = listOf(
+                        siennes.first().machineZone,
+                        machine,
+                        siennes.first().machineDesignation,
+                    )
                         .filter { it.isNotBlank() }
                         .joinToString(" — "),
                     lignes = siennes.flatMap(::lignesDeGamme),

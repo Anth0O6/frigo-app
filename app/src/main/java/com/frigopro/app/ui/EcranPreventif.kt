@@ -34,7 +34,9 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.LocalStatuts
+import java.text.Collator
 import java.time.LocalDate
+import java.util.Locale
 
 /**
  * Le Préventif : ce que le calendrier doit.
@@ -141,7 +143,7 @@ fun EcranPreventif(
             ChampRecherche(
                 valeur = recherche,
                 onValeur = { recherche = it },
-                indication = "Machine, client, gamme…",
+                indication = "Machine, zone, client, gamme…",
                 modifier = Modifier
                     .padding(horizontal = MargeEcran)
                     .padding(bottom = 14.dp),
@@ -210,7 +212,29 @@ fun EcranPreventif(
     }
 }
 
-/** Un groupe de la liste : son intitulé, puis ses lignes. */
+/**
+ * Un groupe de la liste : son intitulé, puis ses lignes — **sous-groupées par
+ * zone** dès qu'une machine en porte une.
+ *
+ * Le statut reste le premier niveau, et c'est délibéré : il dit ce qui est
+ * urgent, et c'est la question de l'écran. La zone est le second parce qu'elle
+ * dit *l'ordre dans lequel marcher*, ce qui ne devient une question qu'à partir
+ * d'un certain nombre — une ronde journalière sur cinquante machines donne un
+ * seul groupe de statut et cinquante lignes, qu'on ne parcourt pas. Les
+ * sous-titres y découpent le trajet des pieds.
+ *
+ * L'inverse — zone d'abord, statut en couleur — a été écarté : sur un parc de
+ * trois cents machines à cadences mêlées, il aurait noyé les quatre en retard
+ * au milieu de trois cents à venir, et c'est le retard qu'on ouvre l'écran pour
+ * voir.
+ *
+ * **Rien ne change tant qu'aucune machine n'a de zone** : un seul sous-groupe
+ * sans nom n'ajouterait qu'une ligne de titre inutile, et c'est le même partage
+ * que la section de plan absente d'une fiche machine tant qu'aucune gamme
+ * n'existe. Les machines **non rangées** ont, elles, leur sous-groupe nommé
+ * « Sans zone » plutôt que de passer en tête sans titre : une machine qu'on ne
+ * voit nulle part est une machine qu'on n'entretient pas.
+ */
 private fun LazyListScope.groupe(
     intitule: String,
     echeances: List<EcheanceMaintenance>,
@@ -219,14 +243,71 @@ private fun LazyListScope.groupe(
 ) {
     if (echeances.isEmpty()) return
     item(key = "entete-$intitule") { IntituleSection(texte = "$intitule · ${echeances.size}") }
-    items(items = echeances, key = { cle(it) }) { echeance ->
-        LigneEcheanceMaintenance(
-            echeance = echeance,
-            aujourdhui = aujourdhui,
-            onClick = { onOuvrir(echeance) },
-        )
+
+    val parZone = echeances.groupBy { it.equipement.zone.trim() }
+    if (parZone.size <= 1) {
+        items(items = echeances, key = { cle(it) }) { echeance ->
+            LigneEcheanceMaintenance(
+                echeance = echeance,
+                aujourdhui = aujourdhui,
+                onClick = { onOuvrir(echeance) },
+            )
+        }
+        return
+    }
+
+    // Les zones nommées d'abord, triées ; les non rangées en dernier — elles
+    // appellent un rangement, pas un détour en tête de liste.
+    val ordre = parZone.keys.filter { it.isNotEmpty() }.sortedWith(collateurZones) +
+        listOf("").filter { it in parZone }
+    ordre.forEach { zone ->
+        val siennes = parZone.getValue(zone)
+        item(key = "zone-$intitule-$zone") {
+            SousTitreZone(
+                zone = zone.ifEmpty { "Sans zone" },
+                nombre = siennes.size,
+            )
+        }
+        items(items = siennes, key = { cle(it) }) { echeance ->
+            LigneEcheanceMaintenance(
+                echeance = echeance,
+                aujourdhui = aujourdhui,
+                onClick = { onOuvrir(echeance) },
+            )
+        }
     }
 }
+
+/**
+ * Le sous-titre d'une zone, et son compte.
+ *
+ * Le compte y est parce que c'est lui qu'on lit : « Toiture · 3 » dit qu'on
+ * monte une fois pour trois machines, ce qui change l'ordre dans lequel on
+ * décide de faire sa matinée.
+ */
+@Composable
+private fun SousTitreZone(zone: String, nombre: Int) {
+    Row(
+        modifier = Modifier.padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = zone,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Puce(texte = "$nombre", chiffre = true)
+    }
+}
+
+/** Même tri que `zonesDe` : « Étuve » n'est pas après « Zone 2 ». */
+private val collateurZones: Comparator<String> =
+    Collator.getInstance(Locale.FRENCH).let { collateur ->
+        Comparator { a, b -> collateur.compare(a, b) }
+    }
 
 /**
  * La clé d'une ligne : le couple machine / gamme.

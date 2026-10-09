@@ -69,6 +69,7 @@ import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.SuiviMaintenance
 import com.frigopro.app.data.initialesDe
 import com.frigopro.app.data.nomDeCopie
+import com.frigopro.app.data.zonesDe
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -272,6 +273,10 @@ fun ClientsRoute(
         if (ficheOuverte) {
             DialogueFicheMachine(
                 equipement = machineOuverte,
+                // Les zones de **tout le parc** et non du seul client : sur un
+                // site, les zones sont celles du site, et un donneur d'ordre à
+                // plusieurs magasins réemploie « réserve » et « vente » partout.
+                zones = remember(parc) { zonesDe(parc) },
                 onValider = {
                     machines.onEnregistrerFiche(it)
                     ficheOuverte = false
