@@ -582,15 +582,23 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   Le titre d'un écran nomme **la vue ouverte et non l'onglet** — « Devis », pas
   « Facturation » —, comme celui des carnets le faisait déjà : répéter le nom du
   groupe au-dessus d'une bascule laissait l'écran sans dire lequel des deux
-  documents on regarde. Trois listes y répondent
+  documents on regarde. **Quatre listes** y répondent
   ensemble et pour la même raison : les factures **à relancer**, les articles
-  **à racheter**, les **échéances F-Gas**. Aucune n'est stockée — un impayé, un
-  manque et une échéance se déduisent tous trois d'un seuil et d'une date, et un
-  booléen en base serait faux le lendemain. Les trois sont **plafonnées à trois
-  lignes** : l'accueil alerte, les onglets tiennent le détail, et une liste de
-  trente lignes ne serait plus lue. Celle du magasin compte le reste et y
-  mène — un manque qui ne mène nulle part n'est pas une réponse à « et
-  maintenant ? ». C'est pourquoi **la coquille tient le carnet ouvert** plutôt
+  **à racheter**, les **visites préventives dues**, les **échéances F-Gas**.
+  Aucune n'est stockée — un impayé, un manque, une visite due et une échéance se
+  déduisent tous d'un seuil et d'une date, et un booléen en base serait faux le
+  lendemain. Toutes sont **plafonnées à trois lignes** : l'accueil alerte, les
+  onglets tiennent le détail, et une liste de trente lignes ne serait plus lue.
+  Celles du magasin et du préventif comptent le reste et y mènent — un manque qui
+  ne mène nulle part n'est pas une réponse à « et maintenant ? ».
+  Les **visites** y sont arrivées en dernier, et avec un argument que les trois
+  autres n'ont pas : c'est le seul travail du métier que **personne ne vient
+  demander**. Un dépannage arrive par un appel, une facture par une échéance, un
+  manque se voit en chargeant ; une ronde du matin oubliée ne se manifeste jamais
+  — elle se découvre à la fin du contrat, quand le client compte les visites.
+  Elles passent **avant** les échéances F-Gas, qui sont une obligation légale
+  mais à des mois : un préavis de maintenance va de zéro à trente jours, et
+  l'ordre de l'écran suit l'urgence et non la gravité. C'est pourquoi **la coquille tient le carnet ouvert** plutôt
   que `CarnetsRoute` : un état posé dans la route aurait été hors d'atteinte de
   l'accueil. `EcranAujourdhui` met en avant
   l'intervention en cours, ou à défaut la prochaine, et ne navigue **jamais**
@@ -1186,7 +1194,7 @@ l'APK : un test rouge bloque la publication.
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
 | `MaintenanceTest` | L'arithmétique du plan : un trimestre qui n'a pas quatre-vingt-dix jours, l'échéance tirée de la dernière visite ou de l'entrée au plan, le retard en jours, les occurrences attendues d'une machine arrivée en cours de route, le taux qui n'existe pas quand rien n'était attendu |
-| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
+| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation |
@@ -1752,7 +1760,8 @@ retard, à faire, à venir — ce dernier replié, parce qu'une liste de trois c
 de l'en-tête comptent **tout le plan** et non la vue filtrée : une recherche en
 cours ne doit pas faire croire que le retard a diminué. Le préavis est porté par
 la cadence (`Periodicite.preavisJours`) — on prévient d'une visite annuelle un
-mois avant, d'une ronde journalière la veille.
+mois avant, et d'une ronde journalière le jour même, parce qu'un préavis sur une
+ronde du matin n'apprendrait rien à personne.
 
 **La fiche d'une machine** porte le plan de celle-ci, avant ses photos : pendant
 une ronde, « cette machine est due » et le bouton qui l'éteint sont ce qu'on
@@ -1769,6 +1778,12 @@ par le client. La **date est modifiable**, et ce n'est pas un détail : on consi
 sa tournée le soir, parfois le lendemain, et dater la visite du jour de la saisie
 décalerait tout le plan d'un jour à chaque fois. Même défaut que la date d'un
 mouvement de fluide au registre, où il a déjà fallu le corriger.
+
+**L'accueil** porte les visites en retard ou dans leur préavis, quatrième liste
+à côté des impayés, des manquants et des échéances F-Gas (voir
+« Architecture »). C'est `aFaire`, et c'est la seule des quatre dont l'absence
+se serait vue tard : un contrat non honoré se découvre quand le client compte
+les visites.
 
 **Affecter tout un parc d'un geste** (`onAffecterAuParc`) est ce qui rend la
 chose tenable sur un site de plusieurs centaines d'équipements : les rattacher un
