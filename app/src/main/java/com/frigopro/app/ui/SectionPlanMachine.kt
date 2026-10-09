@@ -113,11 +113,12 @@ fun SectionPlanMachine(
 /**
  * Une gamme que la machine suit : ce qu'elle doit, et le geste qui l'éteint.
  *
- * « Fait » est en plein et à droite, parce que c'est le geste qu'on vient faire :
- * on ouvre la fiche d'une machine pendant une ronde, et le reste de la ligne
- * sert à vérifier qu'on est au bon endroit. Le liseré ne paraît que si quelque
- * chose est dû — une gamme à jour ne doit pas attirer l'œil, c'est la propriété
- * qui rend la liste des échéances lisible sur un parc de plusieurs centaines.
+ * « Fait » prend **toute la largeur**, sous la ligne qui décrit la gamme, parce
+ * que c'est le geste qu'on vient faire : on ouvre la fiche d'une machine pendant
+ * une ronde, le reste sert à vérifier qu'on est au bon endroit, et une cible
+ * pleine largeur se touche gants aux mains sans regarder. Le liseré ne paraît
+ * que si quelque chose est dû — une gamme à jour ne doit pas attirer l'œil,
+ * c'est la propriété qui rend une liste de plusieurs centaines lisible.
  */
 @Composable
 private fun LigneGammeSuivie(

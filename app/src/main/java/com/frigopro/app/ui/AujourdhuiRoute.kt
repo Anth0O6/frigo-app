@@ -19,7 +19,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  * Il partage l'`InterventionViewModel` et l'`InterventionsViewModel` des autres
  * vues — `viewModel()` rend la même instance par classe — si bien qu'une
  * intervention ouverte d'ici est la même que celle ouverte du planning, avec son
- * chronomètre en marche et ses relevés déjà saisis.
+ * chronomètre en marche et ses relevés déjà saisis. Le `MaintenanceViewModel`
+ * l'est aussi : les visites qu'il annonce sont celles que le Préventif liste, et
+ * une visite consignée là-bas disparaît d'ici sans que rien ne les relie.
  */
 @Composable
 fun AujourdhuiRoute(
@@ -34,10 +36,12 @@ fun AujourdhuiRoute(
     detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
     factures: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
     materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory),
+    plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val impayees by factures.aRelancer.collectAsStateWithLifecycle()
     val manquants by materiel.aReapprovisionner.collectAsStateWithLifecycle()
+    val preventif by plan.aFaire.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     EcranAujourdhui(
@@ -58,6 +62,11 @@ fun AujourdhuiRoute(
         },
         manquants = manquants,
         onVoirMagasin = onVoirMagasin,
+        // Le Préventif est une vue de ce même onglet : il suffit de basculer, et
+        // rien n'a à être transporté — le `MaintenanceViewModel` y est déjà
+        // celui-ci, `viewModel()` rendant une seule instance par classe.
+        preventif = preventif,
+        onVoirPreventif = { onVue(VueTournee.PREVENTIF) },
         onReglage = onReglage,
     )
 }

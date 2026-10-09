@@ -324,6 +324,63 @@ class MaintenanceViewModelTest {
     }
 
     /**
+     * Ce que l'accueil annonce : **en retard, et dû dans le préavis de sa
+     * cadence** — rien d'autre.
+     *
+     * Le préavis est ce qui rend la liste utile plutôt qu'alarmante : une visite
+     * annuelle se prépare un mois avant, et la même liste sans préavis
+     * n'afficherait une machine que le jour où elle est déjà en retard. À
+     * l'inverse, une visite due dans cinq semaines n'a rien à faire sur un écran
+     * qui répond à « et maintenant ? » — elle y serait tous les jours jusque-là,
+     * et c'est ainsi qu'on apprend à ne plus lire une liste.
+     *
+     * L'ordre est celui de l'urgence, parce que l'accueil n'en montre que trois.
+     */
+    @Test
+    fun `l'accueil annonce le retard et le preavis, et rien au-dela`() = runTest {
+        val jour = LocalDate.of(2026, 6, 15)
+        val viewModel = creerViewModel(jour = jour)
+        collecter(viewModel)
+        val tardive = MACHINE
+        val proche = MACHINE.copy(id = "eq-2", nom = "Chambre froide")
+        val lointaine = MACHINE.copy(id = "eq-3", nom = "Rooftop")
+        listOf(tardive, proche, lointaine).forEach { daoEquipements.enregistrer(it) }
+        // Une gamme annuelle : trente jours de préavis.
+        viewModel.onCreerGamme("Contrôle annuel", Periodicite.ANNUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        listOf(tardive, proche, lointaine).forEach { viewModel.onAffecter(it.id, gamme.id) }
+        advanceUntilIdle()
+        // Échue le 1ᵉʳ juin, due le 25 juin, due le 20 juillet.
+        val departs = mapOf(
+            tardive.id to LocalDate.of(2025, 6, 1),
+            proche.id to LocalDate.of(2025, 6, 25),
+            lointaine.id to LocalDate.of(2025, 7, 20),
+        )
+        daoMaintenance.affectations.forEach { affectation ->
+            daoMaintenance.enregistrerAffectation(
+                affectation.copy(depuisLe = departs.getValue(affectation.equipementId)),
+            )
+        }
+        advanceUntilIdle()
+
+        assertEquals(3, viewModel.echeances.value.size)
+        assertEquals(
+            "la visite de juillet est hors préavis",
+            listOf("Centrale négatif", "Chambre froide"),
+            viewModel.aFaire.value.map { it.equipement.nom },
+        )
+        assertEquals(
+            StatutEcheance.EN_RETARD,
+            viewModel.aFaire.value.first().statut(jour),
+        )
+        assertEquals(
+            StatutEcheance.A_FAIRE,
+            viewModel.aFaire.value.last().statut(jour),
+        )
+    }
+
+    /**
      * Le taux de réalisation d'une gamme, sur douze mois glissants.
      *
      * Il est exposé en **flux** et non par une fonction qui lirait `.value` :
@@ -430,6 +487,9 @@ class MaintenanceViewModelTest {
         }
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.realisations.collect { }
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.aFaire.collect { }
         }
     }
 

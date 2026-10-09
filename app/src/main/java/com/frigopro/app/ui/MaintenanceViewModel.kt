@@ -21,7 +21,6 @@ import com.frigopro.app.data.PlanMaintenance
 import com.frigopro.app.data.PointGamme
 import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.ReleveGamme
-import com.frigopro.app.data.StatutEcheance
 import com.frigopro.app.data.SuiviMaintenance
 import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TechnicienRepository
@@ -107,10 +106,17 @@ class MaintenanceViewModel(
     /**
      * Ce qui appelle une action : en retard, puis dû dans le préavis de sa cadence.
      *
+     * C'est ce que l'**accueil** annonce, plafonné à trois lignes comme les
+     * factures échues et les articles en manque : une visite préventive est le
+     * seul travail du métier que personne ne vient demander, et l'accueil est
+     * donc le seul endroit où elle peut se rappeler d'elle-même.
+     *
      * Le jour est relu à chaque émission et non capturé une fois : l'application
-     * rouverte le lendemain matin doit compter le retard du lendemain, et le flux
-     * ne réémet que sur une écriture — c'est pourquoi l'écran appelle aussi
-     * [compte] à l'affichage plutôt que de lire un chiffre figé.
+     * rouverte le lendemain matin doit compter le retard du lendemain. Le flux
+     * ne réémet cependant que sur une écriture, si bien qu'une application
+     * laissée ouverte toute la nuit montre l'état de la veille — c'est sans
+     * conséquence ici, puisque la liste ne fait que **manquer** une visite qui
+     * vient de tomber, et le Préventif la recalcule à l'ouverture.
      */
     val aFaire: StateFlow<List<EcheanceMaintenance>> = echeances
         .map { liste -> liste.filter { it.statut(aujourdhui()).appelleUneAction } }
@@ -119,10 +125,6 @@ class MaintenanceViewModel(
             SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
             emptyList(),
         )
-
-    /** Combien d'échéances par statut, pour les trois chiffres de l'en-tête. */
-    fun compte(statut: StatutEcheance): Int =
-        echeances.value.count { it.statut(aujourdhui()) == statut }
 
     /**
      * Le taux de réalisation de chaque gamme sur les douze derniers mois, par

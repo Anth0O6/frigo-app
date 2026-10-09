@@ -27,9 +27,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.Intervention
+import com.frigopro.app.data.StatutEcheance
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
@@ -93,6 +95,23 @@ fun EcranAujourdhui(
      */
     manquants: List<ArticleEnStock> = emptyList(),
     onVoirMagasin: () -> Unit = {},
+    /**
+     * Les visites préventives en retard ou dues dans leur préavis.
+     *
+     * Elles rejoignent l'accueil pour la raison des trois autres listes, et avec
+     * un argument de plus : une visite préventive est le seul travail du métier
+     * que **personne ne vient demander**. Un dépannage arrive par un appel, une
+     * facture par une échéance, un manque se voit en chargeant ; une ronde du
+     * matin oubliée ne se manifeste jamais — elle se découvre à la fin du
+     * contrat, quand le client compte les visites. L'accueil est donc le seul
+     * endroit où elle peut se rappeler d'elle-même.
+     *
+     * Elles passent **avant** les échéances F-Gas, qui sont une obligation
+     * légale mais à des mois : un préavis de maintenance va de zéro à trente
+     * jours, et l'ordre de l'écran suit l'urgence et non la gravité.
+     */
+    preventif: List<EcheanceMaintenance> = emptyList(),
+    onVoirPreventif: () -> Unit = {},
     /** Ouvrir la page des Réglages où se pose un réglage qui manque. */
     onReglage: (PageReglages) -> Unit = {},
 ) {
@@ -202,6 +221,31 @@ fun EcranAujourdhui(
                         BoutonContour(
                             texte = "$reste autre${if (reste > 1) "s" else ""} au magasin",
                             onClick = onVoirMagasin,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
+            if (preventif.isNotEmpty()) {
+                Section(intitule = "Visites à faire", espacement = 8.dp) {
+                    preventif.take(PREVENTIF_MONTRE).forEach { echeance ->
+                        LignePreventif(
+                            echeance = echeance,
+                            aujourdhui = etat.jour,
+                            onClick = onVoirPreventif,
+                        )
+                    }
+                    // Le reste est compté plutôt que déroulé, comme le magasin :
+                    // sur un site de plusieurs centaines de machines une ronde
+                    // journalière en pose des dizaines, et trente lignes ici ne
+                    // seraient plus lues. L'accueil alerte, le Préventif tient
+                    // la liste.
+                    val reste = preventif.size - PREVENTIF_MONTRE
+                    if (reste > 0) {
+                        BoutonContour(
+                            texte = "$reste autre${if (reste > 1) "s" else ""} au préventif",
+                            onClick = onVoirPreventif,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -523,6 +567,66 @@ private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
  * ouvre le magasin, où le mouvement se pose.
  */
 @Composable
+/**
+ * Une visite due, sur l'accueil.
+ *
+ * Elle nomme la machine **et son client**, là où la ligne du Préventif peut se
+ * contenter de la machine : on y est déjà dans le contexte d'un site, tandis que
+ * l'accueil mélange tout ce qui attend. Le liseré prend la couleur du statut,
+ * comme l'article en manque prend celle de l'urgence — l'ambre d'un préavis et le
+ * rouge d'un retard ne disent pas la même chose, et c'est le seul signal qui les
+ * sépare d'un coup d'œil.
+ */
+@Composable
+private fun LignePreventif(
+    echeance: EcheanceMaintenance,
+    aujourdhui: LocalDate,
+    onClick: () -> Unit,
+) {
+    val statuts = LocalStatuts.current
+    val teinte = if (echeance.statut(aujourdhui) == StatutEcheance.EN_RETARD) {
+        statuts.urgence
+    } else {
+        statuts.aValider
+    }
+
+    Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 3.dp, height = 30.dp)
+                    .background(teinte, MaterialTheme.shapes.extraSmall),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = echeance.equipement.nom,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = listOf(echeance.clientNom, echeance.gamme.libelle)
+                        .filter { it.isNotBlank() }
+                        .joinToString("  ·  "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = libelleEcheance(echeance, aujourdhui),
+                style = MaterialTheme.typography.bodySmall,
+                color = teinte,
+            )
+        }
+    }
+}
+
+@Composable
 private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
     val urgence = LocalStatuts.current.urgence
     Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
@@ -643,6 +747,9 @@ private fun LigneEcheance(echeance: EcheanceFgas) {
  * mène.
  */
 private const val MANQUANTS_MONTRES = 3
+
+/** Même plafond que les manquants, et pour la même raison. */
+private const val PREVENTIF_MONTRE = 3
 
 /** « 08:00 → 09:30 », d'après l'heure de début et la durée prévue. */
 private fun creneau(intervention: Intervention): String {
