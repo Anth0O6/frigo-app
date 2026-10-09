@@ -559,15 +559,6 @@ private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
 }
 
 /**
- * Un article sous son seuil.
- *
- * Il dit **où** il manque, et c'est tout l'intérêt de tenir deux stocks : « 1 u
- * au camion, mini 3 » n'appelle pas le même geste que le même manque à
- * l'atelier — l'un se recharge le soir, l'autre se commande. Toucher la ligne
- * ouvre le magasin, où le mouvement se pose.
- */
-@Composable
-/**
  * Une visite due, sur l'accueil.
  *
  * Elle nomme la machine **et son client**, là où la ligne du Préventif peut se
@@ -626,6 +617,14 @@ private fun LignePreventif(
     }
 }
 
+/**
+ * Un article sous son seuil.
+ *
+ * Il dit **où** il manque, et c'est tout l'intérêt de tenir deux stocks : « 1 u
+ * au camion, mini 3 » n'appelle pas le même geste que le même manque à
+ * l'atelier — l'un se recharge le soir, l'autre se commande. Toucher la ligne
+ * ouvre le magasin, où le mouvement se pose.
+ */
 @Composable
 private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
     val urgence = LocalStatuts.current.urgence
