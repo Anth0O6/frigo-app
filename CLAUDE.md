@@ -258,6 +258,28 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   machine doit effacer ses photos, détacher ses interventions et disparaître d'un
   bloc — et, depuis le multi-split, faire le même travail pour chacune de ses
   unités.
+  `Equipement.zone` dit **où la machine se trouve sur le site** — « toiture »,
+  « linéaire surgelés », « local technique » —, et c'est la maintenance
+  préventive qui l'a rendue nécessaire, à partir d'un seuil précis : une ronde
+  journalière sur **cinquante** machines produit chaque matin une liste de
+  cinquante lignes, qu'on ne parcourt pas. On parcourt un site zone par zone, et
+  la liste doit suivre le trajet des pieds plutôt que l'ordre alphabétique. En
+  dessous d'une dizaine la question ne se posait pas, et c'est pourquoi ce champ
+  n'existait pas.
+  **Du texte libre, et non une table.** Une zone n'a ni adresse, ni historique,
+  ni photos : ce n'est pas une entité, c'est une étiquette. Lui donner sa table
+  aurait demandé un écran pour la créer, une règle pour la supprimer et une
+  propagation de renommage — tout cela pour une chaîne. La contrepartie est
+  connue et assumée : le texte libre dérive, « Toiture » et « toit »
+  cohabiteront. C'est pour cela que la saisie **propose les zones déjà
+  employées** (`zonesDe`), exactement comme l'écran des fournisseurs filtre sur
+  la ville, qui est aussi du texte libre sur `Client`. La liste est **dérivée,
+  jamais stockée** : elle *est* l'ensemble des valeurs posées sur les machines, et
+  une table à côté aurait pu contenir une zone que plus rien n'emploie — ou
+  manquer celle qu'une restauration vient d'apporter. Vide veut dire **non
+  rangée** et non « zone sans nom » : la machine remonte sous « Sans zone »
+  plutôt que de disparaître, parce qu'une machine qu'on ne voit nulle part est une
+  machine qu'on n'entretient pas.
   Une machine peut porter des **unités intérieures** : un bi-split est un groupe
   extérieur et deux unités, et non trois machines au même rang. Le lien est un
   `parentId` sur la même table plutôt qu'une table à part : une unité est une
@@ -1087,6 +1109,16 @@ ce qui permet à une visite de survivre à la suppression de la machine ou de la
 gamme qu'elle désignait — elle en garde une copie du nom, et reste donc une preuve
 lisible.
 
+`MIGRATION_18_19` apporte la zone d'une machine, et c'est la **plus petite
+migration du projet** : une colonne, aucun index. On ne cherche jamais « toutes
+les machines de la toiture » en SQL — le parc tient en mémoire, et groupement
+comme filtrage se font côté Kotlin, exactement comme le tri du carnet. Le défaut
+`''` veut dire « non rangée », et c'est ce qui rend juste tout parc déjà saisi
+sans le toucher : un défaut inventé — « Site », « Général » — aurait fait croire
+à un rangement que personne n'a fait, et se serait répandu dans chaque
+sauvegarde. L'entité ne déclare pas ce défaut, pour la raison déjà écrite plus
+haut.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -1157,8 +1189,8 @@ l'APK : un test rouge bloque la publication.
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
-| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible |
-| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel et jamais ce qui a été fait, le nom de copie qui prend le rang suivant |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone |
+| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel — zone comprise — et jamais ce qui a été fait, le nom de copie qui prend le rang suivant, les zones dérivées du parc et triées sans les vides |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
 | `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique, duplication qui ouvre la copie et non l'original |
@@ -1195,11 +1227,11 @@ l'APK : un test rouge bloque la publication.
 | `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
 | `MaintenanceTest` | L'arithmétique du plan : un trimestre qui n'a pas quatre-vingt-dix jours, l'échéance tirée de la dernière visite ou de l'entrée au plan, le retard en jours, les occurrences attendues d'une machine arrivée en cours de route, le taux qui n'existe pas quand rien n'était attendu |
 | `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
-| `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, et le parc du voisin qui n'y entre pas |
+| `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, le rangement par zone puis machine puis cadence, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
-| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation |
+| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
-| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés |
+| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
@@ -1267,6 +1299,13 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 15 ajoute la **zone** d'une machine. Facultative avec sa valeur par
+défaut, comme tout champ ajouté, et c'est tout ce qui rend un fichier d'avant
+relisible : son absence veut dire dans un fichier ce qu'elle veut dire en base —
+le parc n'était pas rangé. Du texte libre, donc jamais de quoi refuser le
+fichier, à la différence d'un statut ou d'une périodicité, qui sont des valeurs
+fixes de l'application.
 
 Le format 14 ajoute le **plan de maintenance** : les gammes, leurs points, les
 affectations et le journal des visites. Les trois premières sont une décision
@@ -1763,6 +1802,21 @@ la cadence (`Periodicite.preavisJours`) — on prévient d'une visite annuelle u
 mois avant, et d'une ronde journalière le jour même, parce qu'un préavis sur une
 ronde du matin n'apprendrait rien à personne.
 
+**Il se range par zone à l'intérieur de chaque statut** dès qu'une machine en
+porte une. Le statut reste le premier niveau parce qu'il dit ce qui est urgent,
+et c'est la question de l'écran ; la zone est le second parce qu'elle dit *l'ordre
+dans lequel marcher*, ce qui ne devient une question qu'à partir d'un certain
+nombre. L'inverse — zone d'abord, statut en couleur — a été écarté : sur un parc
+de trois cents machines à cadences mêlées, il aurait noyé les quatre en retard au
+milieu de trois cents à venir. Rien ne change tant qu'aucune machine n'a de zone,
+même partage que la section de plan absente d'une fiche sans gamme ; et les
+machines non rangées ont leur sous-groupe « Sans zone », **en dernier**. Le
+sous-titre porte son compte, parce que c'est lui qu'on lit : « Toiture · 3 » dit
+qu'on monte une fois pour trois machines, ce qui change l'ordre dans lequel on
+décide de faire sa matinée. La **recherche** atteint la zone, et c'est l'autre
+moitié de la réponse : le groupement dit l'ordre dans lequel marcher, la
+recherche isole la zone où l'on se trouve déjà.
+
 **La fiche d'une machine** porte le plan de celle-ci, avant ses photos : pendant
 une ronde, « cette machine est due » et le bouton qui l'éteint sont ce qu'on
 vient chercher. La section **disparaît entièrement tant qu'aucune gamme
@@ -1796,6 +1850,17 @@ que deux visites attendues sur l'année, et ce chiffre-là part chez le client �
 sous-dit le travail fait, ce qui est aussi faux que de le surdire. Le journal des
 visites ne bouge pas pour autant, et l'échéance non plus quand une visite
 existe : la date d'entrée dit ce qui était **dû**, pas ce qui a été **fait**.
+
+**La zone se saisit en premier champ** de la boîte « Zone, plaque et fluide »,
+et c'est un choix de tâche plutôt que de maquette : ranger un parc de cinquante
+machines veut dire ouvrir cinquante fois cette boîte pour un seul champ, et le
+mettre sous la plaque aurait demandé de faire défiler chaque fois. Les zones
+déjà employées sont proposées dessous, prises sur **tout le parc** et non sur le
+seul client — sur un site, les zones sont celles du site, et un donneur d'ordre à
+plusieurs magasins réemploie « réserve » et « vente » partout. La **duplication**
+l'emporte, puisque les douze meubles d'un linéaire sont dans le même linéaire :
+c'est une caractéristique du lieu et non un acte, et la règle de `dupliquer` la
+classe du bon côté sans qu'on ait rien à écrire.
 
 **Affecter tout un parc d'un geste** (`onAffecterAuParc`) est ce qui rend la
 chose tenable sur un site de plusieurs centaines d'équipements : les rattacher un
@@ -1855,6 +1920,14 @@ Trois règles, et chacune répare une façon de mentir :
   porte une année de visites dont il n'a vu que quelques-unes, et lui faire signer
   un récapitulatif qu'il ne peut pas vérifier serait lui faire attester le travail
   de l'entreprise.
+
+Elle se range **par zone, puis par machine, puis par cadence**, et chaque bloc
+porte sa zone en tête de titre : c'est ainsi que le client connaît son site — il
+demande ce qui a été fait « en chambre froide », pas ce qui a été fait sur
+« VIT-02 ». La zone est portée par le titre du bloc plutôt que par un niveau de
+groupement de plus : un document imprimé n'a pas de bloc dans un bloc, et le tri
+met déjà les machines d'une même zone à la suite. Les non rangées passent en
+dernier, comme à l'écran.
 
 Deux points de calcul, parce que tous deux produisent un chiffre faux qui part
 chez le client. **La période s'arrête à aujourd'hui** : un contrat mensuel sur
@@ -2160,18 +2233,18 @@ place » venant en tête :
   porter le champ sur `Equipement` — par une migration — pour que l'accueil et la
   fiche machine en tiennent compte au lieu de retenir toujours la périodicité la
   plus exigeante.
-- **Les zones d'un site, si une ronde journalière porte sur cinquante machines.**
-  Le « Préventif » est une liste, et une liste de cinquante lignes à faire le
-  matin se parcourt mal : il faudrait une notion de zone ou de local, qui
-  n'existe pas dans le modèle — `Equipement` n'a pas d'emplacement, et la
-  photographier a longtemps suffi. C'est une migration et un champ, pas une
-  refonte, mais c'est à décider en sachant combien de machines portent un point
-  journalier : à une dizaine la liste suffit.
+- **Ranger un parc existant par zones, autrement qu'une machine à la fois.** La
+  zone se saisit sur la fiche et se recopie à la duplication, ce qui couvre la
+  saisie d'un parc neuf ; un parc de trois cents machines déjà saisies demande,
+  lui, trois cents ouvertures de boîte. Il manque le geste « ces douze
+  meubles-là », qui est **le même manque** que pour l'affectation d'une gamme :
+  une sélection multiple dans le carnet, le premier endroit de l'application qui
+  en aurait besoin. Les deux se feraient ensemble, et c'est la raison de ne pas
+  les traiter séparément.
 - **Affecter une gamme depuis le carnet, en balayant une liste.**
   `onAffecterAuParc` rattache tout le parc d'un geste et la fiche d'une machine
-  en rattache une ; entre les deux il manque le cas « ces douze meubles-là »,
-  qui demanderait une sélection multiple — le premier endroit de l'application
-  qui en aurait besoin.
+  en rattache une ; entre les deux il manque le cas « ces douze meubles-là ».
+  Voir ci-dessus : c'est la même sélection multiple.
 - **La ponctualité, et non seulement le compte.** `RealisationGamme` dit combien
   de visites ont été faites, pas si elles l'ont été à l'heure : une visite
   mensuelle faite trois fois en janvier puis plus rien jusqu'en mars compte trois
