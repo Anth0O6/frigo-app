@@ -272,6 +272,14 @@ data class EquipementSauvegarde(
     val chargeKg: Double? = null,
     val misEnServiceLe: String? = null,
     val dernierControleLe: String? = null,
+    /**
+     * Où la machine se trouve sur le site. Absente d'un fichier d'avant le
+     * format 15, et son absence veut dire dans un fichier ce qu'elle veut dire
+     * en base : le parc n'était pas rangé par zones. Du texte libre, donc jamais
+     * de quoi refuser le fichier — à la différence d'un statut ou d'une
+     * périodicité, qui sont des valeurs fixes de l'application.
+     */
+    val zone: String = "",
     val modifieLe: Long = 0L,
 )
 
@@ -550,7 +558,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 14
+const val FORMAT_COURANT: Int = 15
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -632,6 +640,7 @@ internal fun Equipement.versSauvegarde(): EquipementSauvegarde = EquipementSauve
     chargeKg = chargeKg,
     misEnServiceLe = misEnServiceLe?.format(FORMAT_DATE),
     dernierControleLe = dernierControleLe?.format(FORMAT_DATE),
+    zone = zone,
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -701,6 +710,7 @@ internal fun EquipementSauvegarde.versEquipement(): Equipement = Equipement(
     chargeKg = chargeKg,
     misEnServiceLe = misEnServiceLe?.let { jourOuNull(it) },
     dernierControleLe = dernierControleLe?.let { jourOuNull(it) },
+    zone = zone,
     modifieLe = Instant.ofEpochMilli(modifieLe),
 )
 

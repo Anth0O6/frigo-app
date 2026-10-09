@@ -796,6 +796,11 @@ class SauvegardeRepositoryTest {
             id = "eq-1",
             clientId = "cl-1",
             nom = "Vitrine salle 2",
+            // La zone est posée ici plutôt que dans un test à elle : l'aller-retour
+            // compare les deux `Equipement` par égalité de `data class`, si bien
+            // qu'un champ oublié dans l'un des deux convertisseurs se voit sans
+            // qu'on ait à le nommer. C'est ce qui a fait entrer la zone au format 15.
+            zone = "Toiture",
             modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
         )
 
@@ -848,5 +853,26 @@ class SauvegardeRepositoryTest {
             calculeLe = Instant.ofEpochMilli(1_757_400_000_000),
             modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
         )
+    }
+
+    /**
+     * Un fichier d'avant le format 15 ne porte pas de zone, et son absence veut
+     * dire ce qu'elle veut dire en base : le parc n'était pas rangé.
+     *
+     * Le test porte sur le convertisseur plutôt que sur un fichier entier,
+     * parce que c'est là que la propriété vit : un champ **facultatif avec sa
+     * valeur par défaut** est tout ce qui rend une sauvegarde ancienne relisible,
+     * et c'est la seule chose à ne pas perdre en ajoutant un champ. Une zone est
+     * du texte libre : elle ne fait jamais refuser le fichier, à la différence
+     * d'un statut ou d'une périodicité.
+     */
+    @Test
+    fun `une machine d'avant le format 15 se relit sans zone`() {
+        val ancienne = EquipementSauvegarde(id = "eq-1", clientId = "cl-1", nom = "Vitrine")
+
+        val relue = ancienne.versEquipement()
+
+        assertEquals("", relue.zone)
+        assertEquals("Vitrine", relue.nom)
     }
 }
