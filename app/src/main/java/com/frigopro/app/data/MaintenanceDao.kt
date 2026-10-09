@@ -94,9 +94,6 @@ abstract class MaintenanceDao {
     @Query("SELECT * FROM releves_gamme ORDER BY faitLe DESC")
     abstract fun observerReleves(): Flow<List<ReleveGamme>>
 
-    @Query("SELECT * FROM releves_gamme WHERE equipementId = :equipementId ORDER BY faitLe DESC")
-    abstract fun observerRelevesDe(equipementId: String): Flow<List<ReleveGamme>>
-
     @Upsert
     abstract suspend fun enregistrerReleve(releve: ReleveGamme)
 

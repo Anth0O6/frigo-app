@@ -21,9 +21,6 @@ class MaintenanceRepository(private val dao: MaintenanceDao) {
     val affectations: Flow<List<AffectationGamme>> = dao.observerAffectations()
     val releves: Flow<List<ReleveGamme>> = dao.observerReleves()
 
-    fun relevesDe(equipementId: String): Flow<List<ReleveGamme>> =
-        dao.observerRelevesDe(equipementId)
-
     /** Une gamme sans intitulé n'est pas une gamme : elle ne s'écrit pas. */
     suspend fun enregistrerGamme(gamme: GammeMaintenance): Boolean {
         val propre = gamme.libelle.trim()

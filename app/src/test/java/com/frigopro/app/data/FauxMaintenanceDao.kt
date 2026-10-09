@@ -131,11 +131,6 @@ class FauxMaintenanceDao : MaintenanceDao() {
     override fun observerReleves(): Flow<List<ReleveGamme>> =
         lesReleves.map { liste -> liste.sortedByDescending { it.faitLe } }
 
-    override fun observerRelevesDe(equipementId: String): Flow<List<ReleveGamme>> =
-        lesReleves.map { liste ->
-            liste.filter { it.equipementId == equipementId }.sortedByDescending { it.faitLe }
-        }
-
     override suspend fun enregistrerReleve(releve: ReleveGamme) {
         lesReleves.value = lesReleves.value.filterNot { it.id == releve.id } + releve
     }

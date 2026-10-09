@@ -1,10 +1,14 @@
 package com.frigopro.app.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -55,6 +59,8 @@ data class ActionsPlanMachine(
     val onNePlusSuivre: (String) -> Unit,
     /** Ouvre la feuille de visite : consigner demande une date et des remarques. */
     val onConsigner: (EcheanceMaintenance) -> Unit,
+    /** Déplace l'entrée au plan : voir [MaintenanceViewModel.onReporterDepart]. */
+    val onDepart: (EcheanceMaintenance) -> Unit,
     val onRetirerVisite: (ReleveGamme) -> Unit,
 )
 
@@ -94,6 +100,7 @@ fun SectionPlanMachine(
                 echeance = echeance,
                 aujourdhui = aujourdhui,
                 onConsigner = { actions.onConsigner(echeance) },
+                onDepart = { actions.onDepart(echeance) },
                 onRetirer = { actions.onNePlusSuivre(echeance.gamme.id) },
             )
         }
@@ -125,6 +132,7 @@ private fun LigneGammeSuivie(
     echeance: EcheanceMaintenance,
     aujourdhui: LocalDate,
     onConsigner: () -> Unit,
+    onDepart: () -> Unit,
     onRetirer: () -> Unit,
 ) {
     val statuts = LocalStatuts.current
@@ -149,6 +157,27 @@ private fun LigneGammeSuivie(
                     style = MaterialTheme.typography.bodySmall,
                     color = teinte,
                 )
+                // Elle **dit qu'elle se touche**, par le crayon : un texte
+                // cliquable dont rien n'annonce qu'il l'est n'est pas une
+                // fonctionnalité — même règle que le titre de la tournée, qui a
+                // reçu son icône de calendrier pour la même raison.
+                Row(
+                    modifier = Modifier.clickable(onClick = onDepart),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "au plan depuis le ${jourCourt(echeance.depuisLe)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Changer la date d'entrée au plan",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
             }
             Puce(texte = echeance.gamme.periodicite.libelle)
             // « Ne plus suivre » est une icône et non un bouton : le geste est

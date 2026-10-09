@@ -128,6 +128,11 @@ fun ClientsRoute(
     // superpose à la fiche, et la fiche n'a pas à savoir qu'elle existe.
     var visite by remember { mutableStateOf<EcheanceMaintenance?>(null) }
 
+    // L'échéance dont on veut déplacer l'entrée au plan. Deux états distincts
+    // plutôt qu'un seul avec un drapeau : on ne consigne pas et ne reporte pas en
+    // même temps, et un drapeau aurait permis d'écrire l'état impossible.
+    var depart by remember { mutableStateOf<EcheanceMaintenance?>(null) }
+
     // Le client dont on vient de demander la suppression, en attente de
     // confirmation. Tenu par la route et non par la feuille : c'est ici qu'on a
     // sous la main de quoi compter ce qui disparaît — le parc, les sites.
@@ -211,6 +216,7 @@ fun ClientsRoute(
                 onSuivre = { gammeId -> maintenance.onAffecter(machineOuverte.id, gammeId) },
                 onNePlusSuivre = { gammeId -> maintenance.onRetirer(machineOuverte.id, gammeId) },
                 onConsigner = { visite = it },
+                onDepart = { depart = it },
                 onRetirerVisite = maintenance::onRetirerVisite,
             ),
             chargerPhoto = machines::charger,
@@ -245,6 +251,21 @@ fun ClientsRoute(
                     visite = null
                 },
                 onFermer = { visite = null },
+            )
+        }
+
+        depart?.let { echeance ->
+            SelecteurDate(
+                date = echeance.depuisLe,
+                onDateChoisie = { jour ->
+                    maintenance.onReporterDepart(
+                        equipementId = echeance.equipement.id,
+                        gammeId = echeance.gamme.id,
+                        depuisLe = jour,
+                    )
+                    depart = null
+                },
+                onFermer = { depart = null },
             )
         }
 

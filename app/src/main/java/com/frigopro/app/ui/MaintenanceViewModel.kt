@@ -241,6 +241,26 @@ class MaintenanceViewModel(
     }
 
     /**
+     * Déplace l'entrée d'une machine au plan.
+     *
+     * Sans ce geste, `depuisLe` était **inatteignable** : il se posait au jour du
+     * rattachement et rien ne pouvait plus le corriger — rattacher de nouveau
+     * réutilise l'affectation existante et garde donc l'ancienne date, à dessein.
+     * C'était le même défaut que le coût horaire interne : une valeur qui décide
+     * de quelque chose, et aucun écran pour la saisir.
+     *
+     * Ce qu'elle décide est le **dénominateur de l'attestation**. Un parc
+     * inventorié en octobre sous un contrat mensuel commencé en janvier
+     * n'annoncerait que deux visites attendues sur l'année, et c'est ce chiffre-là
+     * qui part chez le client — il sous-dit le travail fait, ce qui est aussi
+     * faux que de le surdire. Le journal des visites, lui, ne bouge pas : la date
+     * d'entrée au plan dit ce qui était dû, pas ce qui a été fait.
+     */
+    fun onReporterDepart(equipementId: String, gammeId: String, depuisLe: LocalDate) {
+        viewModelScope.launch { maintenance.reporterDepart(equipementId, gammeId, depuisLe) }
+    }
+
+    /**
      * Rattache une gamme à **tout un parc** d'un seul geste.
      *
      * C'est le geste qui rend la GMAO tenable sur un site de plusieurs centaines

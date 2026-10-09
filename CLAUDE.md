@@ -1194,7 +1194,7 @@ l'APK : un test rouge bloque la publication.
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
 | `MaintenanceTest` | L'arithmétique du plan : un trimestre qui n'a pas quatre-vingt-dix jours, l'échéance tirée de la dernière visite ou de l'entrée au plan, le retard en jours, les occurrences attendues d'une machine arrivée en cours de route, le taux qui n'existe pas quand rien n'était attendu |
-| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
+| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation |
@@ -1784,6 +1784,18 @@ mouvement de fluide au registre, où il a déjà fallu le corriger.
 « Architecture »). C'est `aFaire`, et c'est la seule des quatre dont l'absence
 se serait vue tard : un contrat non honoré se découvre quand le client compte
 les visites.
+
+**L'entrée au plan se déplace**, depuis la ligne de la gamme sur la fiche
+machine, et ce geste manquait : `depuisLe` se posait au jour du rattachement et
+rien ne pouvait plus le corriger — rattacher de nouveau réutilise l'affectation
+existante et garde donc l'ancienne date, à dessein. C'était le même défaut que le
+coût horaire interne, une valeur qui décide de quelque chose et aucun écran pour
+la saisir. Ce qu'elle décide est le **dénominateur de l'attestation** : un parc
+inventorié en octobre sous un contrat mensuel commencé en janvier n'annoncerait
+que deux visites attendues sur l'année, et ce chiffre-là part chez le client — il
+sous-dit le travail fait, ce qui est aussi faux que de le surdire. Le journal des
+visites ne bouge pas pour autant, et l'échéance non plus quand une visite
+existe : la date d'entrée dit ce qui était **dû**, pas ce qui a été **fait**.
 
 **Affecter tout un parc d'un geste** (`onAffecterAuParc`) est ce qui rend la
 chose tenable sur un site de plusieurs centaines d'équipements : les rattacher un

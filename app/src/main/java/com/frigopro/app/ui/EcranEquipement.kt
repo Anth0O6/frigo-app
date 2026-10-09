@@ -577,7 +577,7 @@ private fun EcranEquipementPreview() {
                     gammes = emptyList(),
                     visites = emptyList(),
                 ),
-                actionsPlan = ActionsPlanMachine({}, {}, {}, {}),
+                actionsPlan = ActionsPlanMachine({}, {}, {}, {}, {}),
                 chargerPhoto = { _, _ -> null },
                 onPhotographier = {},
                 onChoisirImage = {},

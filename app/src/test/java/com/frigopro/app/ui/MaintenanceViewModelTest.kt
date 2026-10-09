@@ -324,6 +324,48 @@ class MaintenanceViewModelTest {
     }
 
     /**
+     * Déplacer l'entrée au plan change ce qui était **dû**, et jamais ce qui a
+     * été **fait**.
+     *
+     * C'était un geste inatteignable : `depuisLe` se posait au jour du
+     * rattachement, et rattacher de nouveau garde l'ancienne date — à dessein.
+     * Un parc inventorié en octobre sous un contrat mensuel commencé en janvier
+     * n'annonçait donc que deux visites attendues sur l'année, et ce chiffre-là
+     * part chez le client sur l'attestation : il sous-dit le travail fait, ce
+     * qui est aussi faux que de le surdire.
+     */
+    @Test
+    fun `reporter l'entree au plan change le du et jamais le fait`() = runTest {
+        val jour = LocalDate.of(2026, 10, 9)
+        val viewModel = creerViewModel(jour = jour)
+        collecter(viewModel)
+        daoEquipements.enregistrer(MACHINE)
+        viewModel.onCreerGamme("Visite mensuelle", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecter(MACHINE.id, gamme.id)
+        viewModel.onConsigner(MACHINE, gamme, faitLe = LocalDate.of(2026, 3, 12))
+        advanceUntilIdle()
+        assertEquals(jour, daoMaintenance.affectations.single().depuisLe)
+
+        viewModel.onReporterDepart(MACHINE.id, gamme.id, LocalDate.of(2026, 1, 1))
+        advanceUntilIdle()
+
+        assertEquals(LocalDate.of(2026, 1, 1), daoMaintenance.affectations.single().depuisLe)
+        assertEquals(
+            "une seule affectation, pas une seconde",
+            1,
+            daoMaintenance.affectations.size,
+        )
+        // Le journal n'a pas bougé : la date d'entrée au plan dit ce qui était
+        // dû, pas ce qui a été fait.
+        assertEquals(LocalDate.of(2026, 3, 12), daoMaintenance.releves.single().faitLe)
+        // Et l'échéance suit la dernière visite, non le départ : le report ne
+        // sert qu'au dénominateur de l'attestation.
+        assertEquals(LocalDate.of(2026, 4, 12), viewModel.echeances.value.single().echeance)
+    }
+
+    /**
      * Ce que l'accueil annonce : **en retard, et dû dans le préavis de sa
      * cadence** — rien d'autre.
      *
