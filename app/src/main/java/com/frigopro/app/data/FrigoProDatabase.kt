@@ -43,7 +43,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AffectationGamme::class,
         ReleveGamme::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 @TypeConverters(Convertisseurs::class)
@@ -80,20 +80,22 @@ abstract class FrigoProDatabase : RoomDatabase() {
         const val NOM = "frigopro.db"
 
         /**
-         * Le catalogue de prestations, garni à la création de la base.
+         * Les catalogues livrés, garnis à la création de la base.
          *
-         * [MIGRATION_7_8] le pose pour un téléphone déjà garni de tournées ;
-         * une installation neuve ne passe par aucune migration et repartirait
-         * d'un catalogue vide. Les deux chemins partagent donc le même SQL —
-         * voir [SQL_CATALOGUE_INITIAL].
+         * [MIGRATION_7_8] pose les prestations et [MIGRATION_19_20] les
+         * accessoires, pour un téléphone déjà garni de tournées ; une
+         * installation neuve ne passe par aucune migration et repartirait de
+         * catalogues vides. Les deux chemins partagent donc le même SQL — voir
+         * [SQL_CATALOGUE_INITIAL] et [poserCatalogueAccessoires].
          *
          * `onCreate` ne s'exécute qu'une fois, à la création du fichier : rien
          * n'écrase ensuite un prix que le technicien aurait posé.
          */
-        private val CATALOGUE_AU_PREMIER_LANCEMENT = object : Callback() {
+        private val CATALOGUES_AU_PREMIER_LANCEMENT = object : Callback() {
 
             override fun onCreate(db: SupportSQLiteDatabase) {
                 db.execSQL(SQL_CATALOGUE_INITIAL)
+                poserCatalogueAccessoires(db)
             }
         }
 
@@ -122,8 +124,9 @@ abstract class FrigoProDatabase : RoomDatabase() {
                     MIGRATION_16_17,
                     MIGRATION_17_18,
                     MIGRATION_18_19,
+                    MIGRATION_19_20,
                 )
-                .addCallback(CATALOGUE_AU_PREMIER_LANCEMENT)
+                .addCallback(CATALOGUES_AU_PREMIER_LANCEMENT)
                 .build()
     }
 }

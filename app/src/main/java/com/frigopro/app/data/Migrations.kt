@@ -941,3 +941,141 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
         db.execSQL("ALTER TABLE `equipements` ADD COLUMN `zone` TEXT NOT NULL DEFAULT ''")
     }
 }
+
+/**
+ * Les deux fournisseurs d'accessoires, et le catalogue qui va avec — **sans un
+ * seul prix**.
+ *
+ * Même dispositif que [SQL_CATALOGUE_INITIAL] : deux chemins posent les mêmes
+ * lignes, la migration pour un téléphone déjà garni et `onCreate` pour une
+ * installation neuve, et ils partagent donc le même SQL. Identifiants stables,
+ * `INSERT OR IGNORE` : l'insertion est rejouable, et restaurer une sauvegarde
+ * faite ailleurs retrouve les mêmes lignes au lieu d'en créer quarante de plus.
+ *
+ * ## Pourquoi aucun prix, alors que c'est ce qu'on venait chercher
+ *
+ * Un prix de distributeur **n'est pas une donnée publique**. Ce que Richardson
+ * ou GFF facturent est le tarif du fabricant moins une remise négociée qui
+ * dépend du compte ; un chiffre pris ailleurs serait faux de plusieurs dizaines
+ * de pour cent, dans le sens qui rogne la marge sans que rien ne le signale. Et
+ * la couronne de cuivre est une **matière première** dont le prix suit le cours
+ * du métal : figé ici, il serait faux avant la fin du mois. C'est la règle que
+ * tout le projet applique déjà au catalogue de prestations et au GWP d'un fluide
+ * inconnu — une ligne à zéro se voit et appelle une correction, un prix inventé
+ * part chez un vrai client sans que personne ne l'ait relu.
+ *
+ * ## Ni référence, ni fournisseur par article
+ *
+ * [Article.reference] reste vide pour la même raison, en plus bête : une
+ * référence inventée se dicte au téléphone à une agence qui ne la connaît pas,
+ * et coûte l'appel. [Article.fournisseurNom] aussi, et c'est le point le moins
+ * évident : les deux enseignes vendent **toutes** ces familles, si bien que
+ * trancher maintenant serait afficher à l'écran une certitude qu'on n'a pas. Un
+ * prix et son fournisseur arrivent ensemble — celui du tarif d'où le prix est
+ * tiré —, et c'est au remplissage que les deux se posent.
+ *
+ * Ce qui est **su** est en revanche posé : les deux fournisseurs, avec
+ * l'adresse de leur catalogue en ligne. C'est la position du projet depuis le
+ * début — *le catalogue d'un fournisseur est un lien, pas un import* — et le
+ * lien est ici la seule façon honnête de donner le prix du jour.
+ *
+ * ## La désignation porte sa famille d'abord
+ *
+ * `MaterielRepository.magasin` trie par désignation avec un collateur français,
+ * et c'est le seul ordre que l'écran connaît. « Goulotte clim 80x60 — angle
+ * plat » regroupe donc la famille, là où « Angle plat pour goulotte 80x60 »
+ * l'aurait dispersée entre les A et les G. Les sections et les diamètres sont
+ * ceux du commerce courant, à reprendre sur le tarif du fournisseur retenu : une
+ * désignation se corrige d'un renommage, et elle se lit — au contraire d'un prix.
+ */
+internal const val SQL_FOURNISSEURS_ACCESSOIRES: String =
+    "INSERT OR IGNORE INTO `fournisseurs` (`id`, `nom`, `categorie`, " +
+    "`telephone`, `email`, `adresse`, `ville`, `siteCatalogue`, `prefere`, " +
+    "`notes`, `modifieLe`) VALUES ('four-richardson', 'Richardson', 'MATERIEL', " +
+    "'', '', '', '', 'https://www.richardson.fr', 0, '', 0),('four-gff', 'GFF', " +
+    "'MATERIEL', '', '', '', '', 'https://www.gff.fr', 0, '', 0)"
+
+/** Les accessoires eux-mêmes. Voir [SQL_FOURNISSEURS_ACCESSOIRES]. */
+internal const val SQL_ACCESSOIRES_INITIAUX: String =
+    "INSERT OR IGNORE INTO `articles` (`id`, `reference`, `designation`, " +
+    "`fournisseurId`, `fournisseurNom`, `prixAchat`, `prixVente`, `unite`, " +
+    "`modifieLe`) VALUES ('acc-01', '', 'Goulotte clim 60x45 — barre 2 m', " +
+    "NULL, '', 0.0, 0.0, 'barre', 0),('acc-02', '', 'Goulotte clim 80x60 — " +
+    "barre 2 m', NULL, '', 0.0, 0.0, 'barre', 0),('acc-03', '', 'Goulotte clim " +
+    "80x60 — angle plat', NULL, '', 0.0, 0.0, 'u', 0),('acc-04', '', 'Goulotte " +
+    "clim 80x60 — angle intérieur', NULL, '', 0.0, 0.0, 'u', 0),('acc-05', '', " +
+    "'Goulotte clim 80x60 — angle extérieur', NULL, '', 0.0, 0.0, 'u', " +
+    "0),('acc-06', '', 'Goulotte clim 80x60 — embout de finition', NULL, '', " +
+    "0.0, 0.0, 'u', 0),('acc-07', '', 'Goulotte clim 80x60 — manchon de " +
+    "jonction', NULL, '', 0.0, 0.0, 'u', 0),('acc-08', '', 'Goulotte clim 80x60 " +
+    "— traversée de mur', NULL, '', 0.0, 0.0, 'u', 0),('acc-09', '', 'Goulotte " +
+    "clim 110x75 — barre 2 m', NULL, '', 0.0, 0.0, 'barre', 0),('acc-10', '', " +
+    "'Goulotte clim 110x75 — angle plat', NULL, '', 0.0, 0.0, 'u', " +
+    "0),('acc-11', '', 'Goulotte clim 110x75 — angle intérieur', NULL, '', 0.0, " +
+    "0.0, 'u', 0),('acc-12', '', 'Goulotte clim 110x75 — angle extérieur', " +
+    "NULL, '', 0.0, 0.0, 'u', 0),('acc-13', '', 'Goulotte clim 110x75 — embout " +
+    "de finition', NULL, '', 0.0, 0.0, 'u', 0),('acc-14', '', 'Goulotte clim " +
+    "110x75 — manchon de jonction', NULL, '', 0.0, 0.0, 'u', 0),('acc-15', '', " +
+    "'Goulotte clim 110x75 — traversée de mur', NULL, '', 0.0, 0.0, 'u', " +
+    "0),('acc-16', '', 'Cuivre frigorifique 1/4 — couronne 25 m', NULL, '', " +
+    "0.0, 0.0, 'couronne', 0),('acc-17', '', 'Cuivre frigorifique 3/8 — " +
+    "couronne 25 m', NULL, '', 0.0, 0.0, 'couronne', 0),('acc-18', '', 'Cuivre " +
+    "frigorifique 1/2 — couronne 25 m', NULL, '', 0.0, 0.0, 'couronne', " +
+    "0),('acc-19', '', 'Cuivre frigorifique 5/8 — couronne 25 m', NULL, '', " +
+    "0.0, 0.0, 'couronne', 0),('acc-20', '', 'Cuivre frigorifique 3/4 — " +
+    "couronne 25 m', NULL, '', 0.0, 0.0, 'couronne', 0),('acc-21', '', 'Liaison " +
+    "pré-isolée 1/4-3/8 — couronne 25 m', NULL, '', 0.0, 0.0, 'couronne', " +
+    "0),('acc-22', '', 'Liaison pré-isolée 1/4-1/2 — couronne 25 m', NULL, '', " +
+    "0.0, 0.0, 'couronne', 0),('acc-23', '', 'Liaison pré-isolée — manchon " +
+    "isolant', NULL, '', 0.0, 0.0, 'm', 0),('acc-24', '', 'Pompe de relevage — " +
+    "pompe seule', NULL, '', 0.0, 0.0, 'u', 0),('acc-25', '', 'Pompe de " +
+    "relevage — avec réservoir', NULL, '', 0.0, 0.0, 'u', 0),('acc-26', '', " +
+    "'Pompe de relevage — encastrable en goulotte', NULL, '', 0.0, 0.0, 'u', " +
+    "0),('acc-27', '', 'Pompe de relevage — tube de refoulement', NULL, '', " +
+    "0.0, 0.0, 'm', 0),('acc-28', '', 'Condensats — flexible annelé Ø16', NULL, " +
+    "'', 0.0, 0.0, 'm', 0),('acc-29', '', 'Condensats — siphon', NULL, '', 0.0, " +
+    "0.0, 'u', 0),('acc-30', '', 'Condensats — manchon de raccordement Ø16', " +
+    "NULL, '', 0.0, 0.0, 'u', 0),('acc-31', '', 'Support groupe extérieur — " +
+    "châssis de sol', NULL, '', 0.0, 0.0, 'u', 0),('acc-32', '', 'Support " +
+    "groupe extérieur — console murale, la paire', NULL, '', 0.0, 0.0, 'paire', " +
+    "0),('acc-33', '', 'Support groupe extérieur — plots antivibratiles, le " +
+    "jeu', NULL, '', 0.0, 0.0, 'jeu', 0),('acc-34', '', 'Support groupe " +
+    "extérieur — rail de fixation', NULL, '', 0.0, 0.0, 'u', 0),('acc-35', '', " +
+    "'Finition — passe-mur et rosace', NULL, '', 0.0, 0.0, 'u', 0),('acc-36', " +
+    "'', 'Finition — mastic d''étanchéité', NULL, '', 0.0, 0.0, 'u', " +
+    "0),('acc-37', '', 'Fixation — collier pour tube frigorifique', NULL, '', " +
+    "0.0, 0.0, 'u', 0),('acc-38', '', 'Nettoyant évaporateur et condenseur — " +
+    "aérosol', NULL, '', 0.0, 0.0, 'u', 0)"
+
+/**
+ * Pose les deux fournisseurs et leurs accessoires, d'un seul endroit.
+ *
+ * Deux `execSQL` que la migration et `onCreate` doivent appeler tous les deux :
+ * les réunir ici évite qu'un des deux chemins n'en oublie un, qui est exactement
+ * l'écart qu'on ne découvre que chez l'utilisateur.
+ */
+internal fun poserCatalogueAccessoires(db: SupportSQLiteDatabase) {
+    db.execSQL(SQL_FOURNISSEURS_ACCESSOIRES)
+    db.execSQL(SQL_ACCESSOIRES_INITIAUX)
+}
+
+/**
+ * Le catalogue d'accessoires : **aucune colonne, aucune table, que des lignes**.
+ *
+ * C'est la première migration du projet qui ne touche pas au schéma. Elle
+ * n'apporte que des données, et c'est pourtant bien une migration qu'il faut :
+ * `onCreate` ne s'exécute qu'à la création du fichier, si bien qu'un téléphone
+ * déjà installé n'aurait jamais rien reçu. Le schéma étant inchangé, l'empreinte
+ * d'identité de la base est **la même qu'en 19** — seul le numéro de version
+ * bouge.
+ *
+ * Elle est **rejouable** et n'écrase rien : `INSERT OR IGNORE` sur des
+ * identifiants stables laisse en place une ligne que le technicien aurait déjà
+ * corrigée, et c'est ce qui compte ici — ces lignes sont faites pour recevoir un
+ * prix, et une migration qui repasserait dessus l'effacerait.
+ */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        poserCatalogueAccessoires(db)
+    }
+}

@@ -1013,11 +1013,21 @@ class MigrationTest {
             assertEquals("Boucherie Morel", curseur.getString(0))
         }
 
-        // Les trois tables neuves doivent être vides et utilisables.
-        listOf("fournisseurs", "articles", "stocks").forEach { table ->
-            db.query("SELECT COUNT(*) FROM `$table`").use { curseur ->
+        // Les trois tables neuves doivent être lisibles, et ne rien porter que
+        // la migration n'ait voulu y mettre. Elles ne sont plus vides pour
+        // autant : la chaîne passe désormais par [MIGRATION_19_20], qui garnit
+        // les fournisseurs et les articles du catalogue d'accessoires. Le
+        // décompte exact de ce catalogue appartient au test de cette
+        // migration ; ici on vérifie qu'il n'est rien arrivé **d'autre** —
+        // formulation qui reste juste le jour où un accessoire s'ajoute.
+        listOf(
+            "SELECT COUNT(*) FROM `stocks`",
+            "SELECT COUNT(*) FROM `articles` WHERE `id` NOT LIKE 'acc-%'",
+            "SELECT COUNT(*) FROM `fournisseurs` WHERE `id` NOT LIKE 'four-%'",
+        ).forEach { requete ->
+            db.query(requete).use { curseur ->
                 assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
-                assertEquals("$table doit être vide et lisible", 0, curseur.getInt(0))
+                assertEquals("$requete doit rendre zéro", 0, curseur.getInt(0))
             }
         }
 
@@ -1297,6 +1307,104 @@ class MigrationTest {
     }
 
     /**
+     * Le catalogue d'accessoires : la première migration du projet qui
+     * n'apporte **que des lignes**, aucune colonne et aucune table.
+     *
+     * Trois propriétés comptent, et aucune ne se lit dans le SQL.
+     *
+     * Les lignes arrivent **sans prix, sans référence et sans fournisseur** :
+     * c'est tout l'objet de ce catalogue, un prix de distributeur n'étant pas
+     * une donnée publique, et un chiffre qui se serait glissé là partirait sur
+     * un devis chez un vrai client. Même contrôle que pour les prestations de
+     * [MIGRATION_7_8], et par la même somme — un prix inventé sur une seule des
+     * trente-huit lignes la ferait sortir de zéro.
+     *
+     * L'insertion est **rejouable** : `INSERT OR IGNORE` sur des identifiants
+     * stables laisse en place un prix que le technicien aurait déjà posé. Sans
+     * cela, la migration effacerait exactement ce qu'elle sert à recevoir.
+     *
+     * Et un article **saisi à la main survit** : la migration ne touche qu'aux
+     * lignes qu'elle apporte.
+     */
+    @Test
+    fun `une base version 19 recoit le catalogue d'accessoires, sans aucun prix`() {
+        creerBase(
+            version = 19,
+            empreinte = EMPREINTE_V19,
+            ddl = DDL_V19,
+            insertions = listOf(
+                "INSERT INTO `articles` (`id`, `reference`, `designation`, `fournisseurId`, " +
+                    "`fournisseurNom`, `prixAchat`, `prixVente`, `unite`, `modifieLe`) " +
+                    "VALUES ('a-1', 'REF-77', 'Détendeur TUB', NULL, 'CGF', 48.5, 92.0, 'u', 19)",
+            ),
+        )
+
+        val db = ouvrirEtMigrer()
+
+        // Les deux fournisseurs nommés, avec l'adresse de leur catalogue : c'est
+        // le lien qui porte le prix du jour, là où une copie serait fausse au
+        // premier changement de tarif.
+        db.query("SELECT `nom`, `siteCatalogue`, `categorie` FROM `fournisseurs` ORDER BY `nom`")
+            .use { curseur ->
+                assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
+                assertEquals("GFF", curseur.getString(0))
+                assertEquals("https://www.gff.fr", curseur.getString(1))
+                assertEquals("MATERIEL", curseur.getString(2))
+                assertTrue(curseur.moveToNext())
+                assertEquals("Richardson", curseur.getString(0))
+                assertEquals("https://www.richardson.fr", curseur.getString(1))
+            }
+
+        // Les trente-huit accessoires, et pas un centime.
+        db.query(
+            "SELECT COUNT(*), SUM(`prixAchat`), SUM(`prixVente`), SUM(LENGTH(`reference`)), " +
+                "SUM(LENGTH(`fournisseurNom`)), COUNT(`fournisseurId`) " +
+                "FROM `articles` WHERE `id` LIKE 'acc-%'",
+        ).use { curseur ->
+            assertTrue("la ligne attendue a disparu de la table", curseur.moveToFirst())
+            assertEquals(38, curseur.getInt(0))
+            assertEquals("aucun prix d'achat inventé", 0.0, curseur.getDouble(1), 0.001)
+            assertEquals("aucun prix de vente inventé", 0.0, curseur.getDouble(2), 0.001)
+            assertEquals("aucune référence inventée", 0, curseur.getInt(3))
+            assertEquals("aucun fournisseur inventé", 0, curseur.getInt(4))
+            assertEquals("ni par son lien", 0, curseur.getInt(5))
+        }
+
+        // Les familles que le métier demandait, chacune dans sa désignation.
+        listOf("Goulotte clim", "Cuivre frigorifique", "Pompe de relevage", "Support groupe")
+            .forEach { famille ->
+                db.query(
+                    "SELECT COUNT(*) FROM `articles` WHERE `designation` LIKE '$famille%'",
+                ).use { curseur ->
+                    assertTrue(curseur.moveToFirst())
+                    assertTrue("la famille « $famille » manque", curseur.getInt(0) > 0)
+                }
+            }
+
+        // L'article saisi à la main n'a pas bougé.
+        db.query("SELECT `prixAchat`, `fournisseurNom` FROM `articles` WHERE `id` = 'a-1'")
+            .use { curseur ->
+                assertTrue("l'article saisi a disparu", curseur.moveToFirst())
+                assertEquals(48.5, curseur.getDouble(0), 0.001)
+                assertEquals("CGF", curseur.getString(1))
+            }
+
+        // Rejouable : un prix posé par le technicien survit à un second passage.
+        db.execSQL("UPDATE `articles` SET `prixAchat` = 12.4 WHERE `id` = 'acc-01'")
+        db.execSQL(SQL_FOURNISSEURS_ACCESSOIRES)
+        db.execSQL(SQL_ACCESSOIRES_INITIAUX)
+        db.query(
+            "SELECT COUNT(*), SUM(`prixAchat`) FROM `articles` WHERE `id` LIKE 'acc-%'",
+        ).use { curseur ->
+            assertTrue(curseur.moveToFirst())
+            assertEquals("aucun doublon", 38, curseur.getInt(0))
+            assertEquals("le prix posé n'a pas été effacé", 12.4, curseur.getDouble(1), 0.001)
+        }
+
+        assertEquals(VERSION_COURANTE, db.version)
+    }
+
+    /**
      * **L'index unique des affectations est une règle, pas une optimisation** :
      * deux affectations de la même gamme à la même machine donneraient deux
      * échéances contradictoires sans que rien ne dise laquelle est bonne. Le test
@@ -1415,7 +1523,7 @@ class MigrationTest {
 
     private companion object {
 
-        const val VERSION_COURANTE = 19
+        const val VERSION_COURANTE = 20
 
         /** Empreintes et DDL repris mot pour mot des schémas exportés dans `app/schemas`. */
         const val EMPREINTE_V1 = "576bb93c8e6bdad21224e8d0898547f0"
@@ -1436,6 +1544,7 @@ class MigrationTest {
         const val EMPREINTE_V16 = "19630fec853f48d148ecf629541758a7"
         const val EMPREINTE_V17 = "36df508fe18dfeb62da2c1a94f045077"
         const val EMPREINTE_V18 = "4ce04138baa0905f5306426d07e668f8"
+        const val EMPREINTE_V19 = "1dd6c62b4554aa34a9832d61ce4463db"
 
         const val DDL_INTERVENTIONS_V1 =
             "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, " +
@@ -2009,6 +2118,189 @@ class MigrationTest {
          * leurs index, engendrés depuis `18.json` plutôt que recopiés à la main. Une
          * colonne oubliée ici ferait passer la migration pour juste.
          */
+        val DDL_V19: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT " +
+                "NOT NULL, `heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT " +
+                "NULL, `typeId` TEXT, `typeLibelle` TEXT NOT NULL, `clientId` TEXT, " +
+                "`clientFactureId` TEXT, `clientFactureNom` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`equipementNom` TEXT NOT NULL, `statut` TEXT NOT NULL, `notes` TEXT NOT NULL, " +
+                "`urgente` INTEGER NOT NULL, `dureeMin` INTEGER NOT NULL, `technicienId` TEXT, " +
+                "`technicienNom` TEXT NOT NULL, `numero` TEXT NOT NULL, `signatureFichier` " +
+                "TEXT, `signeeLe` INTEGER, `modifieLe` INTEGER NOT NULL, `arriveeLe` INTEGER, " +
+                "`demarreLe` INTEGER, `cumuleS` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_interventions_date` ON `interventions` " +
+                "(`date`)",
+            "CREATE INDEX IF NOT EXISTS `index_interventions_technicienId` ON " +
+                "`interventions` (`technicienId`)",
+            "CREATE TABLE IF NOT EXISTS `clients` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, " +
+                "`ville` TEXT NOT NULL, `adresse` TEXT NOT NULL, `telephone` TEXT NOT NULL, " +
+                "`parentId` TEXT, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_clients_parentId` ON `clients` (`parentId`)",
+            "CREATE TABLE IF NOT EXISTS `types_intervention` (`id` TEXT NOT NULL, `libelle` " +
+                "TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `equipements` (`id` TEXT NOT NULL, `clientId` TEXT " +
+                "NOT NULL, `nom` TEXT NOT NULL, `parentId` TEXT, `marque` TEXT NOT NULL, " +
+                "`modele` TEXT NOT NULL, `numeroSerie` TEXT NOT NULL, `fluide` TEXT NOT NULL, " +
+                "`chargeKg` REAL, `misEnServiceLe` TEXT, `dernierControleLe` TEXT, `zone` TEXT " +
+                "NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_equipements_clientId` ON `equipements` " +
+                "(`clientId`)",
+            "CREATE INDEX IF NOT EXISTS `index_equipements_parentId` ON `equipements` " +
+                "(`parentId`)",
+            "CREATE TABLE IF NOT EXISTS `photos` (`id` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`interventionId` TEXT, `categorie` TEXT NOT NULL, `fichier` TEXT NOT NULL, " +
+                "`legende` TEXT NOT NULL, `priseLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_photos_equipementId` ON `photos` " +
+                "(`equipementId`)",
+            "CREATE INDEX IF NOT EXISTS `index_photos_interventionId` ON `photos` " +
+                "(`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `releves` (`id` TEXT NOT NULL, `interventionId` " +
+                "TEXT NOT NULL, `equipementId` TEXT, `bpBar` REAL, `hpBar` REAL, `surchauffeK` " +
+                "REAL, `sousRefroidissementK` REAL, `releveLe` INTEGER NOT NULL, `modifieLe` " +
+                "INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_releves_interventionId` ON `releves` " +
+                "(`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_releves_equipementId` ON `releves` " +
+                "(`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `mouvements_fluide` (`id` TEXT NOT NULL, " +
+                "`interventionId` TEXT NOT NULL, `equipementId` TEXT, `fluide` TEXT NOT NULL, " +
+                "`sens` TEXT NOT NULL, `masseKg` REAL NOT NULL, `prixAchatKg` REAL NOT NULL, " +
+                "`le` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_interventionId` ON " +
+                "`mouvements_fluide` (`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_mouvements_fluide_equipementId` ON " +
+                "`mouvements_fluide` (`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `pieces_posees` (`id` TEXT NOT NULL, " +
+                "`interventionId` TEXT NOT NULL, `designation` TEXT NOT NULL, `reference` TEXT " +
+                "NOT NULL, `quantite` REAL NOT NULL, `prixUnitaire` REAL, `prixAchat` REAL NOT " +
+                "NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_pieces_posees_interventionId` ON " +
+                "`pieces_posees` (`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `devis` (`id` TEXT NOT NULL, `numero` TEXT NOT " +
+                "NULL, `clientId` TEXT, `clientNom` TEXT NOT NULL, `equipementId` TEXT, " +
+                "`equipementNom` TEXT NOT NULL, `objet` TEXT NOT NULL, `statut` TEXT NOT NULL, " +
+                "`tauxTva` REAL NOT NULL, `tvaOfferte` INTEGER NOT NULL, `assujettiTva` INTEGER " +
+                "NOT NULL, `creeLe` TEXT, `valableJusquau` TEXT, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_devis_clientId` ON `devis` (`clientId`)",
+            "CREATE INDEX IF NOT EXISTS `index_devis_equipementId` ON `devis` " +
+                "(`equipementId`)",
+            "CREATE TABLE IF NOT EXISTS `lignes_devis` (`id` TEXT NOT NULL, `devisId` TEXT " +
+                "NOT NULL, `designation` TEXT NOT NULL, `quantite` REAL NOT NULL, `unite` TEXT " +
+                "NOT NULL, `prixUnitaire` REAL NOT NULL, `offerte` INTEGER NOT NULL, " +
+                "`deplacement` INTEGER NOT NULL, `rang` INTEGER NOT NULL, `prixAchat` REAL NOT " +
+                "NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_lignes_devis_devisId` ON `lignes_devis` " +
+                "(`devisId`)",
+            "CREATE TABLE IF NOT EXISTS `parametres` (`id` INTEGER NOT NULL, `technicien` " +
+                "TEXT NOT NULL, `attestation` TEXT NOT NULL, `themeSombre` INTEGER NOT NULL, " +
+                "`modeGants` INTEGER NOT NULL, `chronoAuto` INTEGER NOT NULL, `tauxHoraire` " +
+                "REAL NOT NULL, `coutHoraireInterne` REAL NOT NULL, `tauxTva` REAL NOT NULL, " +
+                "`assujettiTva` INTEGER NOT NULL, `entreprise` TEXT NOT NULL, " +
+                "`entrepriseAdresse` TEXT NOT NULL, `entrepriseTelephone` TEXT NOT NULL, " +
+                "`entrepriseEmail` TEXT NOT NULL, `entrepriseSiret` TEXT NOT NULL, " +
+                "`logoFichier` TEXT, `adresseDepart` TEXT NOT NULL, `modeDeplacement` TEXT NOT " +
+                "NULL, `prixKm` REAL NOT NULL, `prixHeureTrajet` REAL NOT NULL, " +
+                "`minimumDeplacement` REAL NOT NULL, `refacturerPeages` INTEGER NOT NULL, " +
+                "`delaiPaiementJours` INTEGER NOT NULL, `tauxPenalitesRetard` REAL NOT NULL, " +
+                "`derniereSauvegardeLe` INTEGER, `modifieLe` INTEGER NOT NULL, " +
+                "`coefficientMateriel` REAL NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `techniciens` (`id` TEXT NOT NULL, `nom` TEXT NOT " +
+                "NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `points_checklist` (`id` TEXT NOT NULL, " +
+                "`interventionId` TEXT NOT NULL, `libelle` TEXT NOT NULL, `fait` INTEGER NOT " +
+                "NULL, `rang` INTEGER NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY " +
+                "KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_points_checklist_interventionId` ON " +
+                "`points_checklist` (`interventionId`)",
+            "CREATE TABLE IF NOT EXISTS `prestations` (`id` TEXT NOT NULL, `designation` " +
+                "TEXT NOT NULL, `categorie` TEXT NOT NULL, `prixUnitaire` REAL NOT NULL, " +
+                "`unite` TEXT NOT NULL, `parUnite` INTEGER NOT NULL DEFAULT 0, `rang` INTEGER " +
+                "NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_prestations_categorie` ON `prestations` " +
+                "(`categorie`)",
+            "CREATE TABLE IF NOT EXISTS `verifications_fluide` (`fluide` TEXT NOT NULL, " +
+                "`verifieLe` INTEGER NOT NULL, `par` TEXT NOT NULL, PRIMARY KEY(`fluide`))",
+            "CREATE TABLE IF NOT EXISTS `trajets` (`id` TEXT NOT NULL, `devisId` TEXT NOT " +
+                "NULL, `depart` TEXT NOT NULL, `arrivee` TEXT NOT NULL, `distanceKm` REAL NOT " +
+                "NULL, `dureeMinutes` INTEGER NOT NULL, `peages` REAL NOT NULL, `peagesConnus` " +
+                "INTEGER NOT NULL, `allerRetour` INTEGER NOT NULL, `offert` INTEGER NOT NULL, " +
+                "`origine` TEXT NOT NULL, `calculeLe` INTEGER, `modifieLe` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_trajets_devisId` ON `trajets` (`devisId`)",
+            "CREATE TABLE IF NOT EXISTS `factures` (`id` TEXT NOT NULL, `numero` TEXT NOT " +
+                "NULL, `clientId` TEXT, `clientNom` TEXT NOT NULL, `clientAdresse` TEXT NOT " +
+                "NULL, `interventionId` TEXT, `devisId` TEXT, `equipementNom` TEXT NOT NULL, " +
+                "`objet` TEXT NOT NULL, `statut` TEXT NOT NULL, `tauxTva` REAL NOT NULL, " +
+                "`tvaOfferte` INTEGER NOT NULL, `assujettiTva` INTEGER NOT NULL, `emiseLe` " +
+                "TEXT, `echeanceLe` TEXT, `tauxPenalites` REAL NOT NULL, `payeeLe` TEXT, " +
+                "`relanceeLe` TEXT, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_factures_clientId` ON `factures` " +
+                "(`clientId`)",
+            "CREATE INDEX IF NOT EXISTS `index_factures_interventionId` ON `factures` " +
+                "(`interventionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_factures_devisId` ON `factures` (`devisId`)",
+            "CREATE TABLE IF NOT EXISTS `lignes_facture` (`id` TEXT NOT NULL, `factureId` " +
+                "TEXT NOT NULL, `designation` TEXT NOT NULL, `quantite` REAL NOT NULL, `unite` " +
+                "TEXT NOT NULL, `prixUnitaire` REAL NOT NULL, `offerte` INTEGER NOT NULL, " +
+                "`rang` INTEGER NOT NULL, `prixAchat` REAL NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_lignes_facture_factureId` ON " +
+                "`lignes_facture` (`factureId`)",
+            "CREATE TABLE IF NOT EXISTS `fournisseurs` (`id` TEXT NOT NULL, `nom` TEXT NOT " +
+                "NULL, `categorie` TEXT NOT NULL, `telephone` TEXT NOT NULL, `email` TEXT NOT " +
+                "NULL, `adresse` TEXT NOT NULL, `ville` TEXT NOT NULL, `siteCatalogue` TEXT NOT " +
+                "NULL, `prefere` INTEGER NOT NULL, `notes` TEXT NOT NULL, `modifieLe` INTEGER " +
+                "NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_fournisseurs_categorie` ON `fournisseurs` " +
+                "(`categorie`)",
+            "CREATE TABLE IF NOT EXISTS `articles` (`id` TEXT NOT NULL, `reference` TEXT " +
+                "NOT NULL, `designation` TEXT NOT NULL, `fournisseurId` TEXT, `fournisseurNom` " +
+                "TEXT NOT NULL, `prixAchat` REAL NOT NULL, `prixVente` REAL NOT NULL, `unite` " +
+                "TEXT NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_articles_fournisseurId` ON `articles` " +
+                "(`fournisseurId`)",
+            "CREATE INDEX IF NOT EXISTS `index_articles_reference` ON `articles` " +
+                "(`reference`)",
+            "CREATE TABLE IF NOT EXISTS `stocks` (`id` TEXT NOT NULL, `articleId` TEXT NOT " +
+                "NULL, `lieu` TEXT NOT NULL, `quantite` REAL NOT NULL, `minimum` REAL NOT NULL, " +
+                "`modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_stocks_articleId_lieu` ON `stocks` " +
+                "(`articleId`, `lieu`)",
+            "CREATE INDEX IF NOT EXISTS `index_stocks_articleId` ON `stocks` (`articleId`)",
+            "CREATE TABLE IF NOT EXISTS `paliers_prestation` (`id` TEXT NOT NULL, " +
+                "`prestationId` TEXT NOT NULL, `aPartirDe` INTEGER NOT NULL, `prixUnitaire` " +
+                "REAL NOT NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_paliers_prestation_prestationId` ON " +
+                "`paliers_prestation` (`prestationId`)",
+            "CREATE TABLE IF NOT EXISTS `gammes` (`id` TEXT NOT NULL, `libelle` TEXT NOT " +
+                "NULL, `periodicite` TEXT NOT NULL, `rang` INTEGER NOT NULL, `modifieLe` " +
+                "INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `points_gamme` (`id` TEXT NOT NULL, `gammeId` TEXT " +
+                "NOT NULL, `libelle` TEXT NOT NULL, `rang` INTEGER NOT NULL, `modifieLe` " +
+                "INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_points_gamme_gammeId` ON `points_gamme` " +
+                "(`gammeId`)",
+            "CREATE TABLE IF NOT EXISTS `affectations_gamme` (`id` TEXT NOT NULL, " +
+                "`equipementId` TEXT NOT NULL, `gammeId` TEXT NOT NULL, `depuisLe` TEXT NOT " +
+                "NULL, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_affectations_gamme_equipementId_gammeId` ON `affectations_gamme` " +
+                "(`equipementId`, `gammeId`)",
+            "CREATE INDEX IF NOT EXISTS `index_affectations_gamme_gammeId` ON " +
+                "`affectations_gamme` (`gammeId`)",
+            "CREATE TABLE IF NOT EXISTS `releves_gamme` (`id` TEXT NOT NULL, `equipementId` " +
+                "TEXT, `equipementNom` TEXT NOT NULL, `gammeId` TEXT, `gammeLibelle` TEXT NOT " +
+                "NULL, `periodicite` TEXT NOT NULL, `faitLe` TEXT NOT NULL, `technicienId` " +
+                "TEXT, `technicienNom` TEXT NOT NULL, `notes` TEXT NOT NULL, `interventionId` " +
+                "TEXT, `modifieLe` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_releves_gamme_equipementId` ON " +
+                "`releves_gamme` (`equipementId`)",
+            "CREATE INDEX IF NOT EXISTS `index_releves_gamme_gammeId` ON `releves_gamme` " +
+                "(`gammeId`)",
+            "CREATE INDEX IF NOT EXISTS `index_releves_gamme_faitLe` ON `releves_gamme` " +
+                "(`faitLe`)",
+        )
+
         val DDL_V18: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `interventions` (`id` TEXT NOT NULL, `date` TEXT " +
                 "NOT NULL, `heure` TEXT NOT NULL, `client` TEXT NOT NULL, `ville` TEXT NOT " +

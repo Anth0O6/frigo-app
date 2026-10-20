@@ -462,6 +462,36 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   ensuite sur un devis. La préférence est un booléen et non une note : on n'a pas
   d'avis nuancé sur un fournisseur, on a celui qu'on appelle en premier et les
   autres, et il remonte en tête de liste plutôt que d'être marqué au milieu.
+  **Le catalogue d'accessoires est livré garni d'intitulés et vide de prix**,
+  exactement comme celui des prestations, et c'est la même raison qui l'exige
+  en plus fort. Trente-huit accessoires — goulottes de climatisation et leurs
+  angles, cuivre frigorifique en couronne, liaisons pré-isolées, pompes de
+  relevage, évacuation des condensats, châssis et consoles de groupe extérieur,
+  finition et fixation — arrivent par `MIGRATION_19_20` avec leur désignation et
+  leur unité, et **rien d'autre** : ni prix, ni référence, ni fournisseur. Un
+  prix de distributeur **n'est pas une donnée publique** : ce que facture une
+  enseigne est le tarif du fabricant moins une remise négociée qui dépend du
+  compte, si bien qu'un chiffre pris ailleurs serait faux de plusieurs dizaines
+  de pour cent — dans le sens qui rogne la marge sans que rien ne le signale. Et
+  la couronne de cuivre est une **matière première** dont le prix suit le cours
+  du métal : figée en base, elle serait fausse avant la fin du mois. La
+  référence est vide pour une raison plus bête mais aussi nette — une référence
+  inventée se dicte au téléphone à une agence qui ne la connaît pas, et coûte
+  l'appel.
+  Le **fournisseur par article** est vide lui aussi, et c'est le point le moins
+  évident : les deux enseignes vendent toutes ces familles, si bien que trancher
+  d'avance afficherait à l'écran une certitude qu'on n'a pas. Un prix et son
+  fournisseur arrivent **ensemble** — celui du tarif d'où le prix est tiré —, et
+  les deux se posent donc au remplissage. Ce qui est **su** est en revanche
+  posé : les deux fournisseurs, avec l'adresse de leur catalogue en ligne, ce
+  qui est la seule façon honnête de donner le prix du jour.
+  La désignation porte **sa famille d'abord** — « Goulotte clim 80x60 — angle
+  plat » et non « Angle plat pour goulotte 80x60 » : `MaterielRepository.magasin`
+  trie par désignation avec un collateur français, et c'est le seul ordre que
+  l'écran connaisse. L'inverse aurait dispersé une même famille entre les A et
+  les G. Les sections et les diamètres sont ceux du commerce courant, à reprendre
+  sur le tarif du fournisseur retenu : une désignation se corrige d'un renommage
+  et elle se lit, au contraire d'un prix.
   `Degressif.kt` porte le **prix par rang d'unité** : entretenir un split coûte
   100 €, la deuxième unité 80, la troisième 70. C'est un prix par unité qui
   décroît et non une remise sur le total — le déplacement et la mise en route
@@ -1119,6 +1149,16 @@ sans le toucher : un défaut inventé — « Site », « Général » — aurait
 sauvegarde. L'entité ne déclare pas ce défaut, pour la raison déjà écrite plus
 haut.
 
+`MIGRATION_19_20` n'apporte **aucune colonne et aucune table** : que des
+lignes. C'est la première du projet dans ce cas, et c'est pourtant bien une
+migration qu'il faut — `onCreate` ne s'exécute qu'à la création du fichier, si
+bien qu'un téléphone déjà installé n'aurait jamais reçu le catalogue
+d'accessoires. Le schéma étant inchangé, l'**empreinte d'identité est la même
+qu'en 19** et seul le numéro de version bouge, ce qui en fait la migration la
+moins risquée du projet. Elle est **rejouable** (`INSERT OR IGNORE` sur des
+identifiants stables) et c'est ce qui compte : ces lignes sont faites pour
+recevoir un prix, et une migration qui repasserait dessus l'effacerait.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -1231,7 +1271,7 @@ l'APK : un test rouge bloque la publication.
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
-| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi |
+| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
@@ -2233,6 +2273,16 @@ place » venant en tête :
   porter le champ sur `Equipement` — par une migration — pour que l'accueil et la
   fiche machine en tiennent compte au lieu de retenir toujours la périodicité la
   plus exigeante.
+- **Remplir les prix du catalogue d'accessoires, depuis un tarif fournisseur.**
+  Les trente-huit lignes sont posées avec leur désignation et leur unité, et
+  attendent un prix d'achat, une référence et un fournisseur — qui arrivent
+  ensemble, du tarif d'où le prix est tiré. Deux choses manquent pour que ce
+  remplissage soit tenable : la **saisie groupée** — la liste des articles, un
+  champ par prix, le fournisseur attribuable en lot, plutôt que trente-huit
+  ouvertures de fiche —, et le **prix de vente dérivé du coefficient** déjà réglé
+  dans les Réglages, qui évite de saisir deux nombres là où un seul est une
+  décision. La saisie groupée est encore la même sélection multiple que celle des
+  zones et des gammes ci-dessous.
 - **Ranger un parc existant par zones, autrement qu'une machine à la fois.** La
   zone se saisit sur la fiche et se recopie à la duplication, ce qui couvre la
   saisie d'un parc neuf ; un parc de trois cents machines déjà saisies demande,
