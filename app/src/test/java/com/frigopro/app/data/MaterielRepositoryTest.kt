@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 /**
  * Le magasin.
@@ -278,5 +279,140 @@ class MaterielRepositoryTest {
 
         assertEquals(0.0, article.prixAchat, 0.001)
         assertFalse("et la marge redevient incalculable", article.marge.chiffrable)
+    }
+
+    // — La saisie groupée des prix ——————————————————————————————————————
+
+    /** Une ligne du catalogue livré : une désignation, une unité, et rien d'autre. */
+    private fun accessoire(id: String, designation: String) =
+        Article(id = id, designation = designation, unite = "u")
+
+    /** Ce que la saisie écrirait sur un article : par défaut, ce qu'il porte déjà. */
+    private fun prix(
+        article: Article,
+        reference: String = article.reference,
+        prixAchat: Double = article.prixAchat,
+        prixVente: Double = article.prixVente,
+        fournisseurId: String? = article.fournisseurId,
+        fournisseurNom: String = article.fournisseurNom,
+    ) = PrixArticle(article.id, reference, prixAchat, prixVente, fournisseurId, fournisseurNom)
+
+    /**
+     * Une seule écriture, et seulement ce qui a changé.
+     *
+     * Une ligne touchée puis remise à l'identique ne prend pas de `modifieLe`
+     * neuf : c'est lui qui départagera deux versions d'une même ligne le jour
+     * d'une synchronisation, et une date posée sans modification ferait gagner
+     * une ligne qui n'a rien à dire.
+     */
+    @Test
+    fun `la saisie groupee n'ecrit qu'une fois, et seulement ce qui a change`() = runTest {
+        val goulotte = accessoire("acc-01", "Goulotte clim 60x45 — barre 2 m")
+        val angle = accessoire("acc-02", "Goulotte clim 60x45 — angle plat")
+        val pompe = accessoire("acc-03", "Pompe de relevage")
+        dao.enregistrerArticles(listOf(goulotte, angle, pompe))
+        val avant = dao.ecrituresArticles
+
+        val ecrits = depot.enregistrerPrix(
+            listOf(
+                prix(goulotte, reference = " GC6045 ", prixAchat = 7.45, prixVente = 10.06),
+                prix(angle, prixAchat = 3.2),
+                // Touchée, puis retapée à l'identique : rien à écrire.
+                prix(pompe),
+            ),
+        )
+
+        assertEquals(2, ecrits)
+        assertEquals("une seule écriture pour tout le lot", 1, dao.ecrituresArticles - avant)
+        val parId = dao.contenuArticles.associateBy { it.id }
+        assertEquals("la référence est rognée comme sur la fiche", "GC6045", parId.getValue("acc-01").reference)
+        assertEquals(10.06, parId.getValue("acc-01").prixVente, 0.001)
+        assertTrue(parId.getValue("acc-02").modifieLe.isAfter(Instant.EPOCH))
+        assertEquals("la ligne inchangée garde sa date", Instant.EPOCH, parId.getValue("acc-03").modifieLe)
+    }
+
+    /** Rien de changé, rien d'écrit — pas même une transaction vide. */
+    @Test
+    fun `une saisie sans changement n'ecrit rien`() = runTest {
+        val pompe = accessoire("acc-03", "Pompe de relevage")
+        dao.enregistrerArticles(listOf(pompe))
+        val avant = dao.ecrituresArticles
+
+        assertEquals(0, depot.enregistrerPrix(listOf(prix(pompe))))
+        assertEquals(0, dao.ecrituresArticles - avant)
+    }
+
+    /** Même nettoyage que la fiche : un prix négatif veut dire « pas renseigné ». */
+    @Test
+    fun `un prix negatif saisi en lot revient a zero`() = runTest {
+        val pompe = accessoire("acc-03", "Pompe de relevage")
+        dao.enregistrerArticles(listOf(pompe))
+
+        depot.enregistrerPrix(listOf(prix(pompe, reference = "PR-1", prixAchat = -12.0, prixVente = -1.0)))
+
+        val article = dao.contenuArticles.single()
+        assertEquals(0.0, article.prixAchat, 0.001)
+        assertEquals(0.0, article.prixVente, 0.001)
+        assertEquals("le reste de la saisie passe", "PR-1", article.reference)
+    }
+
+    /**
+     * La saisie se reporte sur l'article lu au moment d'écrire, et ne touche que
+     * ses quatre champs : un renommage fait dans la fiche pendant la saisie
+     * n'est pas écrasé par une demi-heure de prix.
+     */
+    @Test
+    fun `la saisie ne reecrit pas la designation changee entre-temps`() = runTest {
+        val pompe = accessoire("acc-03", "Pompe de relevage")
+        dao.enregistrerArticles(listOf(pompe))
+        val saisie = prix(pompe, prixAchat = 89.0)
+        dao.enregistrerArticle(pompe.copy(designation = "Pompe de relevage — mini"))
+
+        depot.enregistrerPrix(listOf(saisie))
+
+        val article = dao.contenuArticles.single()
+        assertEquals("Pompe de relevage — mini", article.designation)
+        assertEquals(89.0, article.prixAchat, 0.001)
+    }
+
+    /** Un article effacé pendant la saisie ne revient pas d'entre les morts par un prix. */
+    @Test
+    fun `un article supprime pendant la saisie n'est pas recree`() = runTest {
+        val pompe = accessoire("acc-03", "Pompe de relevage")
+        dao.enregistrerArticles(listOf(pompe))
+        depot.supprimerArticle(pompe.id)
+
+        assertEquals(0, depot.enregistrerPrix(listOf(prix(pompe, prixAchat = 89.0))))
+        assertTrue(dao.contenuArticles.isEmpty())
+    }
+
+    /**
+     * Le lien et sa copie : la copie suit le nom du fournisseur **au moment
+     * d'écrire**, et un fournisseur supprimé entre-temps coupe le lien en
+     * laissant le nom — ce que `supprimerFournisseur` aurait fait s'il était
+     * passé après.
+     */
+    @Test
+    fun `le fournisseur ecrit en lot porte son lien et sa copie a jour`() = runTest {
+        depot.enregistrerFournisseur(Fournisseur(id = "four-gff", nom = "GFF"))
+        depot.enregistrerFournisseur(Fournisseur(id = "four-x", nom = "Disparu SA"))
+        val goulotte = accessoire("acc-01", "Goulotte clim 60x45 — barre 2 m")
+        val angle = accessoire("acc-02", "Goulotte clim 60x45 — angle plat")
+        dao.enregistrerArticles(listOf(goulotte, angle))
+        depot.renommerFournisseur("four-gff", "GFF Clim")
+        depot.supprimerFournisseur("four-x")
+
+        depot.enregistrerPrix(
+            listOf(
+                prix(goulotte, fournisseurId = "four-gff", fournisseurNom = "GFF"),
+                prix(angle, fournisseurId = "four-x", fournisseurNom = "Disparu SA"),
+            ),
+        )
+
+        val parId = dao.contenuArticles.associateBy { it.id }
+        assertEquals("four-gff", parId.getValue("acc-01").fournisseurId)
+        assertEquals("la copie suit le renommage", "GFF Clim", parId.getValue("acc-01").fournisseurNom)
+        assertNull("le lien vers un fournisseur effacé est coupé", parId.getValue("acc-02").fournisseurId)
+        assertEquals("et le nom reste", "Disparu SA", parId.getValue("acc-02").fournisseurNom)
     }
 }

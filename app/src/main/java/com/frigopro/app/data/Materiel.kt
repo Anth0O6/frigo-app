@@ -121,6 +121,48 @@ data class Article(
 }
 
 /**
+ * Ce que la saisie groupée des prix écrit sur un article, **et rien d'autre**.
+ *
+ * Quatre champs — la référence, les deux prix, le fournisseur — parce que ce
+ * sont les quatre qu'un tarif fournisseur apporte ensemble : un prix est tiré
+ * d'un tarif, et ce tarif dit aussi la référence et qui le vend. La désignation
+ * et l'unité n'y sont pas, et c'est ce qui permet de reporter la saisie sur
+ * l'article **tel qu'il est en base au moment d'écrire** plutôt que sur une
+ * copie prise à l'ouverture de l'écran : un renommage fait entre-temps dans la
+ * fiche ne serait pas écrasé par une demi-heure de saisie de prix.
+ *
+ * @param prixVente déjà résolu — proposé par le coefficient ou tapé à la main :
+ *   le dépôt n'a pas à savoir d'où il vient, seulement à le ranger.
+ */
+data class PrixArticle(
+    val articleId: String,
+    val reference: String,
+    val prixAchat: Double,
+    val prixVente: Double,
+    val fournisseurId: String?,
+    val fournisseurNom: String,
+) {
+
+    /**
+     * L'article tel qu'il serait après écriture, nettoyé comme
+     * [MaterielRepository.enregistrerArticle] le fait — texte rogné, prix négatif
+     * ramené à zéro, qui veut dire « pas renseigné ».
+     *
+     * Nommé une fois parce que deux endroits en ont besoin et doivent rendre la
+     * même réponse : le dépôt, qui écrit, et l'écran, qui compte ce qui reste à
+     * enregistrer. Un compteur qui annoncerait trois modifications là où le dépôt
+     * n'en écrit que deux ferait croire à une saisie perdue.
+     */
+    fun appliqueA(article: Article): Article = article.copy(
+        reference = reference.trim(),
+        prixAchat = prixAchat.coerceAtLeast(0.0),
+        prixVente = prixVente.coerceAtLeast(0.0),
+        fournisseurId = fournisseurId,
+        fournisseurNom = fournisseurNom.trim(),
+    )
+}
+
+/**
  * Ce qu'un article rapporte — et les trois façons de le dire, qui ne sont pas
  * la même chose.
  *

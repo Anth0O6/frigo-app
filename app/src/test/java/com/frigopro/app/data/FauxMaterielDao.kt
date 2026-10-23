@@ -27,6 +27,16 @@ class FauxMaterielDao : MaterielDao() {
 
     val contenuStocks: List<Stock> get() = lesStocks.value
 
+    /**
+     * Le nombre d'appels qui ont écrit des articles, seuls ou en lot.
+     *
+     * C'est ce qui permet d'éprouver qu'une saisie groupée n'écrit qu'**une**
+     * fois : la vraie base en ferait autant de transactions, et un compte de
+     * lignes ne dirait pas combien.
+     */
+    var ecrituresArticles: Int = 0
+        private set
+
     override fun observerFournisseurs(): Flow<List<Fournisseur>> = lesFournisseurs
 
     override suspend fun tousLesFournisseurs(): List<Fournisseur> = lesFournisseurs.value
@@ -73,10 +83,12 @@ class FauxMaterielDao : MaterielDao() {
         MutableStateFlow(lesArticles.value.firstOrNull { it.id == id })
 
     override suspend fun enregistrerArticle(article: Article) {
+        ecrituresArticles++
         lesArticles.update { liste -> liste.filterNot { it.id == article.id } + article }
     }
 
     override suspend fun enregistrerArticles(articles: List<Article>) {
+        ecrituresArticles++
         val identifiants = articles.map { it.id }.toSet()
         lesArticles.update { liste -> liste.filterNot { it.id in identifiants } + articles }
     }

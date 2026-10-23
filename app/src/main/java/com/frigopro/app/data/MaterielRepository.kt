@@ -117,6 +117,55 @@ class MaterielRepository(private val dao: MaterielDao) {
 
     suspend fun supprimerArticle(id: String) = dao.supprimerArticle(id)
 
+    /** Les articles tels qu'en base, lus une fois : ce sur quoi une saisie se reporte. */
+    suspend fun articles(): List<Article> = dao.tousLesArticles()
+
+    /**
+     * Écrit d'un coup ce que la saisie groupée des prix a changé, et rend le
+     * nombre d'articles réellement écrits.
+     *
+     * Trois règles, et chacune répare une façon de mal écrire :
+     *
+     * 1. **Une seule écriture**, par `enregistrerArticles` dont Room fait une
+     *    transaction : trente-huit prix enregistrés à moitié laisseraient un
+     *    magasin dont on ne sait plus quelle ligne vient du tarif de ce mois.
+     * 2. **Seulement ce qui a changé.** Une ligne touchée puis remise à sa valeur
+     *    n'est pas réécrite, et ne prend donc pas un `modifieLe` neuf : c'est lui
+     *    qui départagera deux versions le jour d'une synchronisation, et une date
+     *    posée sans modification ferait gagner une ligne qui n'a rien à dire.
+     * 3. **La saisie se reporte sur l'article lu maintenant**, pas sur celui que
+     *    l'écran avait chargé : seuls ses quatre champs bougent (voir
+     *    [PrixArticle]). Un article supprimé entre-temps est ignoré plutôt que
+     *    recréé — une ligne revenue d'entre les morts par un prix serait pire
+     *    qu'un prix perdu.
+     *
+     * La copie du nom de fournisseur **suit le lien** au moment d'écrire, comme
+     * [renommerFournisseur] la fait suivre : un fournisseur renommé pendant la
+     * saisie n'en laisse pas l'ancien nom. Un fournisseur supprimé pendant la
+     * saisie coupe le lien et garde le nom, exactement comme
+     * [supprimerFournisseur] l'aurait fait s'il était passé après.
+     */
+    suspend fun enregistrerPrix(saisies: List<PrixArticle>): Int {
+        if (saisies.isEmpty()) return 0
+        val articles = dao.tousLesArticles().associateBy { it.id }
+        val fournisseurs = dao.tousLesFournisseurs().associateBy { it.id }
+        val maintenant = Instant.now()
+
+        val ecrits = saisies.mapNotNull { saisie ->
+            val actuel = articles[saisie.articleId] ?: return@mapNotNull null
+            val lien = saisie.fournisseurId?.let { fournisseurs[it] }
+            val resolue = when {
+                saisie.fournisseurId == null -> saisie
+                lien != null -> saisie.copy(fournisseurNom = lien.nom)
+                else -> saisie.copy(fournisseurId = null)
+            }
+            val nouveau = resolue.appliqueA(actuel)
+            if (nouveau == actuel) null else nouveau.copy(modifieLe = maintenant)
+        }
+        if (ecrits.isNotEmpty()) dao.enregistrerArticles(ecrits)
+        return ecrits.size
+    }
+
     // — Les stocks ——————————————————————————————————————————————————————
 
     /**
