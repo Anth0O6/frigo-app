@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EtatEtancheite
 import com.frigopro.app.data.Fluides
+import com.frigopro.app.data.PeriodiciteControle
 import com.frigopro.app.data.Releve
 import com.frigopro.app.data.arrondiDixieme
 import com.frigopro.app.ui.composants.Carte
@@ -57,12 +60,7 @@ fun IdentiteMachine(
     aujourdhui: LocalDate = LocalDate.now(),
     modifier: Modifier = Modifier,
 ) {
-    val etancheite = EtatEtancheite.calculer(
-        fluide = equipement.fluide,
-        chargeKg = equipement.chargeKg,
-        dernierControle = equipement.dernierControleLe,
-        aujourdhui = aujourdhui,
-    )
+    val etancheite = EtatEtancheite.de(equipement, aujourdhui)
     val gwp = Fluides.gwp(equipement.fluide)
     val tonnes = equipement.chargeKg?.let { Fluides.tonnesEquivalentCo2(equipement.fluide, it) }
 
@@ -92,6 +90,17 @@ fun IdentiteMachine(
                 valeur = equipement.misEnServiceLe?.format(FORMAT_MOIS) ?: "—",
                 libelle = "Mise en service",
                 modifier = Modifier.weight(1f),
+            )
+        }
+        // Dit sous la tuile plutôt que dans son libellé, qui n'a la place que
+        // de trois mots : une échéance qui recule d'un an sans explication se
+        // lit comme une erreur de saisie, et c'est la raison qu'on vient chercher.
+        if (etancheite.doubleeParDetecteur) {
+            Text(
+                text = "Contrôle ${etancheite.periodicite.libelle.lowercase()} : périodicité " +
+                    "doublée par le détecteur de fuite fixe (art. 4 § 3 du règlement 517/2014).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -172,6 +181,7 @@ fun DialogueFicheMachine(
     var charge by remember { mutableStateOf(Nombres.enTexte(equipement.chargeKg)) }
     var miseEnService by remember { mutableStateOf(equipement.misEnServiceLe?.toString().orEmpty()) }
     var controle by remember { mutableStateOf(equipement.dernierControleLe?.toString().orEmpty()) }
+    var detecteur by remember { mutableStateOf(equipement.detecteurFuite) }
 
     AlertDialog(
         onDismissRequest = onFermer,
@@ -223,8 +233,12 @@ fun DialogueFicheMachine(
                             "Fluide hors catalogue : ni GWP ni périodicité ne seront calculés."
 
                         gwp != null && masse != null -> {
-                            val tonnes = (masse * gwp / 1000.0).arrondiDixieme()
-                            "GWP $gwp · ${Nombres.enTexte(tonnes)} t éq. CO₂"
+                            val tonnes = masse * gwp / 1000.0
+                            // La périodicité suit la case du détecteur pendant la
+                            // saisie : c'est ainsi qu'on voit ce que la case change.
+                            val periodicite = PeriodiciteControle.pour(tonnes, detecteurFixe = detecteur)
+                            "GWP $gwp · ${Nombres.enTexte(tonnes.arrondiDixieme())} t éq. CO₂" +
+                                " · ${periodicite.libelle.lowercase()}"
                         }
 
                         else -> "Le fluide et la charge déterminent la périodicité des contrôles."
@@ -232,6 +246,7 @@ fun DialogueFicheMachine(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                CaseDetecteurFuite(detecteur = detecteur, onDetecteur = { detecteur = it })
                 ChampTexte(
                     libelle = "Mise en service (AAAA-MM-JJ)",
                     valeur = miseEnService,
@@ -257,6 +272,7 @@ fun DialogueFicheMachine(
                             chargeKg = Nombres.versDecimal(charge),
                             misEnServiceLe = dateOuNull(miseEnService),
                             dernierControleLe = dateOuNull(controle),
+                            detecteurFuite = detecteur,
                         ),
                     )
                 },
@@ -292,6 +308,47 @@ internal fun ZonesProposees(zones: List<String>, onChoisir: (String) -> Unit) {
                 couleur = MaterialTheme.colorScheme.primary,
             )
         }
+    }
+}
+
+/**
+ * La case du détecteur de fuite fixe.
+ *
+ * Le libellé dit **ce qu'elle change** — le contrôle s'espace — plutôt que de
+ * nommer un équipement, et il écarte en toutes lettres le détecteur portatif :
+ * tout frigoriste en a un dans sa caisse, et cocher la case parce qu'on s'en est
+ * servi ferait reculer d'un an une échéance que le règlement n'a pas reculée.
+ * Seul un système **installé à demeure** double l'intervalle (art. 4 § 3).
+ *
+ * Même interrupteur que dans l'outil F-Gas, pour que la même question ait la
+ * même forme aux deux endroits où elle se pose.
+ */
+@Composable
+private fun CaseDetecteurFuite(detecteur: Boolean, onDetecteur: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Détecteur de fuite fixe", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = "Installé à demeure, il double l'intervalle entre deux contrôles " +
+                    "d'étanchéité. Un détecteur portatif ne compte pas.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = detecteur,
+            onCheckedChange = onDetecteur,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ),
+        )
     }
 }
 

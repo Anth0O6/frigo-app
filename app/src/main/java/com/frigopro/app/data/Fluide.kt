@@ -307,9 +307,9 @@ enum class PeriodiciteControle(val mois: Int?, val libelle: String) {
          * Annoncer un contrôle trop tôt fait perdre une heure ; l'annoncer trop
          * tard expose à une sanction.
          *
-         * La fiche machine ne porte pas encore ce champ — seul l'outil F-Gas
-         * permet de poser la question — ce qui est la raison pour laquelle le
-         * paramètre arrive avec un défaut plutôt qu'en rupture.
+         * La fiche machine porte désormais ce champ ([Equipement.detecteurFuite])
+         * et [EtatEtancheite.de] le passe ; le défaut ne sert plus qu'à l'outil
+         * F-Gas, qui pose la question sans machine derrière.
          */
         fun pour(tonnesEqCo2: Double, detecteurFixe: Boolean = false): PeriodiciteControle {
             val base = when {
@@ -330,17 +330,53 @@ enum class PeriodiciteControle(val mois: Int?, val libelle: String) {
  * @param echeance `null` quand la machine n'est pas soumise à contrôle, ou
  *   qu'aucun contrôle n'a encore été consigné — on ne peut pas dater le
  *   suivant sans connaître le précédent.
+ * @param detecteurFixe la machine porte un détecteur de fuite fixe. Retenu ici
+ *   pour que l'écran puisse dire **pourquoi** l'échéance a reculé : une date
+ *   qui passe d'un an à deux sans explication se lit comme une erreur.
  */
 data class EtatEtancheite(
     val periodicite: PeriodiciteControle,
     val echeance: LocalDate?,
     val enRetard: Boolean,
+    val detecteurFixe: Boolean = false,
 ) {
+
+    /**
+     * L'intervalle a réellement été doublé par le détecteur.
+     *
+     * Pas seulement « la machine en porte un » : une machine non soumise le
+     * reste avec un détecteur (voir [PeriodiciteControle.allege]), et annoncer
+     * « doublée » sur une absence d'obligation dirait quelque chose de faux.
+     */
+    val doubleeParDetecteur: Boolean
+        get() = detecteurFixe && periodicite != PeriodiciteControle.AUCUNE
 
     companion object {
 
         /**
+         * L'état d'étanchéité d'une machine, lu sur elle tout entière.
+         *
+         * C'est le chemin des écrans, et il existe pour qu'aucun ne puisse
+         * oublier un des champs dont l'échéance dépend : la fiche et l'accueil
+         * recopiaient chacun le fluide, la charge et la date à la main, et c'est
+         * exactement ainsi que le détecteur aurait pu manquer à l'un des deux —
+         * la même machine due en 2027 sur sa fiche et en 2026 sur l'accueil.
+         */
+        fun de(equipement: Equipement, aujourdhui: LocalDate): EtatEtancheite = calculer(
+            fluide = equipement.fluide,
+            chargeKg = equipement.chargeKg,
+            dernierControle = equipement.dernierControleLe,
+            detecteurFixe = equipement.detecteurFuite,
+            aujourdhui = aujourdhui,
+        )
+
+        /**
          * @param dernierControle date du dernier contrôle consigné, ou `null`.
+         * @param detecteurFixe la machine porte un détecteur de fuite fixe.
+         *   **Sans valeur par défaut**, à la différence de
+         *   [PeriodiciteControle.pour] : qui calcule l'échéance d'une machine
+         *   doit dire s'il sait qu'elle en porte un, et un défaut l'aurait
+         *   laissé l'oublier en silence.
          * @param aujourdhui le jour courant, passé en paramètre pour que le
          *   calcul soit éprouvable sans dépendre de l'horloge.
          */
@@ -348,17 +384,18 @@ data class EtatEtancheite(
             fluide: String,
             chargeKg: Double?,
             dernierControle: LocalDate?,
+            detecteurFixe: Boolean,
             aujourdhui: LocalDate,
         ): EtatEtancheite {
             val tonnes = chargeKg?.let { Fluides.tonnesEquivalentCo2(fluide, it) }
-                ?: return EtatEtancheite(PeriodiciteControle.AUCUNE, null, false)
-            val periodicite = PeriodiciteControle.pour(tonnes)
+                ?: return EtatEtancheite(PeriodiciteControle.AUCUNE, null, false, detecteurFixe)
+            val periodicite = PeriodiciteControle.pour(tonnes, detecteurFixe = detecteurFixe)
             val mois = periodicite.mois
             if (mois == null || dernierControle == null) {
-                return EtatEtancheite(periodicite, null, false)
+                return EtatEtancheite(periodicite, null, false, detecteurFixe)
             }
             val echeance = dernierControle.plusMonths(mois.toLong())
-            return EtatEtancheite(periodicite, echeance, echeance.isBefore(aujourdhui))
+            return EtatEtancheite(periodicite, echeance, echeance.isBefore(aujourdhui), detecteurFixe)
         }
     }
 }

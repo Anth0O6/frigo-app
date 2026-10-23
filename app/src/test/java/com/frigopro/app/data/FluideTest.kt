@@ -53,6 +53,7 @@ class FluideTest {
             fluide = "R452A",
             chargeKg = 6.2,
             dernierControle = LocalDate.of(2025, 9, 18),
+            detecteurFixe = false,
             aujourdhui = LocalDate.of(2026, 5, 14),
         )
 
@@ -67,6 +68,7 @@ class FluideTest {
             fluide = "R452A",
             chargeKg = 6.2,
             dernierControle = LocalDate.of(2025, 1, 10),
+            detecteurFixe = false,
             aujourdhui = LocalDate.of(2026, 5, 14),
         )
 
@@ -79,7 +81,7 @@ class FluideTest {
      */
     @Test
     fun `sans charge, aucune periodicite n'est annoncee`() {
-        val etat = EtatEtancheite.calculer("R452A", null, LocalDate.of(2025, 1, 1), LocalDate.of(2026, 5, 14))
+        val etat = EtatEtancheite.calculer("R452A", null, LocalDate.of(2025, 1, 1), false, LocalDate.of(2026, 5, 14))
 
         assertEquals(PeriodiciteControle.AUCUNE, etat.periodicite)
         assertNull(etat.echeance)
@@ -88,7 +90,7 @@ class FluideTest {
     /** Sans contrôle antérieur, on ne peut pas dater le suivant. */
     @Test
     fun `sans dernier controle, aucune echeance n'est datee`() {
-        val etat = EtatEtancheite.calculer("R452A", 6.2, null, LocalDate.of(2026, 5, 14))
+        val etat = EtatEtancheite.calculer("R452A", 6.2, null, false, LocalDate.of(2026, 5, 14))
 
         assertEquals(PeriodiciteControle.DOUZE_MOIS, etat.periodicite)
         assertNull(etat.echeance)
@@ -98,7 +100,7 @@ class FluideTest {
     /** Une petite charge de fluide à faible GWP n'est pas soumise à contrôle. */
     @Test
     fun `le propane en petite charge n'est pas soumis`() {
-        val etat = EtatEtancheite.calculer("R290", 0.4, LocalDate.of(2025, 1, 1), LocalDate.of(2026, 5, 14))
+        val etat = EtatEtancheite.calculer("R290", 0.4, LocalDate.of(2025, 1, 1), false, LocalDate.of(2026, 5, 14))
 
         assertEquals(PeriodiciteControle.AUCUNE, etat.periodicite)
         assertNull(etat.echeance)
@@ -152,6 +154,91 @@ class FluideTest {
             PeriodiciteControle.VINGT_QUATRE_MOIS.allege(),
         )
         assertEquals(PeriodiciteControle.AUCUNE, PeriodiciteControle.AUCUNE.allege())
+    }
+
+    // — Le détecteur porté par la machine ————————————————————————————————————
+
+    /**
+     * La même machine, avec et sans détecteur fixe : 6,2 kg de R452A font 13,3 t
+     * éq. CO₂, un contrôle par an sans détecteur, un tous les deux ans avec. Le
+     * contrôle de janvier 2025 est donc en retard dans un cas et pas dans l'autre,
+     * et c'est précisément ce que l'accueil se trompait à annoncer.
+     */
+    @Test
+    fun `une machine equipee d'un detecteur fixe voit son echeance doublee`() {
+        val dernier = LocalDate.of(2025, 1, 10)
+        val jour = LocalDate.of(2026, 5, 14)
+
+        val sans = EtatEtancheite.calculer("R452A", 6.2, dernier, detecteurFixe = false, aujourdhui = jour)
+        val avec = EtatEtancheite.calculer("R452A", 6.2, dernier, detecteurFixe = true, aujourdhui = jour)
+
+        assertEquals(PeriodiciteControle.DOUZE_MOIS, sans.periodicite)
+        assertEquals(LocalDate.of(2026, 1, 10), sans.echeance)
+        assertTrue(sans.enRetard)
+        assertFalse(sans.doubleeParDetecteur)
+
+        assertEquals(PeriodiciteControle.VINGT_QUATRE_MOIS, avec.periodicite)
+        assertEquals(LocalDate.of(2027, 1, 10), avec.echeance)
+        assertFalse(avec.enRetard)
+        assertTrue("la fiche doit pouvoir dire pourquoi l'échéance a reculé", avec.doubleeParDetecteur)
+    }
+
+    /**
+     * Une machine non soumise le reste, détecteur ou pas — et la fiche ne doit
+     * pas annoncer une périodicité « doublée » sur une absence d'obligation.
+     */
+    @Test
+    fun `une machine non soumise le reste avec un detecteur`() {
+        val etat = EtatEtancheite.calculer(
+            fluide = "R290",
+            chargeKg = 0.4,
+            dernierControle = LocalDate.of(2025, 1, 1),
+            detecteurFixe = true,
+            aujourdhui = LocalDate.of(2026, 5, 14),
+        )
+
+        assertEquals(PeriodiciteControle.AUCUNE, etat.periodicite)
+        assertNull(etat.echeance)
+        assertFalse(etat.doubleeParDetecteur)
+    }
+
+    /**
+     * Les écrans passent la machine entière, et c'est le détecteur **qu'elle
+     * porte** qui décide : 30 kg de R404A font 117,7 t éq. CO₂, soit six mois
+     * sans détecteur et douze avec. Lire la machine plutôt que recopier ses
+     * champs est ce qui empêche la fiche et l'accueil d'annoncer deux dates.
+     */
+    @Test
+    fun `l'etat d'une machine lit son propre detecteur`() {
+        val jour = LocalDate.of(2026, 5, 14)
+        val machine = Equipement(
+            clientId = "cl-1",
+            nom = "Centrale positive",
+            fluide = "R404A",
+            chargeKg = 30.0,
+            dernierControleLe = LocalDate.of(2026, 3, 2),
+        )
+
+        val sans = EtatEtancheite.de(machine, jour)
+        val avec = EtatEtancheite.de(machine.copy(detecteurFuite = true), jour)
+
+        assertEquals(PeriodiciteControle.SIX_MOIS, sans.periodicite)
+        assertEquals(LocalDate.of(2026, 9, 2), sans.echeance)
+        assertEquals(PeriodiciteControle.DOUZE_MOIS, avec.periodicite)
+        assertEquals(LocalDate.of(2027, 3, 2), avec.echeance)
+    }
+
+    /**
+     * Le défaut de la machine est **sans** détecteur : une machine saisie avant
+     * que le champ n'existe — ou dont personne n'a coché la case — garde la
+     * périodicité la plus exigeante.
+     */
+    @Test
+    fun `une machine sans precision retient l'intervalle court`() {
+        val machine = Equipement(clientId = "cl-1", nom = "Vitrine", fluide = "R452A", chargeKg = 6.2)
+
+        assertFalse(machine.detecteurFuite)
+        assertEquals(PeriodiciteControle.DOUZE_MOIS, EtatEtancheite.de(machine, LocalDate.of(2026, 5, 14)).periodicite)
     }
 
     // — La classe de sécurité ———————————————————————————————————————————————

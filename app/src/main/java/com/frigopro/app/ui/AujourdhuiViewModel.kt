@@ -265,14 +265,9 @@ class AujourdhuiViewModel(
         ): List<EcheanceFgas> {
             val horizon = jour.plusMonths(HORIZON_ECHEANCES_MOIS)
             return machines
-                .map { machine ->
-                    machine to EtatEtancheite.calculer(
-                        fluide = machine.fluide,
-                        chargeKg = machine.chargeKg,
-                        dernierControle = machine.dernierControleLe,
-                        aujourdhui = jour,
-                    )
-                }
+                // Par la machine entière, détecteur compris : la même machine ne
+                // doit pas être due à deux dates selon l'écran qui la montre.
+                .map { machine -> machine to EtatEtancheite.de(machine, jour) }
                 .filter { (_, etat) -> etat.echeance != null && !etat.echeance.isAfter(horizon) }
                 .sortedBy { (_, etat) -> etat.echeance }
                 .take(ECHEANCES_MONTREES)
