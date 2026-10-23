@@ -5,6 +5,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
+import java.time.Instant
 
 /**
  * Accès SQL au parc de machines et à leurs photos.
@@ -156,4 +157,42 @@ abstract class EquipementDao {
      */
     @Query("UPDATE releves_gamme SET equipementId = NULL WHERE equipementId = :id")
     abstract suspend fun detacherVisitesDe(id: String)
+
+    /**
+     * Range une sélection de machines dans une zone, **d'un bloc**.
+     *
+     * C'est le geste « ces douze meubles-là » : ranger un parc déjà saisi ne se
+     * fait pas en ouvrant trois cents fois la fiche de chaque machine. Une seule
+     * transaction, parce qu'une sélection rangée à moitié — sept meubles en
+     * « linéaire surgelés », cinq restés « Sans zone » — ne se verrait qu'au
+     * Préventif, en découvrant un linéaire coupé en deux.
+     *
+     * Le nom est celui du métier et non celui du SQL : on **range** une machine
+     * dans une zone. Le nettoyage de la saisie est l'affaire du dépôt.
+     *
+     * Elle découpe la liste en paquets plutôt que de lier tous les identifiants
+     * d'un coup : SQLite refuse plus de 999 paramètres par requête sur les
+     * versions livrées avec `minSdk 26`, et un site de mille machines n'est pas
+     * une hypothèse d'école. Le `@Transaction` garde l'ensemble atomique malgré le
+     * découpage.
+     */
+    @Transaction
+    open suspend fun ranger(ids: List<String>, zone: String, le: Instant) {
+        ids.chunked(PAQUET_SQL).forEach { paquet -> rangerPaquet(paquet, zone, le) }
+    }
+
+    /** Un paquet de [ranger] : une requête, sous la limite de paramètres. */
+    @Query("UPDATE equipements SET zone = :zone, modifieLe = :le WHERE id IN (:ids)")
+    abstract suspend fun rangerPaquet(ids: List<String>, zone: String, le: Instant)
 }
+
+/**
+ * Le nombre d'identifiants liés par requête dans un `IN (…)`.
+ *
+ * SQLite plafonne les paramètres d'une requête à 999 jusqu'à sa version 3.32,
+ * plus récente que celle des appareils couverts par `minSdk 26`. 900 laisse la
+ * place aux quelques paramètres qui accompagnent la liste — la zone, l'horodatage,
+ * la gamme —, et une requête qui dépasserait ne se verrait qu'en production, sur
+ * le plus gros site.
+ */
+internal const val PAQUET_SQL = 900

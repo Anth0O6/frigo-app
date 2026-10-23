@@ -168,6 +168,26 @@ class EquipementRepository(
     )
 
     /**
+     * Range une sélection de machines dans une zone, ou les en retire.
+     *
+     * La zone est **nettoyée** comme le nom d'une machine, et pour une raison plus
+     * forte : « Toiture » et « Toiture  » feraient deux groupes au Préventif, et
+     * l'espace de trop ne se voit pas à l'écran. Vide veut dire **non rangée** —
+     * c'est le chemin de retour vers « Sans zone », et il doit exister : une zone
+     * posée sur la mauvaise sélection se corrige en la retirant, pas en inventant
+     * une étiquette pour la recouvrir.
+     *
+     * Rien d'autre ne bouge sur la machine : la zone est la seule caractéristique
+     * qu'on donne en lot, parce que c'est la seule qui soit celle **du lieu** et
+     * non du matériel — douze meubles d'un linéaire sont au même endroit, ils
+     * n'ont pas la même plaque.
+     */
+    suspend fun ranger(ids: Collection<String>, zone: String) {
+        if (ids.isEmpty()) return
+        dao.ranger(ids.distinct(), zone.trim(), Instant.now())
+    }
+
+    /**
      * Retire la machine du parc, avec ses photos. Les interventions qui la
      * désignaient gardent son nom et perdent le lien : une tournée passée dit
      * toujours sur quoi on est intervenu.

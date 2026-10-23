@@ -14,6 +14,7 @@ import com.frigopro.app.data.FauxTechnicienDao
 import com.frigopro.app.data.MaintenanceRepository
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Periodicite
+import com.frigopro.app.data.PlanMaintenance
 import com.frigopro.app.data.StatutEcheance
 import com.frigopro.app.data.TechnicienRepository
 import kotlinx.coroutines.Dispatchers
@@ -508,6 +509,119 @@ class MaintenanceViewModelTest {
         // document n'est proposé au partage.
         assertTrue(viewModel.echecExport.value)
         assertNull(viewModel.documentPret.value)
+    }
+
+    /**
+     * « Ces douze meubles-là » : la sélection est rattachée, et seulement elle.
+     *
+     * Le point qui compte est la vitrine qui suivait **déjà** la gamme : son entrée
+     * au plan, reportée en mars, ne doit pas bouger quand on date de janvier
+     * l'entrée des autres. C'est le dénominateur de son attestation, et un geste
+     * fait pour ajouter des machines ne doit rien retirer à celles qui y étaient.
+     */
+    @Test
+    fun `affecter une selection ne remet pas a zero l'entree au plan d'une machine deja suivie`() = runTest {
+        val viewModel = creerViewModel(jour = LocalDate.of(2026, 10, 9))
+        collecter(viewModel)
+        (1..4).forEach { rang ->
+            daoEquipements.enregistrer(MACHINE.copy(id = "v$rang", nom = "Vitrine $rang"))
+        }
+        viewModel.onCreerGamme("Visite mensuelle", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecter("v1", gamme.id)
+        viewModel.onReporterDepart("v1", gamme.id, LocalDate.of(2026, 3, 1))
+        advanceUntilIdle()
+
+        viewModel.onAffecterSelection(listOf("v1", "v2", "v3"), gamme.id, LocalDate.of(2026, 1, 1))
+        advanceUntilIdle()
+
+        val departs = daoMaintenance.affectations.associate { it.equipementId to it.depuisLe }
+        assertEquals("la machine déjà suivie garde son départ", LocalDate.of(2026, 3, 1), departs["v1"])
+        assertEquals("la date choisie vaut pour les nouvelles", LocalDate.of(2026, 1, 1), departs["v2"])
+        assertEquals(LocalDate.of(2026, 1, 1), departs["v3"])
+        assertNull("la vitrine non cochée n'est pas rattachée", departs["v4"])
+        assertEquals("une affectation par machine, pas une de plus", 3, departs.size)
+    }
+
+    /** Sans date choisie, les nouvelles entrent au plan aujourd'hui, comme depuis une fiche. */
+    @Test
+    fun `une selection sans date entre au plan aujourd'hui`() = runTest {
+        val jour = LocalDate.of(2026, 10, 9)
+        val viewModel = creerViewModel(jour = jour)
+        collecter(viewModel)
+        daoEquipements.enregistrer(MACHINE)
+        viewModel.onCreerGamme("Ronde du matin", Periodicite.JOURNALIER)
+        advanceUntilIdle()
+
+        viewModel.onAffecterSelection(listOf(MACHINE.id), daoMaintenance.gammes.single().id)
+        advanceUntilIdle()
+
+        assertEquals(jour, daoMaintenance.affectations.single().depuisLe)
+    }
+
+    /**
+     * Le compte que la boîte annonce avant le geste et celui que le dépôt rend
+     * après doivent être le même : l'un dit « 2 suivent déjà cette gamme », l'autre
+     * en est la preuve. Et une machine déjà suivie n'est **pas réécrite du tout** —
+     * son horodatage non plus, qui départagera un jour deux téléphones.
+     */
+    @Test
+    fun `l'affectation groupee dit combien suivaient deja la gamme`() = runTest {
+        val plan = MaintenanceRepository(daoMaintenance)
+        plan.affecter("v1", "g-1", LocalDate.of(2026, 3, 1))
+        plan.affecter("v2", "g-1", LocalDate.of(2026, 4, 1))
+        plan.affecter("v3", "g-2", LocalDate.of(2026, 4, 1))
+        val avant = daoMaintenance.affectations.single { it.equipementId == "v1" }
+        val selection = listOf("v1", "v2", "v3", "v3")
+
+        val annonce = PlanMaintenance.suiventDeja(selection, "g-1", daoMaintenance.affectations)
+        val deja = plan.affecterGroupe(selection, "g-1", LocalDate.of(2026, 1, 1))
+
+        assertEquals(setOf("v1", "v2"), annonce)
+        assertEquals("v3 suit une autre gamme : elle ne compte pas", 2, deja)
+        assertEquals(annonce.size, deja)
+        assertEquals("v3 compté une fois", 4, daoMaintenance.affectations.size)
+        assertEquals(avant, daoMaintenance.affectations.single { it.equipementId == "v1" && it.gammeId == "g-1" })
+    }
+
+    /**
+     * Retirer une gamme d'une sélection : les machines cochées la quittent, les
+     * autres la gardent, une autre gamme sur la même machine reste, et le journal
+     * ne bouge pas — lien compris, comme lorsqu'on la retire d'une seule fiche.
+     */
+    @Test
+    fun `retirer une gamme d'une selection laisse le reste du plan et le journal`() = runTest {
+        val viewModel = creerViewModel(jour = LocalDate.of(2026, 6, 1))
+        collecter(viewModel)
+        val parc = (1..3).map { MACHINE.copy(id = "v$it", nom = "Vitrine $it") }
+        parc.forEach { daoEquipements.enregistrer(it) }
+        viewModel.onCreerGamme("Visite mensuelle", Periodicite.MENSUEL)
+        viewModel.onCreerGamme("Visite annuelle", Periodicite.ANNUEL)
+        advanceUntilIdle()
+        val mensuelle = daoMaintenance.gammes.single { it.libelle == "Visite mensuelle" }
+        val annuelle = daoMaintenance.gammes.single { it.libelle == "Visite annuelle" }
+        viewModel.onAffecterAuParc(parc, mensuelle.id)
+        viewModel.onAffecter("v1", annuelle.id)
+        advanceUntilIdle()
+        viewModel.onConsigner(parc.first(), mensuelle, faitLe = LocalDate.of(2026, 5, 20))
+        advanceUntilIdle()
+
+        viewModel.onRetirerSelection(listOf("v1", "v2"), mensuelle.id)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("v3"),
+            daoMaintenance.affectations.filter { it.gammeId == mensuelle.id }.map { it.equipementId },
+        )
+        assertEquals(
+            "l'autre gamme de v1 reste",
+            listOf("v1"),
+            daoMaintenance.affectations.filter { it.gammeId == annuelle.id }.map { it.equipementId },
+        )
+        val visite = daoMaintenance.releves.single()
+        assertEquals("v1", visite.equipementId)
+        assertEquals(mensuelle.id, visite.gammeId)
     }
 
     /**

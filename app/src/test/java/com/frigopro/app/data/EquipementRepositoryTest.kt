@@ -345,4 +345,90 @@ class EquipementRepositoryTest {
 
         assertEquals(listOf("Atelier", "Étuve", "Toiture", "Zone 2"), zones)
     }
+
+    /**
+     * Le geste « ces douze meubles-là » : la zone se pose sur la sélection et sur
+     * rien d'autre — ni le reste du parc, ni le parc d'un autre client qui aurait
+     * une machine du même nom.
+     *
+     * Les lignes sont écrites par le DAO, donc à l'horodatage d'origine : c'est
+     * ce qui permet de voir que seules les machines rangées ont été touchées.
+     */
+    @Test
+    fun `ranger une selection ne touche que les machines cochees`() = runTest {
+        (1..3).forEach { rang ->
+            dao.enregistrer(Equipement(id = "v$rang", clientId = "cli-1", nom = "Vitrine $rang"))
+        }
+        dao.enregistrer(Equipement(id = "cf", clientId = "cli-1", nom = "Chambre froide", zone = "Réserve"))
+        dao.enregistrer(Equipement(id = "x1", clientId = "cli-2", nom = "Vitrine 1"))
+
+        repository.ranger(listOf("v1", "v2"), "Linéaire frais")
+
+        val parId = dao.contenu.associateBy { it.id }
+        assertEquals("Linéaire frais", parId.getValue("v1").zone)
+        assertEquals("Linéaire frais", parId.getValue("v2").zone)
+        assertEquals("la vitrine non cochée reste non rangée", "", parId.getValue("v3").zone)
+        assertEquals("la chambre froide garde sa zone", "Réserve", parId.getValue("cf").zone)
+        assertEquals("le parc du voisin n'y entre pas", "", parId.getValue("x1").zone)
+        assertNotEquals(Instant.EPOCH, parId.getValue("v1").modifieLe)
+        assertEquals(Instant.EPOCH, parId.getValue("v3").modifieLe)
+        assertEquals(Instant.EPOCH, parId.getValue("x1").modifieLe)
+    }
+
+    /**
+     * Vide veut dire « non rangée », et c'est le chemin de retour : une zone posée
+     * sur la mauvaise sélection se retire, elle ne se recouvre pas d'une autre.
+     */
+    @Test
+    fun `une zone videe ramene la selection sans zone`() = runTest {
+        listOf("m1", "m2").forEach { id ->
+            dao.enregistrer(Equipement(id = id, clientId = "cli-1", nom = id, zone = "Toiture"))
+        }
+
+        repository.ranger(listOf("m1"), "   ")
+
+        assertEquals("", dao.contenu.single { it.id == "m1" }.zone)
+        assertEquals("Toiture", dao.contenu.single { it.id == "m2" }.zone)
+        assertEquals(listOf("Toiture"), zonesDe(dao.contenu))
+    }
+
+    /**
+     * « Toiture » et « Toiture  » feraient deux groupes au Préventif, et l'espace
+     * de trop ne se voit pas à l'écran.
+     */
+    @Test
+    fun `la zone donnee a une selection est nettoyee`() = runTest {
+        dao.enregistrer(Equipement(id = "m1", clientId = "cli-1", nom = "m1", zone = "Toiture"))
+        dao.enregistrer(Equipement(id = "m2", clientId = "cli-1", nom = "m2"))
+
+        repository.ranger(listOf("m2"), "  Toiture  ")
+
+        assertEquals("Toiture", dao.contenu.single { it.id == "m2" }.zone)
+        assertEquals("une seule zone, pas deux", listOf("Toiture"), zonesDe(dao.contenu))
+    }
+
+    /**
+     * Un site de mille machines dépasse la limite de paramètres de SQLite : le
+     * DAO découpe en paquets, et aucune machine ne doit tomber entre deux.
+     */
+    @Test
+    fun `un grand parc se range entier malgre le decoupage en paquets`() = runTest {
+        val ids = (1..(PAQUET_SQL * 2 + 37)).map { "m$it" }
+        dao.enregistrerTous(ids.map { Equipement(id = it, clientId = "cli-1", nom = it) })
+
+        repository.ranger(ids, "Surface de vente")
+
+        assertTrue(dao.contenu.all { it.zone == "Surface de vente" })
+        assertEquals(ids.size, dao.contenu.size)
+    }
+
+    @Test
+    fun `une selection vide ne range rien`() = runTest {
+        dao.enregistrer(Equipement(id = "m1", clientId = "cli-1", nom = "m1", zone = "Toiture"))
+
+        repository.ranger(emptyList(), "Réserve")
+
+        assertEquals("Toiture", dao.contenu.single().zone)
+        assertEquals(Instant.EPOCH, dao.contenu.single().modifieLe)
+    }
 }

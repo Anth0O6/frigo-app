@@ -126,6 +126,14 @@ class FauxMaintenanceDao : MaintenanceDao() {
         lesAffectations.value = lesAffectations.value.filterNot { it.gammeId == gammeId }
     }
 
+    /** `retirerDe` est héritée du vrai DAO ; seul le paquet est reproduit. */
+    override suspend fun retirerPaquet(equipementIds: List<String>, gammeId: String) {
+        val nommees = equipementIds.toSet()
+        lesAffectations.value = lesAffectations.value.filterNot {
+            it.gammeId == gammeId && it.equipementId in nommees
+        }
+    }
+
     // — Le journal ———————————————————————————————————————————————————————————
 
     override fun observerReleves(): Flow<List<ReleveGamme>> =

@@ -68,6 +68,57 @@ class MaintenanceRepository(private val dao: MaintenanceDao) {
         )
     }
 
+    /**
+     * Rattache une sélection de machines à une gamme, et rend **combien la
+     * suivaient déjà**.
+     *
+     * C'est la règle d'[affecter], appliquée en lot et poussée d'un cran : une
+     * machine déjà rattachée **n'est pas réécrite du tout**. Son `depuisLe` reste
+     * le sien — c'est le dénominateur de son attestation, et le remettre à la
+     * date choisie pour les autres aurait effacé des mois de contrat d'un geste
+     * fait pour en ajouter —, et son `modifieLe` aussi : rien n'a changé pour
+     * elle, et un horodatage déplacé dirait le contraire le jour où deux
+     * téléphones départageront leurs versions.
+     *
+     * [depuisLe] ne vaut donc que pour les **nouvelles** affectations, et c'est ce
+     * qui rend la date proposable sans danger : on peut dater de janvier l'entrée
+     * au plan d'un linéaire inventorié en octobre sans toucher à la vitrine qui y
+     * était depuis mars.
+     *
+     * Les nouvelles s'écrivent en **une seule** écriture groupée, que Room passe
+     * dans une transaction : douze meubles rattachés à moitié feraient une ronde
+     * qui oublie le bout du linéaire.
+     */
+    suspend fun affecterGroupe(
+        equipementIds: Collection<String>,
+        gammeId: String,
+        depuisLe: LocalDate = LocalDate.now(),
+    ): Int {
+        val identifiants = equipementIds.distinct()
+        val maintenant = Instant.now()
+        val nouvelles = identifiants
+            .filter { dao.affectation(it, gammeId) == null }
+            .map { equipementId ->
+                AffectationGamme(
+                    equipementId = equipementId,
+                    gammeId = gammeId,
+                    depuisLe = depuisLe,
+                    modifieLe = maintenant,
+                )
+            }
+        if (nouvelles.isNotEmpty()) dao.enregistrerAffectations(nouvelles)
+        return identifiants.size - nouvelles.size
+    }
+
+    /**
+     * Retire une gamme d'une sélection de machines. Le journal ne bouge pas :
+     * voir [MaintenanceDao.retirerDe].
+     */
+    suspend fun retirerGroupe(equipementIds: Collection<String>, gammeId: String) {
+        if (equipementIds.isEmpty()) return
+        dao.retirerDe(equipementIds.distinct(), gammeId)
+    }
+
     /** Déplace le point de départ du plan, sans toucher au journal. */
     suspend fun reporterDepart(equipementId: String, gammeId: String, depuisLe: LocalDate) {
         val existante = dao.affectation(equipementId, gammeId) ?: return

@@ -267,12 +267,41 @@ class MaintenanceViewModel(
      * d'équipements : les rattacher un à un demanderait une soirée, et la soirée
      * ne se prendrait pas. Les unités intérieures sont incluses — un split suivi
      * sans ses unités ne voudrait rien dire.
+     *
+     * Il passe par le même chemin que la sélection du carnet : tout le parc n'est
+     * que la plus grande des sélections, et deux boucles pour la même règle
+     * finiraient par ne plus la tenir pareil.
      */
     fun onAffecterAuParc(equipements: List<Equipement>, gammeId: String) {
-        val jour = aujourdhui()
-        viewModelScope.launch {
-            equipements.forEach { machine -> maintenance.affecter(machine.id, gammeId, jour) }
-        }
+        onAffecterSelection(equipements.map { it.id }, gammeId)
+    }
+
+    /**
+     * Rattache une gamme à **une sélection** de machines : « ces douze
+     * meubles-là », le cas qui manquait entre tout le parc et une seule fiche.
+     *
+     * [depuisLe] ne vaut que pour les machines qui ne suivaient pas encore la
+     * gamme ; les autres gardent leur entrée au plan, et c'est le dépôt qui le
+     * garantit (voir [MaintenanceRepository.affecterGroupe]). Aujourd'hui par
+     * défaut, comme le geste d'une fiche.
+     */
+    fun onAffecterSelection(
+        equipementIds: Collection<String>,
+        gammeId: String,
+        depuisLe: LocalDate? = null,
+    ) {
+        if (equipementIds.isEmpty()) return
+        val jour = depuisLe ?: aujourdhui()
+        viewModelScope.launch { maintenance.affecterGroupe(equipementIds, gammeId, jour) }
+    }
+
+    /**
+     * Retire une gamme d'une sélection de machines. Les visites restent au
+     * journal, comme lorsqu'on la retire d'une seule fiche.
+     */
+    fun onRetirerSelection(equipementIds: Collection<String>, gammeId: String) {
+        if (equipementIds.isEmpty()) return
+        viewModelScope.launch { maintenance.retirerGroupe(equipementIds, gammeId) }
     }
 
     /**

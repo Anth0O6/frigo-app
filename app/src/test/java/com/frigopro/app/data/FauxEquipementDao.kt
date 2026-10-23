@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import java.time.Instant
 
 /**
  * Parc et photos en mémoire, reproduisant le contrat SQL du vrai DAO.
@@ -110,5 +111,17 @@ class FauxEquipementDao(
         maintenance.tousLesReleves()
             .filter { it.equipementId == id }
             .forEach { maintenance.enregistrerReleve(it.copy(equipementId = null)) }
+    }
+
+    /**
+     * `UPDATE … WHERE id IN (:ids)` : seules les lignes nommées bougent, et un
+     * identifiant inconnu ne crée rien. `ranger` n'est pas réécrite — elle est
+     * `open` sur le vrai DAO, et le faux hérite donc du vrai découpage en paquets.
+     */
+    override suspend fun rangerPaquet(ids: List<String>, zone: String, le: Instant) {
+        val nommees = ids.toSet()
+        lignes.update { liste ->
+            liste.map { if (it.id in nommees) it.copy(zone = zone, modifieLe = le) else it }
+        }
     }
 }

@@ -414,6 +414,30 @@ object PlanMaintenance {
     }
 
     /**
+     * Celles des machines d'une sélection qui suivent déjà une gamme.
+     *
+     * C'est ce que la boîte d'affectation groupée annonce **avant** le geste, et
+     * c'est ce qui le rend lisible : « 3 suivent déjà cette gamme » dit que leur
+     * entrée au plan ne bougera pas, et que la date proposée ne vaut que pour les
+     * neuf autres — voir [MaintenanceRepository.affecterGroupe]. Sans ce compte,
+     * on croirait dater tout le linéaire.
+     *
+     * Dérivé des affectations déjà observées par l'écran, et jamais stocké : une
+     * sélection n'existe que le temps d'un geste.
+     */
+    fun suiventDeja(
+        equipementIds: Collection<String>,
+        gammeId: String,
+        affectations: List<AffectationGamme>,
+    ): Set<String> {
+        val selection = equipementIds.toSet()
+        return affectations
+            .filter { it.gammeId == gammeId && it.equipementId in selection }
+            .map { it.equipementId }
+            .toSet()
+    }
+
+    /**
      * Ce qu'une gamme a produit sur une fenêtre, tout le parc confondu.
      *
      * Les attendues se comptent **affectation par affectation** et non une fois

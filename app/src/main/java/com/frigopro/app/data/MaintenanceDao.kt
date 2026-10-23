@@ -82,6 +82,27 @@ abstract class MaintenanceDao {
     @Query("DELETE FROM affectations_gamme WHERE gammeId = :gammeId")
     abstract suspend fun effacerAffectationsDe(gammeId: String)
 
+    /**
+     * Retire une gamme d'une sélection de machines, **d'un bloc**.
+     *
+     * Le pendant du rattachement groupé de [MaintenanceRepository.affecterGroupe] :
+     * une gamme posée sur la mauvaise sélection doit pouvoir se retirer de la même
+     * façon qu'elle s'est posée, et une sélection défaite à moitié laisserait un
+     * plan que personne n'a voulu. Les visites ne sont pas touchées — ce qui a été
+     * fait reste au journal, lien compris, comme pour [retirerAffectation].
+     *
+     * Découpée en paquets pour la limite de paramètres de SQLite, et atomique
+     * malgré le découpage : voir [EquipementDao.ranger] et [PAQUET_SQL].
+     */
+    @Transaction
+    open suspend fun retirerDe(equipementIds: List<String>, gammeId: String) {
+        equipementIds.chunked(PAQUET_SQL).forEach { paquet -> retirerPaquet(paquet, gammeId) }
+    }
+
+    /** Un paquet de [retirerDe] : une requête, sous la limite de paramètres. */
+    @Query("DELETE FROM affectations_gamme WHERE gammeId = :gammeId AND equipementId IN (:equipementIds)")
+    abstract suspend fun retirerPaquet(equipementIds: List<String>, gammeId: String)
+
     // — Le journal des visites ———————————————————————————————————————————————
 
     /**
