@@ -801,6 +801,10 @@ class SauvegardeRepositoryTest {
             // qu'un champ oublié dans l'un des deux convertisseurs se voit sans
             // qu'on ait à le nommer. C'est ce qui a fait entrer la zone au format 15.
             zone = "Toiture",
+            // Même raison pour le détecteur (format 16), et posé à `true` plutôt
+            // qu'à son défaut : un champ oublié dans un convertisseur retomberait
+            // sur `false`, et l'aller-retour passerait sans rien avoir éprouvé.
+            detecteurFuite = true,
             modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
         )
 
@@ -874,5 +878,25 @@ class SauvegardeRepositoryTest {
 
         assertEquals("", relue.zone)
         assertEquals("Vitrine", relue.nom)
+    }
+
+    /**
+     * Un fichier d'avant le format 16 ne dit rien du détecteur de fuite, et son
+     * silence se relit **sans détecteur** : la périodicité la plus exigeante,
+     * comme en base. L'inverse ferait reculer d'un an, à la restauration, les
+     * échéances d'un parc dont personne n'a dit qu'il était équipé.
+     *
+     * Lu depuis du texte, et non depuis un constructeur, parce que c'est la
+     * propriété qui compte : une clé **absente** du fichier, pas un paramètre
+     * omis dans le code.
+     */
+    @Test
+    fun `une machine d'avant le format 16 se relit sans detecteur`() {
+        val texte = """{"id":"eq-1","clientId":"cl-1","nom":"Vitrine","fluide":"R404A","chargeKg":12.0}"""
+
+        val relue = JSON_SAUVEGARDE.decodeFromString(EquipementSauvegarde.serializer(), texte).versEquipement()
+
+        assertEquals(false, relue.detecteurFuite)
+        assertEquals("R404A", relue.fluide)
     }
 }

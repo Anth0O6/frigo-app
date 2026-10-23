@@ -274,6 +274,32 @@ class EquipementRepositoryTest {
     }
 
     /**
+     * Le détecteur de fuite fixe est un équipement de l'installation, comme la
+     * zone : il **suit** la copie, au même titre que le fluide et la charge qui
+     * décident eux aussi de la périodicité. Il ne recule rien à lui seul — la
+     * copie n'a pas de dernier contrôle, donc pas d'échéance à doubler.
+     */
+    @Test
+    fun `dupliquer recopie le detecteur de fuite fixe, sans dater de controle`() = runTest {
+        val source = repository.enregistrer(
+            Equipement(
+                id = "eq-1",
+                clientId = "cli-1",
+                nom = "Vitrine 1",
+                fluide = "R404A",
+                chargeKg = 30.0,
+                dernierControleLe = LocalDate.of(2026, 2, 18),
+                detecteurFuite = true,
+            ),
+        )
+
+        val copie = repository.dupliquer(source, "Vitrine 2")
+
+        assertTrue("le détecteur est une caractéristique de l'installation", copie.detecteurFuite)
+        assertNull("aucune échéance n'est inventée sur la copie", EtatEtancheite.de(copie, LocalDate.of(2026, 5, 14)).echeance)
+    }
+
+    /**
      * Un multi-split dupliqué arrive **avec ses unités**, qui gardent leur nom :
      * « Salon » et « Chambre » se répètent d'un appartement à l'autre, et c'est
      * le cas ordinaire d'un immeuble. Elles pendent du nouveau groupe, et non de

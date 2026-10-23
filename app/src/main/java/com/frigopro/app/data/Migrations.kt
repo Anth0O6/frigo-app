@@ -1079,3 +1079,31 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
         poserCatalogueAccessoires(db)
     }
 }
+
+/**
+ * Le détecteur de fuite fixe d'une machine : **une colonne, et rien d'autre** —
+ * le même cas exact que [MIGRATION_18_19].
+ *
+ * Le règlement 517/2014 (art. 4 § 3) double l'intervalle des contrôles
+ * d'étanchéité d'une machine qui en porte un, et `PeriodiciteControle.pour`
+ * savait déjà le calculer ; seul l'outil F-Gas pouvait pourtant poser la
+ * question, faute de champ sur la machine. L'accueil et la fiche retenaient donc
+ * toujours la périodicité la plus exigeante. Rien n'est stocké de ce que le
+ * détecteur change : l'échéance reste dérivée, et la colonne ne porte que le
+ * fait d'installation.
+ *
+ * Le défaut `0` veut dire **sans détecteur**, et c'est ce qui rend juste tout
+ * parc déjà saisi sans le toucher : une machine dont personne n'a dit qu'elle
+ * était équipée garde l'intervalle court. Annoncer un contrôle trop tôt fait
+ * perdre une heure ; trop tard expose à une sanction — le défaut inverse aurait
+ * fait reculer d'un an, d'un seul coup, toutes les échéances d'un parc.
+ *
+ * L'entité **ne déclare pas** ce défaut, pour la raison dite en
+ * [MIGRATION_18_19] : Room ignore à la validation un défaut côté base qu'aucune
+ * entité ne déclare.
+ */
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `equipements` ADD COLUMN `detecteurFuite` INTEGER NOT NULL DEFAULT 0")
+    }
+}

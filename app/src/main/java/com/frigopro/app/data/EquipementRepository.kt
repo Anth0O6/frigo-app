@@ -113,6 +113,14 @@ class EquipementRepository(
      *   propriétés du matériel, identiques d'un meuble à l'autre du linéaire.
      * - La **mise en service** suit aussi : un linéaire est posé le même jour, et
      *   c'est un fait d'installation, pas un relevé.
+     * - Le **détecteur de fuite fixe** suit, pour la même raison : c'est un
+     *   équipement de l'installation, posé une fois pour le linéaire ou le local,
+     *   et non un acte fait sur un meuble. Le fluide et la charge, qui décident
+     *   eux aussi de la périodicité, suivent déjà sans que personne ne les
+     *   revérifie ; traiter le détecteur autrement ferait recocher la case douze
+     *   fois. Et il ne recule rien à lui seul : sans dernier contrôle, la copie
+     *   n'a pas d'échéance, et la fiche dira « doublée par le détecteur » dès le
+     *   premier contrôle consigné — de quoi décocher si la copie n'en a pas.
      * - Le **numéro de série** ne suit pas : il est unique par définition, et le
      *   recopier aurait rempli le parc de doublons qui désignent une seule
      *   machine — avec, au bout, une pièce commandée pour le mauvais meuble.

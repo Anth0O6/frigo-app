@@ -280,6 +280,14 @@ data class EquipementSauvegarde(
      * périodicité, qui sont des valeurs fixes de l'application.
      */
     val zone: String = "",
+    /**
+     * La machine porte un détecteur de fuite fixe. Absent d'un fichier d'avant
+     * le format 16, et son absence veut dire ce que dit le défaut en base :
+     * **sans détecteur**, c'est-à-dire la périodicité la plus exigeante. Un
+     * fichier ancien relu ne recule donc aucune échéance — l'erreur, s'il y en
+     * a une, est un contrôle annoncé trop tôt.
+     */
+    val detecteurFuite: Boolean = false,
     val modifieLe: Long = 0L,
 )
 
@@ -535,6 +543,12 @@ data class PrestationSauvegarde(
 /**
  * Version courante du format de fichier.
  *
+ * Le format 16 ajoute le **détecteur de fuite fixe** d'une machine, facultatif
+ * avec son défaut comme la zone du format 15. Le perdre à la restauration ne
+ * casserait rien de visible et ramènerait chaque machine équipée à la
+ * périodicité courte : des contrôles annoncés un an trop tôt sur tout un parc,
+ * sans rien pour dire pourquoi.
+ *
  * Le format 7 ajoute la facturation du déplacement : le trajet de chaque devis,
  * le marqueur des lignes qu'il a produites, et le tarif kilométrique.
  *
@@ -558,7 +572,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 15
+const val FORMAT_COURANT: Int = 16
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -641,6 +655,7 @@ internal fun Equipement.versSauvegarde(): EquipementSauvegarde = EquipementSauve
     misEnServiceLe = misEnServiceLe?.format(FORMAT_DATE),
     dernierControleLe = dernierControleLe?.format(FORMAT_DATE),
     zone = zone,
+    detecteurFuite = detecteurFuite,
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -711,6 +726,7 @@ internal fun EquipementSauvegarde.versEquipement(): Equipement = Equipement(
     misEnServiceLe = misEnServiceLe?.let { jourOuNull(it) },
     dernierControleLe = dernierControleLe?.let { jourOuNull(it) },
     zone = zone,
+    detecteurFuite = detecteurFuite,
     modifieLe = Instant.ofEpochMilli(modifieLe),
 )
 

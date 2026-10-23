@@ -104,6 +104,27 @@ data class Equipement(
      * pas.
      */
     val zone: String = "",
+    /**
+     * La machine porte un **système de détection des fuites fixe** — installé à
+     * demeure sur le circuit ou dans le local, et qui alerte de lui-même.
+     *
+     * C'est ce qui **double l'intervalle** des contrôles d'étanchéité (règlement
+     * 517/2014, art. 4 § 3), et c'est pour cela qu'il est porté ici plutôt que
+     * seulement demandé dans l'outil F-Gas : sans lui, l'accueil et la fiche
+     * retenaient toujours la périodicité la plus exigeante. Voir
+     * [PeriodiciteControle.pour] et [EtatEtancheite.de].
+     *
+     * Un détecteur **portatif** ne compte pas, et le libellé de la saisie le
+     * dit : c'est l'outil du contrôle, pas une surveillance de la machine entre
+     * deux contrôles. Le confondre ferait reculer d'un an une échéance que le
+     * règlement n'a pas reculée.
+     *
+     * `false` par défaut, et ce défaut est un choix : une machine dont on ne sait
+     * pas si elle est équipée retient la périodicité la plus exigeante. Annoncer
+     * un contrôle trop tôt fait perdre une heure ; trop tard expose à une
+     * sanction. Rien n'est stocké de ce qu'il change — l'échéance reste dérivée.
+     */
+    val detecteurFuite: Boolean = false,
     val modifieLe: Instant = Instant.EPOCH,
 ) {
 
