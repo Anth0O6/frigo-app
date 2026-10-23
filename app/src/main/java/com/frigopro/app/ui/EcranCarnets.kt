@@ -122,7 +122,10 @@ fun CarnetsRoute(
     vue: VueCarnet,
     onVue: (VueCarnet) -> Unit,
     modifier: Modifier = Modifier,
+    /** Mène à une page des Réglages : le coefficient, depuis la saisie des prix. */
+    onReglage: (PageReglages) -> Unit = {},
     materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory),
+    saisiePrix: SaisiePrixViewModel = viewModel(factory = SaisiePrixViewModel.Factory),
 ) {
     when (vue) {
         VueCarnet.CLIENTS -> ClientsRoute(vue = vue, onVue = onVue, modifier = modifier)
@@ -131,6 +134,8 @@ fun CarnetsRoute(
             onVue = onVue,
             modifier = modifier,
             viewModel = materiel,
+            saisiePrix = saisiePrix,
+            onReglage = onReglage,
         )
         VueCarnet.FOURNISSEURS -> FournisseursRoute(
             vue = vue,
@@ -142,11 +147,11 @@ fun CarnetsRoute(
 }
 
 /**
- * Le magasin : la liste, et l'article ouvert.
+ * Le magasin : la liste, l'article ouvert, et la saisie groupée des prix.
  *
  * Un article ouvert **remplace** la liste, comme un devis ou une machine
  * ailleurs : une seule profondeur, un `BackHandler`, et toujours pas de graphe
- * de navigation.
+ * de navigation. La saisie des prix la remplace de la même façon.
  */
 @Composable
 private fun MagasinRoute(
@@ -154,10 +159,23 @@ private fun MagasinRoute(
     onVue: (VueCarnet) -> Unit,
     modifier: Modifier,
     viewModel: MaterielViewModel,
+    saisiePrix: SaisiePrixViewModel,
+    onReglage: (PageReglages) -> Unit,
 ) {
+    val saisieOuverte by saisiePrix.ouverte.collectAsStateWithLifecycle()
+    if (saisieOuverte) {
+        SaisiePrixRoute(
+            viewModel = saisiePrix,
+            onReglage = onReglage,
+            modifier = modifier,
+        )
+        return
+    }
+
     val magasin by viewModel.magasin.collectAsStateWithLifecycle()
     val manquants by viewModel.aReapprovisionner.collectAsStateWithLifecycle()
     val valeur by viewModel.valeurStock.collectAsStateWithLifecycle()
+    val sansPrix by viewModel.sansPrix.collectAsStateWithLifecycle()
     val recherche by viewModel.recherche.collectAsStateWithLifecycle()
     val ouvert by viewModel.articleOuvert.collectAsStateWithLifecycle()
     val fournisseurs by viewModel.tousLesFournisseurs.collectAsStateWithLifecycle()
@@ -197,9 +215,11 @@ private fun MagasinRoute(
             recherche = recherche,
             manquants = manquants.size,
             valeurStock = valeur,
+            sansPrix = sansPrix,
             onRecherche = viewModel::onRecherche,
             onOuvrir = viewModel::onOuvrirArticle,
             onBouger = viewModel::onBouger,
+            onSaisirPrix = saisiePrix::onOuvrir,
         )
     }
 
@@ -211,6 +231,41 @@ private fun MagasinRoute(
             onAnnuler = viewModel::onAnnulerBrouillonArticle,
         )
     }
+}
+
+/**
+ * La saisie groupée des prix, branchée sur son `ViewModel`.
+ *
+ * Ses flux ne sont collectés que tant qu'elle est ouverte : la liste qu'elle
+ * compose recalcule chaque ligne du magasin à chaque frappe, et ce travail n'a
+ * pas à tourner derrière l'inventaire.
+ */
+@Composable
+private fun SaisiePrixRoute(
+    viewModel: SaisiePrixViewModel,
+    onReglage: (PageReglages) -> Unit,
+    modifier: Modifier,
+) {
+    val etat by viewModel.etat.collectAsStateWithLifecycle()
+    val fournisseurs by viewModel.fournisseurs.collectAsStateWithLifecycle()
+
+    EcranSaisiePrix(
+        etat = etat,
+        fournisseurs = fournisseurs,
+        onRecherche = viewModel::onRecherche,
+        onFiltre = viewModel::onFiltre,
+        onReference = viewModel::onReference,
+        onPrixAchat = viewModel::onPrixAchat,
+        onPrixVente = viewModel::onPrixVente,
+        onCocher = viewModel::onCocher,
+        onCocherTout = viewModel::onCocherTout,
+        onAttribuerFournisseur = viewModel::onAttribuerFournisseur,
+        onEnregistrer = viewModel::onEnregistrer,
+        onEnregistrerEtFermer = viewModel::onEnregistrerEtFermer,
+        onAbandonner = viewModel::onAbandonner,
+        onReglerCoefficient = { onReglage(ReglageManquant.COEFFICIENT_MATERIEL.page) },
+        modifier = modifier.fillMaxSize(),
+    )
 }
 
 /** Les fournisseurs : la liste filtrée, et la fiche ouverte. Même motif. */

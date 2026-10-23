@@ -101,6 +101,15 @@ class MaterielViewModel(private val materiel: MaterielRepository) : ViewModel() 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
 
     /**
+     * Les articles sans prix d'achat, tout le magasin compté : ce que le bouton
+     * de la saisie groupée annonce. La recherche n'y entre pas — elle ne change
+     * rien à ce qui reste à tarifer.
+     */
+    val sansPrix: StateFlow<Int> = materiel.magasin
+        .map { liste -> liste.count { it.article.prixAchat <= 0.0 } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), 0)
+
+    /**
      * Ce que le magasin vaut, au prix d'achat.
      *
      * Au prix d'achat et jamais au prix de vente : du stock n'est pas du chiffre

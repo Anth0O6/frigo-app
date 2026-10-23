@@ -44,6 +44,7 @@ import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.Fournisseur
 import com.frigopro.app.data.LieuStock
 import com.frigopro.app.ui.composants.BoutonContour
+import com.frigopro.app.ui.composants.BoutonDiscret
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampRecherche
@@ -85,9 +86,12 @@ fun EcranMagasin(
     recherche: String,
     manquants: Int,
     valeurStock: Double,
+    /** Les articles sans prix d'achat, tout le magasin compté. */
+    sansPrix: Int,
     onRecherche: (String) -> Unit,
     onOuvrir: (String) -> Unit,
     onBouger: (String, LieuStock, Double) -> Unit,
+    onSaisirPrix: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val statuts = LocalStatuts.current
@@ -117,6 +121,24 @@ fun EcranMagasin(
                 valeur = Nombres.enEurosCourt(valeurStock),
                 libelle = "au prix d'achat",
                 modifier = Modifier.weight(1f),
+            )
+        }
+
+        // La saisie groupée a son bouton, visible, et il dit combien d'articles
+        // attendent un prix : c'est ce chiffre qui fait savoir qu'il y a quelque
+        // chose à remplir, là où un appui long ne s'annoncerait pas.
+        if (magasin.isNotEmpty() || recherche.isNotBlank()) {
+            BoutonDiscret(
+                texte = if (sansPrix > 0) {
+                    "Saisir les prix · $sansPrix sans prix"
+                } else {
+                    "Saisir les prix"
+                },
+                onClick = onSaisirPrix,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MargeEcran)
+                    .padding(bottom = 10.dp),
             )
         }
 
@@ -655,8 +677,9 @@ private fun ChoixFournisseur(
     }
 }
 
+/** Une ligne d'un choix dans le carnet ; partagée avec la saisie groupée des prix. */
 @Composable
-private fun LigneChoix(texte: String, retenu: Boolean, onClick: () -> Unit) {
+internal fun LigneChoix(texte: String, retenu: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier
