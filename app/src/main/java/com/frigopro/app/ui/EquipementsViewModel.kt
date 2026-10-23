@@ -59,6 +59,26 @@ sealed interface DialogueEquipement {
 }
 
 /**
+ * Les machines cochées dans le parc d'un client : la première sélection multiple
+ * de l'application.
+ *
+ * Elle porte **un seul client**, et c'est une règle plutôt qu'une limite. Une
+ * zone est un endroit d'un site — « réserve » chez l'un n'est pas « réserve » chez
+ * l'autre —, et une sélection qui traverserait deux parcs rangerait des machines
+ * qu'on ne voit plus à l'écran au moment du geste. Un site est un client à part
+ * entière (`Client.parentId`), si bien que la règle vaut aussi entre deux magasins
+ * d'une même enseigne.
+ *
+ * Les identifiants et non les machines, pour la raison de la fiche ouverte : ce
+ * qu'on affiche vient toujours de la base, et une machine renommée pendant qu'on
+ * la tient cochée reste cochée sous son nouveau nom.
+ */
+data class SelectionParc(
+    val clientId: String,
+    val ids: Set<String> = emptySet(),
+)
+
+/**
  * Détient le parc de machines : la liste sous chaque client, la fiche ouverte,
  * ses photos et son historique.
  *
@@ -289,6 +309,87 @@ class EquipementsViewModel(
      */
     fun onEnregistrerFiche(equipement: Equipement) {
         viewModelScope.launch { equipements.enregistrer(equipement) }
+    }
+
+    // — La sélection dans le parc d'un client ——————————————————————————————
+
+    private val _selection = MutableStateFlow<SelectionParc?>(null)
+
+    /**
+     * La sélection en cours, ou `null` hors du mode sélection.
+     *
+     * Tenue ici et non dans l'écran : le retour système doit la défaire avant
+     * toute autre chose, et c'est la route qui porte le `BackHandler` — un état
+     * posé dans la carte d'un client aurait été hors de sa portée.
+     */
+    val selection: StateFlow<SelectionParc?> = _selection.asStateFlow()
+
+    /** Entre en sélection sur le parc de ce client, rien de coché : le bouton visible. */
+    fun onSelectionner(clientId: String) {
+        _selection.value = SelectionParc(clientId)
+    }
+
+    /**
+     * Entre en sélection **avec cette machine cochée** : l'appui long.
+     *
+     * Il double le bouton « Sélectionner » plutôt que de le remplacer — un appui
+     * long ne s'annonce pas et se perd avec des gants —, et il coche la machine
+     * touchée parce que c'est elle que le doigt désignait.
+     */
+    fun onSelectionnerDepuis(equipement: Equipement) {
+        _selection.value = SelectionParc(equipement.clientId, setOf(equipement.id))
+    }
+
+    /** Coche ou décoche une machine. Celle d'un autre client est ignorée. */
+    fun onBasculerSelection(equipement: Equipement) {
+        val courante = _selection.value ?: return
+        if (equipement.clientId != courante.clientId) return
+        val ids = if (equipement.id in courante.ids) {
+            courante.ids - equipement.id
+        } else {
+            courante.ids + equipement.id
+        }
+        _selection.value = courante.copy(ids = ids)
+    }
+
+    /**
+     * Coche toutes ces machines — celles que l'écran montre, filtre compris.
+     *
+     * « Tout » veut dire **ce qu'on voit** : on filtre « vitrine », on coche tout,
+     * et ce sont les vitrines qui sont cochées, pas le parc entier dont la plupart
+     * des lignes sont hors de l'écran. Les machines d'un autre client sont
+     * écartées, pour la règle de [SelectionParc].
+     */
+    fun onSelectionnerTout(machines: List<Equipement>) {
+        val courante = _selection.value ?: return
+        val siennes = machines.filter { it.clientId == courante.clientId }.map { it.id }
+        _selection.value = courante.copy(ids = courante.ids + siennes)
+    }
+
+    /** Décoche ces machines, les autres restant cochées : le pendant de « Tout ». */
+    fun onDeselectionner(machines: List<Equipement>) {
+        val courante = _selection.value ?: return
+        _selection.value = courante.copy(ids = courante.ids - machines.map { it.id }.toSet())
+    }
+
+    fun onQuitterSelection() {
+        _selection.value = null
+    }
+
+    /**
+     * Range la sélection dans une zone — ou l'en retire, si [zone] est vide — et
+     * quitte le mode sélection.
+     *
+     * Le mode se referme **sur le geste** : la sélection a servi, et la garder
+     * ouverte inviterait à lui appliquer par mégarde le geste suivant. Une
+     * sélection vide n'écrit rien et reste ouverte, puisqu'il n'y avait rien à
+     * ranger.
+     */
+    fun onDonnerZone(zone: String) {
+        val courante = _selection.value ?: return
+        if (courante.ids.isEmpty()) return
+        _selection.value = null
+        viewModelScope.launch { equipements.ranger(courante.ids, zone) }
     }
 
     /** Le fichier que l'application d'appareil photo va remplir. */

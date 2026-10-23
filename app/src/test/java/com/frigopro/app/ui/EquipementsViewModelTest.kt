@@ -344,6 +344,89 @@ class EquipementsViewModelTest {
         assertEquals("l'original est toujours là", 2, daoEquipements.contenu.size)
     }
 
+    /**
+     * L'appui long ouvre la sélection **avec la machine touchée cochée** : c'est
+     * elle que le doigt désignait. Le bouton visible, lui, l'ouvre vide.
+     */
+    @Test
+    fun `l'appui long ouvre la selection sur la machine touchee`() = runTest {
+        val viewModel = creerViewModel()
+        val vitrine = Equipement(id = "v1", clientId = "cl-1", nom = "Vitrine 1")
+
+        viewModel.onSelectionnerDepuis(vitrine)
+
+        assertEquals(SelectionParc("cl-1", setOf("v1")), viewModel.selection.value)
+
+        viewModel.onSelectionner("cl-1")
+
+        assertEquals(SelectionParc("cl-1"), viewModel.selection.value)
+    }
+
+    /**
+     * La sélection ne sort pas du parc d'un client : une zone est un endroit d'un
+     * site, et ranger d'un geste des machines de deux sites rangerait celles qu'on
+     * ne voit plus. « Tout cocher » écarte donc les machines d'ailleurs, et une
+     * case touchée chez un autre client ne coche rien.
+     */
+    @Test
+    fun `la selection reste dans le parc d'un seul client`() = runTest {
+        val viewModel = creerViewModel()
+        val ici = (1..3).map { Equipement(id = "v$it", clientId = "cl-1", nom = "Vitrine $it") }
+        val ailleurs = Equipement(id = "x1", clientId = "cl-2", nom = "Vitrine 1")
+
+        viewModel.onSelectionner("cl-1")
+        viewModel.onBasculerSelection(ailleurs)
+        assertEquals(emptySet<String>(), viewModel.selection.value?.ids)
+
+        viewModel.onSelectionnerTout(ici + ailleurs)
+        assertEquals(setOf("v1", "v2", "v3"), viewModel.selection.value?.ids)
+
+        viewModel.onBasculerSelection(ici[1])
+        assertEquals(setOf("v1", "v3"), viewModel.selection.value?.ids)
+
+        viewModel.onDeselectionner(listOf(ici[0]))
+        assertEquals(setOf("v3"), viewModel.selection.value?.ids)
+    }
+
+    /**
+     * Donner une zone range les seules machines cochées, nettoie la saisie, et
+     * referme le mode : la sélection a servi, et la garder ouverte inviterait à
+     * lui appliquer par mégarde le geste suivant.
+     */
+    @Test
+    fun `donner une zone range la selection et referme le mode`() = runTest {
+        val viewModel = creerViewModel()
+        (1..3).forEach { rang ->
+            daoEquipements.enregistrer(Equipement(id = "v$rang", clientId = "cl-1", nom = "Vitrine $rang"))
+        }
+        viewModel.onSelectionner("cl-1")
+        viewModel.onBasculerSelection(daoEquipements.contenu.single { it.id == "v1" })
+        viewModel.onBasculerSelection(daoEquipements.contenu.single { it.id == "v2" })
+
+        viewModel.onDonnerZone("  Linéaire frais ")
+        advanceUntilIdle()
+
+        val zones = daoEquipements.contenu.associate { it.id to it.zone }
+        assertEquals("Linéaire frais", zones["v1"])
+        assertEquals("Linéaire frais", zones["v2"])
+        assertEquals("", zones["v3"])
+        assertNull("le mode sélection est refermé", viewModel.selection.value)
+    }
+
+    /** Rien de coché, rien à ranger : aucune écriture, et le mode reste ouvert. */
+    @Test
+    fun `une selection vide ne range rien et reste ouverte`() = runTest {
+        val viewModel = creerViewModel()
+        daoEquipements.enregistrer(Equipement(id = "v1", clientId = "cl-1", nom = "Vitrine 1", zone = "Toiture"))
+        viewModel.onSelectionner("cl-1")
+
+        viewModel.onDonnerZone("")
+        advanceUntilIdle()
+
+        assertEquals("Toiture", daoEquipements.contenu.single().zone)
+        assertEquals(SelectionParc("cl-1"), viewModel.selection.value)
+    }
+
     private fun intervention(machine: Equipement): Intervention = Intervention(
         id = "id-1",
         date = LocalDate.of(2026, 3, 9),

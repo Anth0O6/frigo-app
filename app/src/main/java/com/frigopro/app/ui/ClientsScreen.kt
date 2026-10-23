@@ -4,7 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddLocationAlt
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -140,6 +143,11 @@ fun ClientsRoute(
     var aSupprimer by remember { mutableStateOf<Client?>(null) }
     val dialogue by machines.dialogue.collectAsStateWithLifecycle()
     val agrandie by machines.agrandie.collectAsStateWithLifecycle()
+    val selection by machines.selection.collectAsStateWithLifecycle()
+
+    // La boîte ouverte sur la sélection, zone ou gamme. Affichage local, comme
+    // l'ouverture de la fiche : la sélection elle-même est au ViewModel.
+    var boiteSelection by remember { mutableStateOf<BoiteSelection?>(null) }
 
     // La prise de vue quitte l'application : la catégorie visée et le fichier à
     // remplir doivent donc survivre à l'aller-retour.
@@ -194,6 +202,12 @@ fun ClientsRoute(
     }
 
     BackHandler(enabled = ouverte != null) { machines.onFermer() }
+
+    // Le retour système défait la sélection avant de quitter l'onglet : c'est la
+    // seule profondeur qu'elle ajoute, et un retour qui changerait d'onglet en
+    // laissant douze cases cochées derrière lui les ferait retrouver plus tard,
+    // prêtes à recevoir un geste qui ne leur était pas destiné.
+    BackHandler(enabled = ouverte == null && selection != null) { machines.onQuitterSelection() }
 
     val machineOuverte = ouverte
     if (machineOuverte != null) {
@@ -296,7 +310,60 @@ fun ClientsRoute(
             onOuvrirMachine = machines::onOuvrir,
             onAjouterMachine = machines::onAjouterMachine,
             modifier = modifier,
+            selection = selection,
+            actionsSelection = ActionsSelection(
+                onSelectionner = machines::onSelectionner,
+                onSelectionnerDepuis = machines::onSelectionnerDepuis,
+                onBasculer = machines::onBasculerSelection,
+                onTout = machines::onSelectionnerTout,
+                onAucune = machines::onDeselectionner,
+                onQuitter = machines::onQuitterSelection,
+                onZone = { boiteSelection = BoiteSelection.ZONE },
+                onGamme = { boiteSelection = BoiteSelection.GAMME }.takeIf { gammes.isNotEmpty() },
+            ),
         )
+
+        // Les machines cochées **et toujours là**, chez le seul client de la
+        // sélection : c'est sur elles que les deux boîtes comptent et agissent.
+        val cochees = selection
+            ?.let { courante -> parc.filter { it.clientId == courante.clientId && it.id in courante.ids } }
+            .orEmpty()
+        if (cochees.isNotEmpty()) {
+            when (boiteSelection) {
+                BoiteSelection.ZONE -> DialogueZoneSelection(
+                    machines = cochees,
+                    // Tout le parc, pour la raison dite sur la fiche d'une machine.
+                    zones = remember(parc) { zonesDe(parc) },
+                    onValider = { zone ->
+                        machines.onDonnerZone(zone)
+                        boiteSelection = null
+                    },
+                    onFermer = { boiteSelection = null },
+                )
+
+                BoiteSelection.GAMME -> {
+                    val ids = cochees.map { it.id }.toSet()
+                    DialogueGammeSelection(
+                        ids = ids,
+                        gammes = gammes,
+                        affectations = affectations,
+                        onAffecter = { gammeId, depuisLe ->
+                            maintenance.onAffecterSelection(ids, gammeId, depuisLe)
+                            machines.onQuitterSelection()
+                            boiteSelection = null
+                        },
+                        onRetirer = { gammeId ->
+                            maintenance.onRetirerSelection(ids, gammeId)
+                            machines.onQuitterSelection()
+                            boiteSelection = null
+                        },
+                        onFermer = { boiteSelection = null },
+                    )
+                }
+
+                null -> Unit
+            }
+        }
 
         fiche?.let { etat ->
             val client = etat.versClient()
@@ -587,9 +654,17 @@ fun ClientsScreen(
     /** Le carnet ouvert, et la bascule vers les deux autres. Voir [CadreCarnet]. */
     vue: VueCarnet = VueCarnet.CLIENTS,
     onVue: (VueCarnet) -> Unit = {},
+    /** La sélection en cours dans un parc, `null` hors du mode sélection. */
+    selection: SelectionParc? = null,
+    actionsSelection: ActionsSelection = ActionsSelection(),
 ) {
     val parClient = groupes.groupBy { it.groupe.clientId }
     var recherche by rememberSaveable { mutableStateOf("") }
+    // Le client dont on coche le parc. Introuvable — supprimé entre-temps —, le
+    // carnet reparaît plutôt qu'un écran vide qu'aucun geste ne ferait quitter.
+    val clientSelection = selection?.let { courante ->
+        carnet.flatMap { it.tous }.firstOrNull { it.id == courante.clientId }
+    }
 
     fun correspondant(client: Client) =
         correspond(client, parClient[client.id].orEmpty(), recherche)
@@ -614,6 +689,16 @@ fun ClientsScreen(
         onAjouter = onNouveauClient,
         modifier = modifier,
     ) {
+        if (selection != null && clientSelection != null) {
+            ParcEnSelection(
+                client = clientSelection,
+                machines = parClient[clientSelection.id].orEmpty(),
+                selection = selection,
+                actions = actionsSelection,
+                modifier = Modifier.fillMaxSize(),
+            )
+            return@CadreCarnet
+        }
         Column {
             ChampRecherche(
                 valeur = recherche,
@@ -662,6 +747,10 @@ fun ClientsScreen(
                                     onAjouterMachine = { onAjouterMachine(entree.donneur.id) },
                                     onNouveauSite = { onNouveauSite(entree.donneur) },
                                     nombreSites = entree.nombreSites,
+                                    onSelectionner = {
+                                        actionsSelection.onSelectionner(entree.donneur.id)
+                                    },
+                                    onSelectionnerDepuis = actionsSelection.onSelectionnerDepuis,
                                 )
                             }
                             items(items = entree.sites, key = { it.id }) { site ->
@@ -671,6 +760,8 @@ fun ClientsScreen(
                                     onClick = { onOuvrirFiche(site) },
                                     onOuvrirMachine = onOuvrirMachine,
                                     onAjouterMachine = { onAjouterMachine(site.id) },
+                                    onSelectionner = { actionsSelection.onSelectionner(site.id) },
+                                    onSelectionnerDepuis = actionsSelection.onSelectionnerDepuis,
                                     // Le retrait est ce qui dit le rattachement :
                                     // une carte pleine largeur au même rang que
                                     // son enseigne se lirait comme un client de
@@ -741,6 +832,9 @@ fun ClientCard(
     /** `null` sur un site : on n'attache pas un site à un site. */
     onNouveauSite: (() -> Unit)? = null,
     nombreSites: Int = 0,
+    /** Entre en sélection sur ce parc : voir [ParcEnSelection]. */
+    onSelectionner: () -> Unit = {},
+    onSelectionnerDepuis: (Equipement) -> Unit = {},
 ) {
     val contexte = LocalContext.current
 
@@ -806,6 +900,8 @@ fun ClientCard(
                 machines = machines,
                 onOuvrirMachine = onOuvrirMachine,
                 onAjouterMachine = onAjouterMachine,
+                onSelectionner = onSelectionner,
+                onSelectionnerDepuis = onSelectionnerDepuis,
             )
             if (onNouveauSite != null) {
                 LigneAjoutSite(nombre = nombreSites, onClick = onNouveauSite)
@@ -858,13 +954,23 @@ private fun LigneAjoutSite(nombre: Int, onClick: () -> Unit) {
  */
 private val RETRAIT_SITE = 20.dp
 
-/** Le parc d'un client, dépliable depuis sa carte. */
+/**
+ * Le parc d'un client, dépliable depuis sa carte.
+ *
+ * La sélection s'y ouvre de deux façons, et c'est délibéré : par **un bouton
+ * visible** en tête du parc déplié, et par l'appui long sur une machine, qui la coche du
+ * même coup. Le second double le premier sans le remplacer — un appui long ne
+ * s'annonce pas, et il se perd avec des gants.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SectionMachines(
     client: Client,
     machines: List<GroupeMachines>,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: () -> Unit,
+    onSelectionner: () -> Unit,
+    onSelectionnerDepuis: (Equipement) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Clé sur l'identifiant du client : la liste recycle ses cartes, et sans
@@ -893,6 +999,24 @@ private fun SectionMachines(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
+            // En tête du parc et non à son pied : sur un site de trois cents
+            // machines, un bouton sous la liste serait à trois cents lignes du
+            // pouce. Déplié seulement — on sélectionne ce qu'on voit —, et jamais
+            // sur un parc vide, où il n'y aurait rien à cocher.
+            if (deplie && machines.isNotEmpty()) {
+                TextButton(
+                    onClick = onSelectionner,
+                    modifier = Modifier.heightIn(min = LocalCibles.current.action),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckBox,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "Sélectionner")
+                }
+            }
             Icon(
                 imageVector = if (deplie) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                 contentDescription = if (deplie) "Replier le parc" else "Déplier le parc",
@@ -904,7 +1028,10 @@ private fun SectionMachines(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOuvrirMachine(groupe.groupe) }
+                        .combinedClickable(
+                            onClick = { onOuvrirMachine(groupe.groupe) },
+                            onLongClick = { onSelectionnerDepuis(groupe.groupe) },
+                        )
                         .padding(start = 42.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

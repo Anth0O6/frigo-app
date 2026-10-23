@@ -280,7 +280,7 @@ fun DialogueFicheMachine(
  * celles-ci ne sont qu'un raccourci.
  */
 @Composable
-private fun ZonesProposees(zones: List<String>, onChoisir: (String) -> Unit) {
+internal fun ZonesProposees(zones: List<String>, onChoisir: (String) -> Unit) {
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
