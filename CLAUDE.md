@@ -81,7 +81,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
 │       │   │   ├── Devis.kt               # devis, lignes, et les totaux partagés
-│       │   │   ├── Facture.kt             # facture, lignes, échéance et relance
+│       │   │   ├── Facture.kt             # facture et avoir, lignes, échéance, relance et solde
 │       │   │   ├── FactureDao.kt
 │       │   │   ├── FactureRepository.kt    # numérote, fige, et refuse d'effacer
 │       │   │   ├── RappelsFactures.kt      # le rappel du matin, et rien d'autre
@@ -140,9 +140,13 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
+│       │       ├── SelectionMachines.kt # cocher un parc : zone et gamme en lot
 │       │       ├── EcranCarnets.kt     # les trois carnets, et leur coquille
 │       │       ├── EcranMagasin.kt     # l'inventaire, atelier et camion
 │       │       ├── EcranFournisseurs.kt # le carnet, filtré, et le catalogue
+│       │       ├── EcranSaisiePrix.kt   # un tarif fournisseur, ligne après ligne
+│       │       ├── EtatSaisiePrix.kt    # ce qui est tapé, ce qui se propose
+│       │       ├── SaisiePrixViewModel.kt
 │       │       ├── MaterielViewModel.kt
 │       │       ├── DialoguePaliers.kt  # le prix par rang d'unité
 │       │       ├── EcranIntervention.kt # les cinq volets d'une intervention
@@ -417,6 +421,21 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   détecteur, et ce défaut est un choix — annoncer un contrôle trop tôt fait perdre
   une heure, trop tard expose à une sanction. Doubler une absence d'obligation ne
   veut rien dire : une machine non soumise le reste.
+  La machine porte désormais ce fait (`Equipement.detecteurFuite`), et les écrans
+  ne calculent plus une échéance qu'à travers `EtatEtancheite.de(machine)` : la
+  fiche et l'accueil recopiaient chacun fluide, charge et date, et c'est
+  exactement ainsi qu'un champ ajouté manque à l'un des deux — la même machine
+  due en 2026 sur l'accueil et en 2027 sur sa fiche. `calculer` exige donc le
+  détecteur **sans défaut**, à la différence de `pour`, dont le défaut ne sert
+  plus qu'à l'outil F-Gas. La fiche dit quand la périodicité a été doublée
+  (`doubleeParDetecteur`, faux sur une machine non soumise), parce qu'une
+  échéance qui recule d'un an sans explication se lit comme une erreur. La case
+  de saisie écarte en toutes lettres le détecteur **portatif** : tout frigoriste
+  en a un dans sa caisse, et seul un système installé à demeure double
+  l'intervalle. Le détecteur **suit la duplication**, comme la zone : c'est un
+  équipement de l'installation et non un acte, le fluide et la charge qui
+  décident aussi de la périodicité suivent déjà, et la copie n'ayant pas de
+  dernier contrôle, il ne recule aucune échéance à lui seul.
   `Conversions` décrit chaque unité comme une **fonction affine** de la référence
   de sa famille. Porter un décalage pour toutes — alors qu'il ne sert qu'aux
   températures — évite deux codes de conversion dont un seul serait éprouvé. La
@@ -729,6 +748,25 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   d'ajout — et l'écran des clients y passe aussi plutôt que de garder son propre
   `Scaffold` : trois copies des mêmes marges divergent au premier ajustement,
   ce qui est exactement le travers que `ui.composants` existe pour éviter.
+  **Le parc d'un client se coche**, et c'est la première sélection multiple de
+  l'application. Elle comble le cas qui manquait entre « tout le parc » et
+  « cette machine » : *ces douze meubles-là*. On y entre par « Sélectionner », en
+  tête du parc déplié, ou par l'appui long sur une machine, qui la coche du même
+  coup — l'appui long double le bouton et ne le remplace pas. Le carnet laisse
+  alors place au **seul parc de ce client**, sous un bandeau qui ne défile pas :
+  sortir, le compteur, un filtre sur le nom, la zone et le modèle, « Tout cocher »
+  sur ce qu'on voit, et deux gestes. La sélection ne sort **jamais d'un parc**
+  (`SelectionParc` porte un `clientId`, et un site est un client) : une zone est
+  un endroit d'un site, et une sélection qui en traverserait deux rangerait des
+  machines qu'on ne voit plus. Les **unités intérieures** y paraissent chacune
+  sur sa ligne, en retrait sous leur groupe, alors que le carnet ne montre que
+  les groupes : c'est la zone qui l'impose, le groupe étant en toiture et ses
+  unités en salle, si bien que cocher un groupe ne coche pas ses unités. « Tout
+  cocher » prend ce que le filtre laisse voir — « vitrine », puis tout — et c'est
+  ce qui rend le geste tenable sur trois cents machines. Le retour système défait
+  la sélection avant tout le reste, et le mode se referme sur le geste réussi :
+  garder ouverte une sélection qui a servi inviterait à lui appliquer par
+  mégarde le geste suivant.
   `EcranMagasin` montre **les deux endroits côte à côte** sur chaque article,
   parce que la question du terrain n'est pas « est-ce que j'en ai ? » mais
   « est-ce que j'en ai *ici* ? ». Ce qui manque remonte en tête avec un liseré,
@@ -760,6 +798,39 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   cherche un fournisseur près du *chantier* et non près d'où l'on tient son
   téléphone. Trois gestes ferment la question : appeler, l'itinéraire, et ouvrir
   le catalogue au navigateur (`Context.ouvrirLien`).
+  **Les prix du magasin se saisissent d'un trait** (`EcranSaisiePrix`), et c'est
+  le catalogue d'accessoires qui l'a rendu nécessaire : trente-huit lignes
+  livrées sans prix demandaient trente-huit ouvertures de fiche, et la soirée ne
+  se prendrait pas. Un bouton visible du magasin y mène et dit combien d'articles
+  attendent un prix. Chaque ligne porte **en place** sa référence et ses deux
+  prix, parce qu'on recopie un tarif ligne après ligne ; le **fournisseur se
+  donne en lot** aux lignes cochées, parce qu'un tarif vient d'un seul
+  fournisseur et que le choisir trente-huit fois serait trente-huit occasions de
+  se tromper. « Sans prix » et le tri se jugent **sur la base et non sur la
+  saisie** : une ligne qu'on remplit ne saute pas de sous le doigt au premier
+  chiffre, elle quitte le filtre à l'enregistrement.
+  Le **prix de vente se propose** à partir du prix d'achat et du coefficient
+  matériel, arrondi au centime, par le même calcul que la feuille du matériel
+  d'un devis — sans quoi un article tarifé ici ne retomberait pas sur le prix que
+  le devis aurait proposé. Tapé à la main, il fait foi et aucun calcul ne
+  l'écrase ; **vider son champ rend la main au coefficient**, seul geste qui le
+  fasse. Une vente déjà en base est gardée si elle diffère de la proposition, et
+  suit le calcul si elle vaut zéro ou n'était que cette proposition : c'est ce
+  qui fait suivre la hausse d'un tarif sans retaper la vente de chaque ligne.
+  Sans coefficient réglé, rien ne se propose, et l'écran le dit en menant aux
+  Réglages, même règle que `ReglageManquant`.
+  **Rien ne s'écrit avant « Enregistrer »**, et alors **une seule fois** :
+  `MaterielRepository.enregistrerPrix` relit les articles, n'écrit que ceux qui
+  ont réellement changé et les range par `enregistrerArticles`, dont Room fait
+  une transaction. Une ligne retapée à l'identique ne prend pas de `modifieLe`
+  neuf. `PrixArticle` ne porte que les quatre champs qu'un tarif apporte, si
+  bien que la saisie se reporte sur l'article **lu au moment d'écrire** : un
+  renommage fait dans la fiche entre-temps n'est pas écrasé, et un article
+  supprimé n'est pas recréé par un prix. Le retour système, s'il reste des prix
+  non enregistrés, **demande** : enregistrer, abandonner ou reprendre.
+  L'enregistrement implicite aurait écrit un tarif à moitié relu, qui part
+  ensuite sur des devis ; l'abandon silencieux aurait perdu une demi-heure sur un
+  geste réflexe.
   `DialoguePaliers` ne s'ouvre que sur une prestation **comptée par unité** : un
   forfait n'a pas de rangs, et proposer la boîte sur « déplacement zone 1 »
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
@@ -1159,6 +1230,26 @@ moins risquée du projet. Elle est **rejouable** (`INSERT OR IGNORE` sur des
 identifiants stables) et c'est ce qui compte : ces lignes sont faites pour
 recevoir un prix, et une migration qui repasserait dessus l'effacerait.
 
+`MIGRATION_20_21` apporte le détecteur de fuite fixe d'une machine, et c'est le
+même cas exact que `MIGRATION_18_19` : une colonne, aucun index. Le défaut `0`
+veut dire **sans détecteur**, et c'est ce qui rend juste tout parc déjà saisi :
+une machine dont personne n'a dit qu'elle était équipée garde l'intervalle
+court — le défaut inverse aurait fait reculer d'un an, d'un seul coup, toutes
+les échéances d'un parc.
+
+`MIGRATION_21_22` apporte l'avoir : quatre colonnes sur `factures` et un index,
+aucune table, rien à reconstruire. `nature` arrive à `FACTURE`, et c'est ce qui
+rend justes toutes les lignes déjà en base : il n'existait que des factures.
+`factureOrigineId` arrive nullable et sans défaut — « ne corrige rien » —, ses
+deux copies vides. L'index sur `factureOrigineId` suit ceux des trois autres
+liens de la table. Aucune des deux entités ne déclare ces défauts, pour la
+raison écrite à `MIGRATION_11_12`.
+
+**Les deux sont arrivées ensemble, écrites en parallèle**, et c'est la
+numérotation qui les a ordonnées à l'intégration : ni l'une ni l'autre ne
+dépend de la colonne de l'autre, et un schéma par version reste la règle — le
+21 décrit le détecteur seul, le 22 les deux.
+
 **Un renommage de valeur a un jumeau côté sauvegarde.** `A_FAIRE` vit encore dans
 tous les fichiers déjà exportés, et un statut inconnu fait refuser le fichier
 entier — à dessein. `STATUTS_HISTORIQUES`, dans `Sauvegarde.kt`, est donc aussi
@@ -1229,13 +1320,13 @@ l'APK : un test rouge bloque la publication.
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
-| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone |
-| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel — zone comprise — et jamais ce qui a été fait, le nom de copie qui prend le rang suivant, les zones dérivées du parc et triées sans les vides |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone, machine d'avant le format 16 relue sans détecteur, une facture et son avoir qui reviennent identiques, une facture d'avant le format 17 relue en facture, une nature inconnue qui fait refuser le fichier |
+| `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel — zone et détecteur de fuite compris — et jamais ce qui a été fait, le nom de copie qui prend le rang suivant, les zones dérivées du parc et triées sans les vides, une zone donnée à une sélection et à elle seule — ni au reste du parc ni au voisin —, vidée qui ramène « Sans zone », nettoyée, et un grand parc rangé entier malgré le découpage en paquets |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
-| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique, duplication qui ouvre la copie et non l'original |
+| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique, duplication qui ouvre la copie et non l'original, l'appui long qui ouvre la sélection sur la machine touchée, une sélection qui ne sort pas du parc d'un client, la zone donnée qui referme le mode, la sélection vide qui n'écrit rien |
 | `ChronoTest` | Reprise après pause, heure d'arrivée jamais réécrite, horloge qui recule |
-| `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, détecteur de fuite qui double les intervalles, classe de sécurité jamais devinée, silence quand la charge est inconnue |
+| `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, détecteur de fuite qui double les intervalles, la machine qui en porte un et voit son échéance doublée, la non soumise qui le reste sans être dite doublée, classe de sécurité jamais devinée, silence quand la charge est inconnue |
 | `DepannageTest` | Le croisement surchauffe / sous-refroidissement, et le silence d'un relevé muet |
 | `NumerotationTest` | Le rang repart au mois, et une suppression ne réattribue pas un numéro |
 | `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
@@ -1249,29 +1340,31 @@ l'APK : un test rouge bloque la publication.
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
 | `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
+| `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, et l'abandon qui n'écrit rien |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
-| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées |
-| `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture |
+| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif |
+| `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture, l'avoir qui porte la référence d'origine et aucune mention de paiement, son total positif et nommé, son propre nom de fichier |
+| `FacturesViewModelTest` | La facture imprimée qui porte logo, en-tête et adresse ; l'émission qui fige les vrais réglages ; l'avoir qui s'ouvre une fois créé, et la facture d'origine qui se sait couverte |
 | `DocumentRapportTest` | Ce que le compte-rendu imprimé dit : le relevé non pris qui ne s'invente pas, le prix d'achat qui ne sort jamais, chaque mouvement de fluide détaillé, le point non fait qui se voit, l'export avant clôture qui dit ce qui lui manque |
 | `MiseEnPageRapportTest` | La page du compte-rendu : rien de perdu, un bloc coupé qui reprend son titre, aucun titre orphelin, la signature jamais séparée de ce qu'elle signe, le texte libre enveloppé sur les mots |
 | `RegistreFluidesTest` | Le registre : la date du chantier et non celle de la saisie, un mouvement orphelin qui ne disparaît pas, le net négatif d'un démantèlement, l'équivalent CO₂ calculé sur l'ajouté et jamais deviné |
 | `DocumentRegistreTest` | Ce que le registre imprimé dit : le bilan avant le détail, le sens en toutes lettres, l'année sans mouvement qui produit quand même un document |
-| `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent |
+| `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent, une facture créditée en partie qui se rappelle pour son reste |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
-| `MaterielRepositoryTest` | Les trois façons de dire une marge et leur non-confusion, le manque jugé endroit par endroit, le seuil à zéro qui n'alerte pas, un mouvement qui additionne, un transfert qui ne prend que le disponible |
+| `MaterielRepositoryTest` | Les trois façons de dire une marge et leur non-confusion, le manque jugé endroit par endroit, le seuil à zéro qui n'alerte pas, un mouvement qui additionne, un transfert qui ne prend que le disponible, la saisie de prix en lot écrite en une fois et seulement sur ce qui a changé, reportée sur l'article du moment sans réécrire sa désignation, le prix négatif ramené à zéro, et la copie du fournisseur qui suit le lien |
 | `DegressifTest` | Le prix par rang et non par tranche, le total qui ne décroît jamais quand on ajoute une unité, les rangs au même prix regroupés, la dégression devenue lignes de devis |
 | `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
 | `MaintenanceTest` | L'arithmétique du plan : un trimestre qui n'a pas quatre-vingt-dix jours, l'échéance tirée de la dernière visite ou de l'entrée au plan, le retard en jours, les occurrences attendues d'une machine arrivée en cours de route, le taux qui n'existe pas quand rien n'était attendu |
-| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui |
+| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui, l'affectation d'une sélection qui ne remet pas à zéro l'entrée au plan d'une machine déjà suivie, la date choisie qui ne vaut que pour les nouvelles, le compte annoncé égal au compte rendu, et le retrait d'une sélection qui laisse le reste du plan et le journal |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, le rangement par zone puis machine puis cadence, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
-| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste |
+| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste, un avoir trouvé par son numéro et par celui de sa facture |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
-| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main |
+| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main, détecteur de fuite arrivé absent sur tout un parc, factures d'avant restées factures et index du lien d'origine posé |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
@@ -1339,6 +1432,21 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 17 ajoute les **avoirs**, dans la liste des factures : leur nature, la
+facture qu'ils corrigent, et la copie de sa référence. Les champs sont
+facultatifs, si bien qu'un fichier d'avant se relit tel qu'il était : que des
+factures. Une nature inconnue fait refuser le fichier, comme un statut, parce
+que la deviner ferait d'un avoir une facture à réclamer. Sans les avoirs, une
+restauration referait apparaître **due** une facture qu'on a soi-même créditée.
+
+Le format 16 ajoute le **détecteur de fuite fixe** d'une machine, facultatif et
+faux par défaut comme la zone l'est à vide. Son absence veut dire dans un
+fichier ce qu'elle veut dire en base — sans détecteur, donc la périodicité la
+plus exigeante : un fichier ancien relu ne recule aucune échéance. Le perdre à
+la restauration ne casserait rien de visible, et c'est la raison de l'emporter :
+chaque machine équipée reviendrait à l'intervalle court, des contrôles annoncés
+un an trop tôt sur tout un parc sans rien pour dire pourquoi.
 
 Le format 15 ajoute la **zone** d'une machine. Facultative avec sa valeur par
 défaut, comme tout champ ajouté, et c'est tout ce qui rend un fichier d'avant
@@ -1657,6 +1765,65 @@ sanctionnée), le taux seulement ramené au positif — un taux sous le plancher
 légal est inopposable, et l'écran le dit plutôt que de le réécrire dans le dos de
 celui qui le saisit.
 
+### L'avoir
+
+**Un avoir est une facture de sens inverse, et il en a les trois règles** :
+numéroté à l'émission seulement, insupprimable une fois numéroté, figé passé
+l'émission. C'est ce qui l'a fait entrer **dans la table `factures`**, sous une
+nature (`NatureFacture`), plutôt que dans des tables à lui : les lignes, les
+totaux arrondis ligne à ligne, l'émission, le gel, la sauvegarde et l'impression
+fonctionnent alors sans retouche, là où deux copies des trois règles auraient
+fini par ne plus dire la même chose. Le lien `factureOrigineId` est doublé d'une
+**copie** du numéro et de la date d'origine — le couple lien / copie du projet :
+ce sont les deux mentions qu'un avoir doit porter, et il les imprime sans relire
+sa facture.
+
+**Ses montants sont positifs**, et c'est la nature qui porte le sens. Des lignes
+négatives sous un titre « Avoir » se liraient comme une double négation, et
+chaque calcul du projet aurait dû apprendre qu'un prix peut l'être. Le signe
+n'apparaît qu'à l'**imputation** sur la facture (`Avoirs.imputer`), et à l'écran,
+où l'avoir se lit au milieu des factures précédé d'un « − ».
+
+Sa séquence est **à part, annuelle et continue** (`AV-2026-0001`) : glisser les
+avoirs dans celle des factures y aurait fait alterner deux natures.
+`suivantAnnuel` ne compte que les numéros de son préfixe, si bien que les deux
+séquences se tiennent dans la même colonne sans se voir.
+
+Il ne naît que d'une facture **émise** et non annulée : un brouillon se corrige
+ou s'efface, une facture annulée ne réclame plus rien, et un avoir erroné
+s'annule au lieu de recevoir un avoir d'avoir. Il reprend tout du document
+d'origine, régime de TVA compris, **sauf** `interventionId` et `devisId` : ce sont
+eux qui empêchent de facturer deux fois, et un avoir qui les porterait passerait
+pour la facture. L'avoir **total** recopie les lignes à l'identique et retombe au
+centime sur la facture ; le **partiel** choisit une quantité par ligne, jamais
+plus que la quantité facturée et jamais à un autre prix — un prix libre serait
+une remise déguisée.
+
+**La garde du dépassement est dans le dépôt, et elle porte sur le hors-taxes.**
+À la création elle compte aussi les brouillons, sans quoi deux brouillons
+d'avoir total attendraient côte à côte ; à l'émission, qui tranche, elle ne
+compte que les avoirs émis, et un avoir qui dépasserait est rendu tel quel, sans
+numéro — aucun rang n'est consommé. Elle ne juge pas au TTC, parce que la TVA
+s'arrondit document par document : deux lignes de 10,03 € font 24,07 € TTC, mais
+deux avoirs d'une ligne chacun font 24,08 €. Juger au centime TTC aurait refusé
+un avoir juste.
+
+**Le solde se dérive et ne se stocke pas**, comme le retard. `FactureChiffree`
+porte ce que les avoirs émis ont crédité. Une facture **couverte** — au
+hors-taxes ou au TTC, pour que le centime d'arrondi ne la laisse pas due — ne se
+relance plus et ne fait plus courir de pénalités ; une facture couverte en partie
+se relance **pour son reste**, que l'accueil, les compteurs, le rappel du matin et
+les pénalités comptent à la place du total. La facture elle-même ne bouge pas :
+ses totaux restent ceux du document parti.
+
+Le document imprimé est celui de la facture (`DocumentFacture`), titré « Avoir ».
+Il porte le numéro et la date de la facture d'origine, et **aucune mention de
+paiement** — ni échéance, ni pénalités, ni indemnité, ni escompte : elles
+décrivent un paiement attendu du client, alors que sur un avoir c'est
+l'entreprise qui doit. Le geste « Faire un avoir » est dans la section « Avoirs »
+de la facture, à côté de ce qui a déjà été crédité, et non dans la barre du bas ;
+le brouillon créé s'ouvre, pour être relu avant que le numéro soit consommé.
+
 ### Les relances
 
 Deux endroits, et le premier est le principal.
@@ -1902,12 +2069,39 @@ l'emporte, puisque les douze meubles d'un linéaire sont dans le même linéaire
 c'est une caractéristique du lieu et non un acte, et la règle de `dupliquer` la
 classe du bon côté sans qu'on ait rien à écrire.
 
-**Affecter tout un parc d'un geste** (`onAffecterAuParc`) est ce qui rend la
-chose tenable sur un site de plusieurs centaines d'équipements : les rattacher un
-à un demanderait une soirée, et la soirée ne se prendrait pas. C'est aussi pour
-cela que **dupliquer une machine** ne recopie pas son plan — l'affectation en
-masse est la bonne réponse, là où une recopie machine par machine aurait fait
-dépendre le résultat de l'ordre des saisies.
+**Elle se donne aussi en lot**, depuis la sélection du carnet :
+`EquipementDao.ranger` écrit la zone sur toutes les machines cochées en une
+transaction, et le dépôt la nettoie — « Toiture » et « Toiture  » feraient deux
+groupes au Préventif. La boîte propose les zones employées, comme la fiche, et
+s'ouvre sur la zone **commune** quand il y en a une : proposer celle de la
+première machine aurait invité à l'étendre aux autres sans l'avoir choisie.
+Vider le champ **retire** la zone, et la boîte dit combien de machines
+repasseraient « Sans zone » : c'est le chemin de retour d'une zone posée sur la
+mauvaise sélection. Les deux requêtes en lot découpent leur liste par paquets
+(`PAQUET_SQL`, 900), sous `@Transaction` : SQLite refuse plus de 999 paramètres
+sur les versions couvertes par `minSdk 26`, et un site de mille machines n'est
+pas une hypothèse d'école.
+
+**Affecter une sélection d'un geste** (`onAffecterSelection`) est ce qui rend la
+chose tenable sur un site de plusieurs centaines d'équipements : on coche le
+linéaire dans le carnet, et la gamme s'y pose en une écriture.
+`onAffecterAuParc` passe par le même chemin — tout le parc n'est que la plus
+grande des sélections — et il **n'avait jusque-là aucun écran** : la fonction
+existait, ce document la décrivait comme un geste, et aucun bouton ne
+l'appelait. C'est « Tout cocher » qui la rend atteignable, site par site. La
+leçon est celle du coût horaire interne et de l'entrée au plan : une
+fonctionnalité se vérifie en cherchant **qui l'appelle**, pas en lisant sa
+déclaration. `MaintenanceRepository.affecterGroupe` pousse d'un cran la règle
+d'`affecter` : une machine qui suivait déjà la gamme **n'est pas réécrite du
+tout**, ni son `depuisLe` — le dénominateur de son attestation — ni son
+`modifieLe`, qui départagera un jour deux téléphones. La date d'entrée choisie
+ne vaut donc que pour les nouvelles, et la boîte l'annonce **avant le geste**
+(`PlanMaintenance.suiventDeja`) : « 3 suivent déjà cette gamme : leur entrée au
+plan ne bouge pas ». Le retrait d'une gamme se fait de la même façon, à la
+seconde touche, et laisse le journal intact, lien compris. C'est aussi pour cela
+que **dupliquer une machine** ne recopie pas son plan : l'affectation en lot est
+la bonne réponse, là où une recopie machine par machine aurait fait dépendre le
+résultat de l'ordre des saisies.
 
 ### Le taux de réalisation
 
@@ -2262,39 +2456,15 @@ place » venant en tête :
   préalable — les valeurs sont calculées, et le report est ouvert —, mais un
   frigoriste qui travaille sur les tables d'une marque a intérêt à savoir
   lesquelles il a confrontées aux siennes.
-- **L'avoir**, qui manque encore à la facturation. Une facture erronée s'annule
-  aujourd'hui en gardant son numéro, ce qui est correct et suffit tant qu'elle
-  n'est pas partie ; une facture déjà envoyée et payée demanderait, elle, un
-  document de sens inverse. Le modèle s'y prête — un montant négatif et un lien
-  vers la facture d'origine — mais la numérotation des avoirs est une séquence de
-  plus à tenir.
-- **Détecteur de fuite fixe sur la fiche machine.** `PeriodiciteControle` sait
-  désormais doubler les intervalles, et l'outil F-Gas pose la question ; il reste à
-  porter le champ sur `Equipement` — par une migration — pour que l'accueil et la
-  fiche machine en tiennent compte au lieu de retenir toujours la périodicité la
-  plus exigeante.
-- **Remplir les prix du catalogue d'accessoires, depuis un tarif fournisseur.**
-  Les trente-huit lignes sont posées avec leur désignation et leur unité, et
-  attendent un prix d'achat, une référence et un fournisseur — qui arrivent
-  ensemble, du tarif d'où le prix est tiré. Deux choses manquent pour que ce
-  remplissage soit tenable : la **saisie groupée** — la liste des articles, un
-  champ par prix, le fournisseur attribuable en lot, plutôt que trente-huit
-  ouvertures de fiche —, et le **prix de vente dérivé du coefficient** déjà réglé
-  dans les Réglages, qui évite de saisir deux nombres là où un seul est une
-  décision. La saisie groupée est encore la même sélection multiple que celle des
-  zones et des gammes ci-dessous.
-- **Ranger un parc existant par zones, autrement qu'une machine à la fois.** La
-  zone se saisit sur la fiche et se recopie à la duplication, ce qui couvre la
-  saisie d'un parc neuf ; un parc de trois cents machines déjà saisies demande,
-  lui, trois cents ouvertures de boîte. Il manque le geste « ces douze
-  meubles-là », qui est **le même manque** que pour l'affectation d'une gamme :
-  une sélection multiple dans le carnet, le premier endroit de l'application qui
-  en aurait besoin. Les deux se feraient ensemble, et c'est la raison de ne pas
-  les traiter séparément.
-- **Affecter une gamme depuis le carnet, en balayant une liste.**
-  `onAffecterAuParc` rattache tout le parc d'un geste et la fiche d'une machine
-  en rattache une ; entre les deux il manque le cas « ces douze meubles-là ».
-  Voir ci-dessus : c'est la même sélection multiple.
+- **Importer un tarif fournisseur.** La saisie groupée des prix et le prix de
+  vente dérivé du coefficient sont là (voir « Architecture ») ; ce qui manque
+  est de ne pas recopier du tout, en lisant le tableau que l'enseigne envoie. Ce
+  n'est pas un import de catalogue, refusé pour de bonnes raisons, mais celui
+  d'un tarif **daté et propre au compte**, qui demanderait un format par enseigne
+  et une règle pour rapprocher une ligne du tarif d'un article par sa référence.
+- **Bloquer l'annulation d'une facture qui a reçu un avoir.** `annuler` ne le
+  vérifie pas encore : une facture créditée puis annulée laisserait un avoir
+  émis qui ne corrige plus rien.
 - **La ponctualité, et non seulement le compte.** `RealisationGamme` dit combien
   de visites ont été faites, pas si elles l'ont été à l'heure : une visite
   mensuelle faite trois fois en janvier puis plus rien jusqu'en mars compte trois

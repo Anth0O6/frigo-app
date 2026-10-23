@@ -58,7 +58,7 @@ class SaisiePrixViewModelTest {
      */
     @Test
     fun `la vente se propose au coefficient, arrondie au centime`() = runTest {
-        val viewModel = creerViewModel(coefficient = 1.35, goulotte)
+        val viewModel = creerViewModel(1.35, goulotte)
 
         viewModel.onPrixAchat(goulotte, 7.45)
 
@@ -86,7 +86,7 @@ class SaisiePrixViewModelTest {
      */
     @Test
     fun `sans coefficient, aucune vente n'est proposee`() = runTest {
-        val viewModel = creerViewModel(coefficient = 0.0, goulotte)
+        val viewModel = creerViewModel(0.0, goulotte)
 
         viewModel.onPrixAchat(goulotte, 7.45)
         viewModel.onEnregistrer()
@@ -104,7 +104,7 @@ class SaisiePrixViewModelTest {
      */
     @Test
     fun `une vente tapee a la main n'est jamais ecrasee par le calcul`() = runTest {
-        val viewModel = creerViewModel(coefficient = 1.8, goulotte)
+        val viewModel = creerViewModel(1.8, goulotte)
 
         viewModel.onPrixAchat(goulotte, 10.0)
         viewModel.onPrixVente(goulotte, 19.9)
@@ -127,7 +127,7 @@ class SaisiePrixViewModelTest {
     fun `une vente decidee sur la fiche est gardee, une vente proposee suit l'achat`() = runTest {
         val decidee = goulotte.copy(prixAchat = 10.0, prixVente = 20.0)
         val proposee = angle.copy(prixAchat = 10.0, prixVente = 18.0)
-        val viewModel = creerViewModel(coefficient = 1.8, decidee, proposee)
+        val viewModel = creerViewModel(1.8, decidee, proposee)
 
         viewModel.onPrixAchat(decidee, 12.0)
         viewModel.onPrixAchat(proposee, 12.0)
@@ -147,7 +147,7 @@ class SaisiePrixViewModelTest {
     @Test
     fun `seules les lignes modifiees s'ecrivent, en une fois`() = runTest {
         val dejaTarifee = pompe.copy(prixAchat = 89.0, prixVente = 160.0)
-        val viewModel = creerViewModel(coefficient = 1.8, goulotte, angle, dejaTarifee)
+        val viewModel = creerViewModel(1.8, goulotte, angle, dejaTarifee)
         assertEquals("rien à enregistrer à l'ouverture", 0, etatDe(viewModel).aEnregistrer)
 
         viewModel.onPrixAchat(goulotte, 7.45)
@@ -172,7 +172,7 @@ class SaisiePrixViewModelTest {
     /** Même nettoyage que la fiche : un prix négatif veut dire « pas renseigné ». */
     @Test
     fun `un prix negatif est ramene a zero`() = runTest {
-        val viewModel = creerViewModel(coefficient = 0.0, goulotte)
+        val viewModel = creerViewModel(0.0, goulotte)
 
         viewModel.onPrixAchat(goulotte, -7.0)
         viewModel.onPrixVente(goulotte, -3.0)
@@ -194,7 +194,7 @@ class SaisiePrixViewModelTest {
     @Test
     fun `le fournisseur s'attribue en lot avec son lien et sa copie`() = runTest {
         daoMateriel.enregistrerFournisseur(Fournisseur(id = "four-gff", nom = "GFF"))
-        val viewModel = creerViewModel(coefficient = 1.8, goulotte, angle, pompe)
+        val viewModel = creerViewModel(1.8, goulotte, angle, pompe)
 
         viewModel.onCocher(goulotte.id)
         viewModel.onCocher(pompe.id)
@@ -223,7 +223,7 @@ class SaisiePrixViewModelTest {
     @Test
     fun `une ligne ne quitte le filtre sans prix qu'a l'enregistrement`() = runTest {
         val tarifee = pompe.copy(prixAchat = 89.0)
-        val viewModel = creerViewModel(coefficient = 1.8, goulotte, tarifee)
+        val viewModel = creerViewModel(1.8, goulotte, tarifee)
         viewModel.onFiltre(FiltrePrix.SANS_PRIX)
         assertEquals(listOf(goulotte.id), etatDe(viewModel).lignes.map { it.article.id })
 
@@ -239,7 +239,7 @@ class SaisiePrixViewModelTest {
     /** Abandonner, c'est vider la saisie et fermer — rien n'est écrit. */
     @Test
     fun `abandonner ne laisse rien en base`() = runTest {
-        val viewModel = creerViewModel(coefficient = 1.8, goulotte)
+        val viewModel = creerViewModel(1.8, goulotte)
         viewModel.onOuvrir()
 
         viewModel.onPrixAchat(goulotte, 7.45)

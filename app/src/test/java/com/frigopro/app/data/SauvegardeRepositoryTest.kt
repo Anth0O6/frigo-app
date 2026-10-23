@@ -945,11 +945,11 @@ class SauvegardeRepositoryTest {
     }
 
     /**
-     * Un fichier d'avant le format 16 ne connaît pas les avoirs : tout y est
+     * Un fichier d'avant le format 17 ne connaît pas les avoirs : tout y est
      * facture, et c'est ce que son absence de nature doit vouloir dire.
      */
     @Test
-    fun `une facture d'avant le format 16 se relit en facture`() {
+    fun `une facture d'avant le format 17 se relit en facture`() {
         val ancienne = FactureSauvegarde(id = "fac-1", numero = "FAC-2026-0001", statut = "EMISE")
 
         val relue = ancienne.versFacture()!!
