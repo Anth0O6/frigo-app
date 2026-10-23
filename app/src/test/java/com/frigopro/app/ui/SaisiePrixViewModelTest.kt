@@ -66,9 +66,10 @@ class SaisiePrixViewModelTest {
         assertEquals(10.06, ligne.prixVente, 0.0001)
         assertEquals(OrigineVente.COEFFICIENT, ligne.origineVente)
 
-        // Et un prix à trois décimales — du cuivre au mètre — retombe sur le centime.
+        // Et un prix à trois décimales — du cuivre au mètre — retombe sur le centime :
+        // 3,333 × 1,35 fait 4,49955, et c'est 4,50 qui part sur un devis.
         viewModel.onPrixAchat(goulotte, 3.333)
-        assertEquals(5.0, ligne(viewModel, goulotte.id).prixVente, 0.0001)
+        assertEquals(4.50, ligne(viewModel, goulotte.id).prixVente, 0.0001)
     }
 
     /** Le calcul lui-même : rien sans coefficient, rien sans prix d'achat. */
