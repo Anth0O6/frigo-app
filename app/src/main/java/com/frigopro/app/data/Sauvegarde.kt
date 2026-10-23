@@ -146,6 +146,13 @@ data class StockSauvegarde(
  * `clientAdresse`, `tauxTva`, `assujettiTva` et `tauxPenalites` sont recopiés sur
  * la facture et le restent ici : ce sont les mentions **du document envoyé**, pas
  * l'état actuel du carnet ni des réglages.
+ *
+ * Les **avoirs** y entrent au format 17, par la même ligne : un avoir est une
+ * facture de nature `AVOIR` (voir [NatureFacture]). Ils sont sauvegardés pour la
+ * raison des factures, en plus forte — un avoir émis est une pièce comptable, et
+ * sans lui une restauration referait apparaître **due** une facture qu'on a
+ * soi-même créditée : elle remonterait dans les relances, et le client recevrait
+ * une réclamation pour une somme qu'on lui a reconnue.
  */
 @Serializable
 data class FactureSauvegarde(
@@ -167,6 +174,17 @@ data class FactureSauvegarde(
     val tauxPenalites: Double = 0.0,
     val payeeLe: String? = null,
     val relanceeLe: String? = null,
+    /**
+     * Facture ou avoir. Absente d'un fichier d'avant le format 17, et son
+     * absence veut dire ce qu'elle veut dire en base : il n'y avait que des
+     * factures. Une valeur **inconnue**, elle, fait refuser le fichier, comme un
+     * statut — c'est une valeur fixe de l'application, et la deviner ferait d'un
+     * avoir une facture à réclamer, ou l'inverse.
+     */
+    val nature: String = "FACTURE",
+    val factureOrigineId: String? = null,
+    val factureOrigineNumero: String = "",
+    val factureOrigineEmiseLe: String? = null,
     val modifieLe: Long = 0L,
 )
 
@@ -543,6 +561,11 @@ data class PrestationSauvegarde(
 /**
  * Version courante du format de fichier.
  *
+ * Le format 17 ajoute les **avoirs**, dans la liste des factures : leur nature,
+ * la facture qu'ils corrigent, et la copie de sa référence. Trois champs
+ * facultatifs, si bien qu'un fichier d'avant se relit tel qu'il était — que des
+ * factures. Voir [FactureSauvegarde].
+ *
  * Le format 16 ajoute le **détecteur de fuite fixe** d'une machine, facultatif
  * avec son défaut comme la zone du format 15. Le perdre à la restauration ne
  * casserait rien de visible et ramènerait chaque machine équipée à la
@@ -572,7 +595,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 16
+const val FORMAT_COURANT: Int = 17
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -1428,12 +1451,20 @@ internal fun Facture.versSauvegarde(): FactureSauvegarde = FactureSauvegarde(
     tauxPenalites = tauxPenalites,
     payeeLe = payeeLe?.format(FORMAT_DATE),
     relanceeLe = relanceeLe?.format(FORMAT_DATE),
+    nature = nature.name,
+    factureOrigineId = factureOrigineId,
+    factureOrigineNumero = factureOrigineNumero,
+    factureOrigineEmiseLe = factureOrigineEmiseLe?.format(FORMAT_DATE),
     modifieLe = modifieLe.toEpochMilli(),
 )
 
-/** `null` pour un statut inconnu, même raison que partout ailleurs. */
+/**
+ * `null` pour un statut ou une nature inconnus, même raison que partout
+ * ailleurs.
+ */
 internal fun FactureSauvegarde.versFacture(): Facture? {
     val etat = StatutFacture.entries.firstOrNull { it.name == statut } ?: return null
+    val genre = NatureFacture.entries.firstOrNull { it.name == nature } ?: return null
     return Facture(
         id = id,
         numero = numero,
@@ -1453,6 +1484,10 @@ internal fun FactureSauvegarde.versFacture(): Facture? {
         tauxPenalites = tauxPenalites,
         payeeLe = payeeLe?.let { jourOuNull(it) },
         relanceeLe = relanceeLe?.let { jourOuNull(it) },
+        nature = genre,
+        factureOrigineId = factureOrigineId,
+        factureOrigineNumero = factureOrigineNumero,
+        factureOrigineEmiseLe = factureOrigineEmiseLe?.let { jourOuNull(it) },
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }

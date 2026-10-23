@@ -7,6 +7,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import kotlin.math.roundToLong
 
 /**
  * Où en est une facture.
@@ -32,8 +33,39 @@ enum class StatutFacture(val libelle: String) {
     /** Le document fait foi : ses lignes et ses montants ne bougent plus. */
     val figee: Boolean get() = this != BROUILLON
 
-    /** Elle attend un règlement : c'est ce que comptent l'accueil et les relances. */
+    /**
+     * Le statut attend un règlement. Sur une facture seulement : un avoir émis
+     * porte le même statut et n'attend rien — voir [Facture.attendPaiement], qui
+     * est ce que comptent l'accueil et les relances.
+     */
     val attendPaiement: Boolean get() = this == EMISE
+}
+
+/**
+ * Ce qu'est le document : une facture, ou un avoir qui en corrige une.
+ *
+ * Une nature et non une table à part, et c'est la décision qui porte tout le
+ * reste. Un avoir **obéit aux trois règles d'une facture** — numéroté à
+ * l'émission seulement, insupprimable une fois numéroté, figé passé l'émission —
+ * et il a des lignes, une TVA, des totaux arrondis ligne à ligne, un PDF et une
+ * place dans la sauvegarde. Le mettre dans `factures` fait fonctionner tout
+ * cela sans retouche ; une table `avoirs` l'aurait recopié, avec une table de
+ * lignes de plus, et deux copies des trois règles finissent par ne plus dire la
+ * même chose — exactement le reproche que le projet fait au devis et à la
+ * facture qu'on aurait voulu réunir, et qu'il ne leur fait pas ici parce que les
+ * deux documents vivent **la même vie**.
+ *
+ * **Les montants d'un avoir sont positifs**, et c'est la nature qui porte le
+ * sens. Un document intitulé « Avoir » dont les lignes seraient négatives se
+ * lirait comme une double négation, et surtout il aurait fallu apprendre à
+ * chaque calcul du projet — arrondi, TVA offerte, marge, prix refusé s'il est
+ * négatif — qu'un prix peut l'être. C'est au moment d'**imputer** l'avoir sur
+ * sa facture que le signe apparaît (voir [Avoirs.imputer]), et à l'écran, où
+ * il se lit à côté de factures : « − 120,00 € », comme la remise de TVA offerte.
+ */
+enum class NatureFacture(val libelle: String) {
+    FACTURE("Facture"),
+    AVOIR("Avoir"),
 }
 
 /**
@@ -68,10 +100,26 @@ enum class StatutFacture(val libelle: String) {
  *   qui serait faux et priverait l'entreprise de son recours.
  * @param relanceeLe la dernière relance envoyée, pour ne pas relancer deux fois
  *   le même jour ni oublier qu'on l'a déjà fait.
+ * @param nature facture ou avoir : voir [NatureFacture]. Une ligne d'avant les
+ *   avoirs est une facture, et c'est ce que dit le défaut, en base comme dans
+ *   une sauvegarde.
+ * @param factureOrigineId la facture qu'un avoir corrige, `null` sur une
+ *   facture. Le lien sert au solde — ce qu'il reste à payer se déduit des avoirs
+ *   émis qui la désignent.
+ * @param factureOrigineNumero et [factureOrigineEmiseLe] : la **copie** de la
+ *   référence d'origine, le couple lien / copie du type et de la machine. Ce sont
+ *   les deux mentions qu'un avoir doit porter, et il les imprime d'elles-mêmes
+ *   plutôt que d'aller relire la facture : une sauvegarde restaurée à moitié, ou
+ *   un avoir ouvert sans sa facture, doit encore dire ce qu'il corrige.
  */
 @Entity(
     tableName = "factures",
-    indices = [Index("clientId"), Index("interventionId"), Index("devisId")],
+    indices = [
+        Index("clientId"),
+        Index("interventionId"),
+        Index("devisId"),
+        Index("factureOrigineId"),
+    ],
 )
 data class Facture(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -92,20 +140,63 @@ data class Facture(
     val tauxPenalites: Double = 0.0,
     val payeeLe: LocalDate? = null,
     val relanceeLe: LocalDate? = null,
+    // Placés avant `modifieLe`, comme la zone d'une machine : Room ordonne les
+    // colonnes de son schéma selon les champs de l'entité.
+    val nature: NatureFacture = NatureFacture.FACTURE,
+    val factureOrigineId: String? = null,
+    val factureOrigineNumero: String = "",
+    val factureOrigineEmiseLe: LocalDate? = null,
     val modifieLe: Instant = Instant.EPOCH,
 ) {
 
     /** Elle porte un numéro : elle est sortie de l'entreprise. */
     val numerotee: Boolean get() = numero.isNotBlank()
 
+    /** Le document est un avoir, et non une facture. */
+    val estAvoir: Boolean get() = nature == NatureFacture.AVOIR
+
+    /**
+     * Elle attend un règlement : c'est ce que comptent l'accueil et les relances.
+     *
+     * Une facture seulement. Un avoir émis porte le statut « émise » comme elle,
+     * et il ne réclame rien — c'est l'entreprise qui doit, pas le client.
+     */
+    val attendPaiement: Boolean get() = !estAvoir && statut.attendPaiement
+
+    /**
+     * Elle peut faire l'objet d'un avoir.
+     *
+     * Une facture **émise** et non annulée, payée ou non — une facture payée qui
+     * s'avère fausse est précisément le cas qui demande un avoir. Pas un
+     * brouillon : il se corrige ou s'efface, et rien n'est encore parti. Pas une
+     * facture annulée : elle ne réclame déjà plus rien. Et pas un avoir — un avoir
+     * erroné s'annule, il ne se corrige pas par un avoir d'avoir.
+     */
+    val creditable: Boolean
+        get() = !estAvoir && numerotee && statut != StatutFacture.ANNULEE
+
+    /**
+     * L'avoir vient en déduction de sa facture : émis, et non annulé.
+     *
+     * Un brouillon d'avoir ne déduit rien — rien n'est encore parti chez le
+     * client —, mais il compte quand on en crée un autre (voir
+     * [FactureRepository.creerAvoir]).
+     */
+    val deduit: Boolean
+        get() = estAvoir && numerotee && statut != StatutFacture.ANNULEE
+
     /**
      * Le règlement est en retard.
      *
      * Dérivé et jamais stocké, exactement comme les échéances F-Gas et pour la
      * même raison : un booléen « en retard » en base serait faux le lendemain.
+     *
+     * Il ne regarde que la facture elle-même. Une facture que des avoirs couvrent
+     * entièrement n'est plus en retard de rien, et c'est [FactureChiffree.enRetard]
+     * qui le sait : lui seul connaît les avoirs.
      */
     fun enRetard(aujourdhui: LocalDate): Boolean =
-        statut.attendPaiement && echeanceLe != null && aujourdhui.isAfter(echeanceLe)
+        attendPaiement && echeanceLe != null && aujourdhui.isAfter(echeanceLe)
 
     /** Depuis combien de jours, ou `null` si elle n'est pas en retard. */
     fun joursDeRetard(aujourdhui: LocalDate): Long? {
@@ -180,6 +271,11 @@ data class PenalitesDues(
          *
          * Les intérêts se calculent sur le montant **TTC**, et non sur le hors
          * taxes : c'est la somme que le client devait verser et n'a pas versée.
+         * Et sur ce qui **reste** dû quand un avoir l'a corrigée — l'appelant
+         * passe [FactureChiffree.resteTtc] : faire courir des intérêts sur une
+         * somme créditée serait réclamer ce qu'on a soi-même reconnu ne pas être
+         * dû. Une facture que ses avoirs couvrent n'est plus en retard, et
+         * l'appelant ne demande rien.
          */
         fun de(facture: Facture, totalTtc: Double, aujourdhui: LocalDate): PenalitesDues? {
             val jours = facture.joursDeRetard(aujourdhui) ?: return null
@@ -300,14 +396,165 @@ data class DevisFacture(
 /**
  * Une facture et son montant, tels que les listes et les compteurs les
  * affichent. C'est [FactureComplete] sans le détail des lignes.
+ *
+ * Elle porte aussi **ce que ses avoirs ont crédité**, et c'est d'ici que se
+ * dérive tout ce qui dépend du solde : ce qui reste à payer, ce qui est encore
+ * en retard, ce qu'il faut relancer. Rien n'en est stocké — même règle que « en
+ * retard » : un solde en base serait faux au premier avoir émis.
+ *
+ * @param avoirsHt la somme hors taxes des avoirs **émis** qui la désignent ;
+ *   zéro sur un avoir, et sur une facture qui n'en a pas.
+ * @param avoirsTtc la même somme, toutes taxes comprises. Elle se calcule avoir
+ *   par avoir, chacun arrondissant sa propre TVA — voir [couverte] pour le
+ *   centime que cela peut coûter.
  */
-data class FactureChiffree(val facture: Facture, val totalHt: Double) {
+data class FactureChiffree(
+    val facture: Facture,
+    val totalHt: Double,
+    val avoirsHt: Double = 0.0,
+    val avoirsTtc: Double = 0.0,
+) {
 
     val totalTtc: Double
         get() = when {
             !facture.assujettiTva || facture.tvaOfferte -> totalHt
             else -> (totalHt * (1 + facture.tauxTva / 100)).auCentime()
         }
+
+    /** Au moins un avoir émis la corrige. */
+    val creditee: Boolean get() = avoirsHt > 0.0
+
+    /**
+     * Ses avoirs la couvrent entièrement : il n'y a plus rien à réclamer.
+     *
+     * Jugé sur le hors taxes **ou** sur le TTC, et le « ou » répare un centime
+     * réel. La TVA s'arrondit document par document : deux lignes de 10,03 € font
+     * une facture de 24,07 € TTC, mais deux avoirs d'une ligne chacun font
+     * 12,04 € + 12,04 € — 24,08 €. Jugée au seul TTC, l'inverse se produit aussi
+     * — deux arrondis vers le bas —, et une facture entièrement créditée au hors
+     * taxes resterait due d'un centime, relancée chaque semaine pour lui. Les
+     * montants sont comparés **en centimes entiers**, pour qu'un résidu de
+     * virgule flottante ne tranche pas à leur place.
+     */
+    val couverte: Boolean
+        get() = creditee && (
+            enCentimes(avoirsHt) >= enCentimes(totalHt) ||
+                enCentimes(avoirsTtc) >= enCentimes(totalTtc)
+            )
+
+    /**
+     * Ce qui reste à payer, toutes taxes comprises.
+     *
+     * Le total sans avoir, zéro quand ils la couvrent, et jamais négatif : le
+     * centime d'arrondi décrit à [couverte] ne doit pas faire annoncer au client
+     * qu'on lui doit un centime. Sur un avoir, c'est son propre total — il ne se
+     * règle pas, mais l'écran n'a pas à le traiter à part pour l'afficher.
+     */
+    val resteTtc: Double
+        get() = if (couverte) 0.0 else (totalTtc - avoirsTtc).coerceAtLeast(0.0).auCentime()
+
+    /** En retard, et pas couverte par ses avoirs : voir [Facture.enRetard]. */
+    fun enRetard(aujourdhui: LocalDate): Boolean = facture.enRetard(aujourdhui) && !couverte
+
+    /**
+     * À relancer, pour son **reste** seulement.
+     *
+     * Une facture entièrement couverte ne se relance plus, et c'est tout l'objet :
+     * réclamer à un client une somme qu'on lui a créditée est la façon la plus
+     * sûre de le perdre. Partiellement couverte, elle se relance — pour ce qu'il
+     * reste, que les relances et l'accueil affichent à la place du total.
+     */
+    fun aRelancer(aujourdhui: LocalDate): Boolean = facture.aRelancer(aujourdhui) && !couverte
+
+    /** Elle attend un règlement, et il en reste un à faire. */
+    val attendPaiement: Boolean get() = facture.attendPaiement && !couverte
+}
+
+private fun enCentimes(montant: Double): Long = (montant * 100).roundToLong()
+
+/**
+ * Ce qu'un avoir reprend d'une facture, et ce qu'il en retranche.
+ *
+ * Des fonctions pures, comme [LignesFacture] et pour les mêmes raisons : elles
+ * décident de ce qui sera crédité à un vrai client et de ce qu'il lui reste à
+ * payer, et cela doit pouvoir s'éprouver sans base ni téléphone.
+ */
+object Avoirs {
+
+    /**
+     * Les lignes d'un avoir, tirées de celles de sa facture.
+     *
+     * Sans [quantites], c'est l'**avoir total** : toutes les lignes à
+     * l'identique, gestes commerciaux et prix d'achat compris — c'est ce qui le
+     * fait retomber au centime sur la facture, par le même [TotauxDocument].
+     * Avec, c'est un avoir **partiel** : la quantité à créditer de chaque ligne,
+     * par identifiant, une ligne absente ou à zéro ne traversant pas. Le prix,
+     * lui, ne se choisit pas : un avoir crédite ce qui a été facturé, au prix où
+     * ça l'a été, et un prix libre en ferait une remise déguisée.
+     *
+     * Rend `null` sur une quantité négative, ou supérieure à celle de la ligne :
+     * on ne crédite pas ce qui n'a pas été facturé. Et sur un avoir qui ne
+     * reprendrait aucune ligne — il ne dirait rien.
+     */
+    fun lignes(
+        avoirId: String,
+        origine: List<LigneFacture>,
+        quantites: Map<String, Double>? = null,
+    ): List<LigneFacture>? {
+        val retenues = origine.sortedBy { it.rang }.mapNotNull { ligne ->
+            val quantite = if (quantites == null) ligne.quantite else quantites[ligne.id] ?: 0.0
+            if (quantite < 0.0 || quantite > ligne.quantite + TOLERANCE) return null
+            if (quantite == 0.0) {
+                null
+            } else {
+                ligne.copy(id = UUID.randomUUID().toString(), factureId = avoirId, quantite = quantite)
+            }
+        }
+        if (retenues.isEmpty()) return null
+        return retenues.mapIndexed { rang, ligne -> ligne.copy(rang = rang) }
+    }
+
+    /**
+     * Le crédit dépasserait la facture.
+     *
+     * Jugé sur le **hors taxes**, en centimes entiers, et c'est délibéré : les
+     * lignes disent des montants hors taxes, et la TVA s'en déduit document par
+     * document. Juger au TTC aurait refusé, pour un centime d'arrondi, un avoir
+     * qui crédite exactement la ligne qui restait (voir [FactureChiffree.couverte]).
+     *
+     * @param dejaCredites le hors-taxes de chacun des autres avoirs à compter.
+     */
+    fun depasse(factureHt: Double, dejaCredites: List<Double>, avoirHt: Double): Boolean =
+        dejaCredites.sumOf { enCentimes(it) } + enCentimes(avoirHt) > enCentimes(factureHt)
+
+    /**
+     * Impute les avoirs émis sur les factures qu'ils corrigent.
+     *
+     * Chaque facture reçoit la somme de ses avoirs **émis et non annulés** — un
+     * brouillon n'est encore parti nulle part. Le hors-taxes comme le TTC de
+     * chaque avoir viennent de sa propre [FactureChiffree], si bien qu'un avoir se
+     * compte ici exactement comme il s'affiche dans la liste.
+     */
+    fun imputer(chiffrees: List<FactureChiffree>): List<FactureChiffree> {
+        val parOrigine = chiffrees
+            .filter { it.facture.deduit && it.facture.factureOrigineId != null }
+            .groupBy { it.facture.factureOrigineId }
+        if (parOrigine.isEmpty()) return chiffrees
+        return chiffrees.map { chiffree ->
+            val credits = parOrigine[chiffree.facture.id]
+            if (credits == null || chiffree.facture.estAvoir) {
+                chiffree
+            } else {
+                chiffree.copy(
+                    avoirsHt = credits.sumOf { it.totalHt }.auCentime(),
+                    avoirsTtc = credits.sumOf { it.totalTtc }.auCentime(),
+                )
+            }
+        }
+    }
+
+    /** Ce que la virgule flottante laisse traîner sur une quantité recopiée. */
+    private const val TOLERANCE = 1e-9
 }
 
 /**

@@ -62,6 +62,19 @@ abstract class FactureDao {
     @Query("SELECT * FROM factures")
     abstract suspend fun toutes(): List<Facture>
 
+    @Query("SELECT * FROM factures WHERE id = :id")
+    abstract suspend fun parId(id: String): Facture?
+
+    /**
+     * Les avoirs qui désignent cette facture, brouillons et annulés compris.
+     *
+     * Le tri entre ce qui compte et ce qui ne compte pas se fait dans le dépôt,
+     * pour la raison qui y tient déjà le refus de supprimer : c'est là que la
+     * règle se lit et s'éprouve.
+     */
+    @Query("SELECT * FROM factures WHERE factureOrigineId = :factureId")
+    abstract suspend fun avoirsDe(factureId: String): List<Facture>
+
     /**
      * Les numéros déjà attribués.
      *

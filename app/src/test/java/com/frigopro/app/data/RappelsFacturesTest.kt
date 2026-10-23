@@ -73,4 +73,25 @@ class RappelsFacturesTest {
         assertTrue("900 € TTC au total", corps.contains("900,00"))
         assertTrue("aucun nom n'est mis en avant", !corps.contains("Morel"))
     }
+
+    /**
+     * Une facture qu'un avoir a corrigée en partie se réclame pour son **reste** :
+     * annoncer le total ferait réclamer ce qu'on a soi-même crédité.
+     */
+    @Test
+    fun `une facture creditee en partie se rappelle pour son reste`() {
+        val (_, corps) = RappelsFactures.texte(
+            listOf(
+                FactureChiffree(
+                    Facture(numero = "FAC-2026-0042", clientNom = "Boucherie Morel"),
+                    totalHt = 500.0,
+                    avoirsHt = 200.0,
+                    avoirsTtc = 240.0,
+                ),
+            ),
+        )
+
+        assertTrue("600 € facturés, 240 € crédités : 360 € à encaisser", corps.contains("360,00"))
+        assertTrue("et non le total", !corps.contains("600,00"))
+    }
 }

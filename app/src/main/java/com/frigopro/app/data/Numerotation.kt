@@ -27,6 +27,19 @@ object Numerotation {
     const val PREFIXE_FACTURE = "FAC"
 
     /**
+     * Les avoirs : `AV-2026-0001`, une **séquence à part**, annuelle et continue
+     * comme celle des factures.
+     *
+     * À part, parce qu'un avoir est un document comptable de plein droit et que
+     * le glisser dans la séquence des factures y aurait fait alterner deux
+     * natures — « FAC-2026-0043 » serait tantôt une demande, tantôt un crédit.
+     * Rien de plus n'est à écrire pour cela : [suivantAnnuel] ne compte que les
+     * numéros qui portent son préfixe, si bien que les deux séquences se tiennent
+     * dans la même colonne sans se voir.
+     */
+    const val PREFIXE_AVOIR = "AV"
+
+    /**
      * @param existants tous les numéros déjà attribués, quel que soit leur
      *   mois — le filtrage se fait ici.
      */

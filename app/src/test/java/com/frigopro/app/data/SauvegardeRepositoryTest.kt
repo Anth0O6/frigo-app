@@ -739,6 +739,42 @@ class SauvegardeRepositoryTest {
 
     private companion object {
 
+        val FACTURE_EMISE = Facture(
+            id = "fac-1",
+            numero = "FAC-2026-0042",
+            clientId = "cl-1",
+            clientNom = "Boucherie Lemoine",
+            objet = "Fuite de fluide",
+            statut = StatutFacture.EMISE,
+            emiseLe = LocalDate.of(2026, 3, 12),
+            echeanceLe = LocalDate.of(2026, 4, 11),
+            modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
+        )
+
+        val AVOIR = Facture(
+            id = "av-1",
+            numero = "AV-2026-0001",
+            clientId = "cl-1",
+            clientNom = "Boucherie Lemoine",
+            objet = "Fuite de fluide",
+            statut = StatutFacture.EMISE,
+            emiseLe = LocalDate.of(2026, 3, 20),
+            nature = NatureFacture.AVOIR,
+            factureOrigineId = "fac-1",
+            factureOrigineNumero = "FAC-2026-0042",
+            factureOrigineEmiseLe = LocalDate.of(2026, 3, 12),
+            modifieLe = Instant.ofEpochMilli(1_757_500_000_000),
+        )
+
+        val LIGNE_FACTURE = LigneFacture(
+            id = "lf-1",
+            factureId = "fac-1",
+            designation = "Main-d'œuvre",
+            quantite = 2.0,
+            unite = "h",
+            prixUnitaire = 60.0,
+        )
+
         val GAMME = GammeMaintenance(
             id = "g-1",
             libelle = "Visite mensuelle groupe froid",
@@ -870,6 +906,79 @@ class SauvegardeRepositoryTest {
      * du texte libre : elle ne fait jamais refuser le fichier, à la différence
      * d'un statut ou d'une périodicité.
      */
+    /**
+     * Une facture et son avoir font l'aller-retour, lien et référence compris.
+     *
+     * Sans l'avoir, une restauration referait apparaître **due** une facture
+     * qu'on a soi-même créditée. La comparaison porte sur les `data class`
+     * entières, si bien qu'un champ oublié dans l'un des deux convertisseurs se
+     * voit sans qu'on ait à le nommer.
+     */
+    @Test
+    fun `une facture et son avoir reviennent identiques`() = runTest {
+        daoFactures.creer(FACTURE_EMISE, listOf(LIGNE_FACTURE))
+        daoFactures.creer(AVOIR, listOf(LIGNE_FACTURE.copy(id = "lf-2", factureId = AVOIR.id)))
+        val contenu = repository.exporter().contenu
+
+        val arrivee = FauxFactureDao()
+        val interventions = FauxInterventionDao()
+        val depot = SauvegardeRepository(
+            interventions,
+            FauxClientDao(),
+            FauxTypeInterventionDao(interventions),
+            FauxEquipementDao(interventions),
+            FauxSuiviDao(),
+            FauxDevisDao(),
+            FauxParametresDao(),
+            FauxTechnicienDao(interventions),
+            FauxPrestationDao(),
+            FauxVerificationFluideDao(),
+            arrivee,
+            FauxMaterielDao(),
+            FauxMaintenanceDao(),
+        )
+        depot.restaurer(contenu)
+
+        assertEquals(FACTURE_EMISE, arrivee.parId(FACTURE_EMISE.id))
+        assertEquals(AVOIR, arrivee.parId(AVOIR.id))
+        assertEquals(2, arrivee.contenuLignes.size)
+    }
+
+    /**
+     * Un fichier d'avant le format 16 ne connaît pas les avoirs : tout y est
+     * facture, et c'est ce que son absence de nature doit vouloir dire.
+     */
+    @Test
+    fun `une facture d'avant le format 16 se relit en facture`() {
+        val ancienne = FactureSauvegarde(id = "fac-1", numero = "FAC-2026-0001", statut = "EMISE")
+
+        val relue = ancienne.versFacture()!!
+
+        assertEquals(NatureFacture.FACTURE, relue.nature)
+        assertNull(relue.factureOrigineId)
+        assertEquals("", relue.factureOrigineNumero)
+    }
+
+    /**
+     * Une nature inconnue fait refuser le fichier, comme un statut : la deviner
+     * ferait d'un avoir une facture à réclamer, ou l'inverse.
+     */
+    @Test
+    fun `une nature de facture inconnue fait refuser le fichier`() = runTest {
+        val contenu = """
+            {
+              "format": 16,
+              "exporteeLe": "2026-09-09T08:00:00Z",
+              "factures": [
+                { "id": "fac-1", "numero": "FAC-2026-0001", "statut": "EMISE", "nature": "REMISE" }
+              ]
+            }
+        """.trimIndent()
+
+        assertEquals(ResultatRestauration.Illisible, repository.restaurer(contenu))
+        assertTrue("rien n'est écrit avant la validation", daoFactures.contenu.isEmpty())
+    }
+
     @Test
     fun `une machine d'avant le format 15 se relit sans zone`() {
         val ancienne = EquipementSauvegarde(id = "eq-1", clientId = "cl-1", nom = "Vitrine")

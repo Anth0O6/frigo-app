@@ -59,6 +59,11 @@ class FauxFactureDao : FactureDao() {
 
     override suspend fun toutes(): List<Facture> = documents.value
 
+    override suspend fun parId(id: String): Facture? = documents.value.firstOrNull { it.id == id }
+
+    override suspend fun avoirsDe(factureId: String): List<Facture> =
+        documents.value.filter { it.factureOrigineId == factureId }
+
     override suspend fun numeros(): List<String> =
         documents.value.map { it.numero }.filter { it.isNotBlank() }
 

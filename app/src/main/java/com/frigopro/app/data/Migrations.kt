@@ -1107,3 +1107,46 @@ val MIGRATION_20_21 = object : Migration(20, 21) {
         db.execSQL("ALTER TABLE `equipements` ADD COLUMN `detecteurFuite` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * L'avoir : **quatre colonnes et un index**, aucune table, rien à reconstruire.
+ *
+ * Un avoir vit dans `factures`, et non dans une table à lui : il obéit aux trois
+ * règles d'une facture — numéroté à l'émission, insupprimable, figé —, il a des
+ * lignes, une TVA et des totaux, et le mettre là fait fonctionner tout cela sans
+ * en écrire une seconde copie. Voir [NatureFacture].
+ *
+ * Les défauts disent quelque chose, comme ceux de [MIGRATION_11_12] :
+ *
+ * - `nature` à **`FACTURE`**, et c'est ce qui rend justes toutes les lignes déjà
+ *   en base sans les toucher : il n'existait que des factures. Un défaut vide en
+ *   aurait fait des documents sans nature, que Room refuserait de relire.
+ * - `factureOrigineId` **nullable** et sans défaut : `null` veut dire « ne corrige
+ *   aucune facture », ce qui est le cas de toute facture.
+ * - `factureOrigineNumero` à la chaîne vide et `factureOrigineEmiseLe` nullable,
+ *   comme les autres copies du schéma.
+ *
+ * L'index sur `factureOrigineId` est aussi obligatoire que la colonne : Room
+ * valide le schéma entier à l'ouverture, et l'entité le déclare — comme pour
+ * `clientId`, `interventionId` et `devisId`, les trois autres liens de la table.
+ *
+ * L'entité **ne déclare pas** ces défauts, pour la raison déjà écrite à
+ * [MIGRATION_18_19] : Room ne compare un défaut que lorsqu'il vient de l'entité.
+ */
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `factures` ADD COLUMN `nature` TEXT NOT NULL DEFAULT 'FACTURE'",
+        )
+        db.execSQL("ALTER TABLE `factures` ADD COLUMN `factureOrigineId` TEXT")
+        db.execSQL(
+            "ALTER TABLE `factures` ADD COLUMN `factureOrigineNumero` " +
+                "TEXT NOT NULL DEFAULT ''",
+        )
+        db.execSQL("ALTER TABLE `factures` ADD COLUMN `factureOrigineEmiseLe` TEXT")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_factures_factureOrigineId` " +
+                "ON `factures` (`factureOrigineId`)",
+        )
+    }
+}

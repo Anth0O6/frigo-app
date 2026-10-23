@@ -38,7 +38,12 @@ class FactureRepository(private val dao: FactureDao) {
     val facturesChiffrees: Flow<List<FactureChiffree>> =
         combine(dao.observerToutes(), dao.observerTotaux()) { factures, totaux ->
             val parId = totaux.associate { it.factureId to it.montant }
-            factures.map { FactureChiffree(it, (parId[it.id] ?: 0.0).auCentime()) }
+            // Les avoirs émis sont imputés ici, une fois pour toutes les listes :
+            // l'onglet, l'accueil et le rappel du matin lisent tous ce flux, et un
+            // solde calculé à trois endroits finirait par différer d'un centime.
+            Avoirs.imputer(
+                factures.map { FactureChiffree(it, (parId[it.id] ?: 0.0).auCentime()) },
+            )
         }
 
     /**
@@ -69,18 +74,19 @@ class FactureRepository(private val dao: FactureDao) {
      *
      * Rien n'est stocké : « en retard » se déduit de l'échéance et du jour, et un
      * booléen en base serait faux le lendemain — exactement comme les échéances
-     * F-Gas de l'accueil.
+     * F-Gas de l'accueil. Une facture que ses avoirs couvrent n'y est plus, et
+     * une facture partiellement couverte y reste pour son reste.
      */
     fun aRelancer(aujourdhui: LocalDate): Flow<List<FactureChiffree>> =
         facturesChiffrees.map { liste ->
-            liste.filter { it.facture.aRelancer(aujourdhui) }
+            liste.filter { it.aRelancer(aujourdhui) }
                 .sortedBy { it.facture.echeanceLe }
         }
 
     /** Tout ce qui est en retard, relancé ou non : le compteur de l'accueil. */
     fun enRetard(aujourdhui: LocalDate): Flow<List<FactureChiffree>> =
         facturesChiffrees.map { liste ->
-            liste.filter { it.facture.enRetard(aujourdhui) }
+            liste.filter { it.enRetard(aujourdhui) }
                 .sortedBy { it.facture.echeanceLe }
         }
 
@@ -157,6 +163,70 @@ class FactureRepository(private val dao: FactureDao) {
     }
 
     /**
+     * Le brouillon d'un avoir sur une facture émise.
+     *
+     * Un avoir ne naît que d'une facture **émise** et non annulée
+     * ([Facture.creditable]) : un brouillon se corrige ou s'efface, et rien n'est
+     * encore parti chez le client. Il naît **brouillon**, comme une facture, et
+     * pour la même raison — le numéro ne se consomme qu'à l'émission, et un
+     * brouillon d'avoir abandonné ne laisse aucun trou dans la séquence `AV`.
+     *
+     * Tout ce qui fait le document est recopié de la facture d'origine : le
+     * destinataire et son adresse telle qu'elle y figurait, le régime de TVA —
+     * un avoir corrige une facture **dans ses termes**, et le créditer à un
+     * autre taux ferait reprendre au client une TVA qu'il n'a pas payée —, et sa
+     * référence. `interventionId` et `devisId` ne le sont **pas** : ce sont eux
+     * qui empêchent de facturer deux fois une intervention ou un devis, et un
+     * avoir qui les porterait passerait pour leur facture. Le lien vers le
+     * chantier se fait par la facture d'origine.
+     *
+     * Rend `null` quand la facture ne se crédite pas, quand les quantités sont
+     * impossibles (voir [Avoirs.lignes]), et quand le crédit **dépasserait la
+     * facture**. Cette garde compte les avoirs émis et aussi les **brouillons**
+     * : sans eux, deux brouillons d'avoir total pourraient attendre côte à côte,
+     * et le second ne s'émettrait jamais. L'émission, elle, ne compte que les
+     * émis, et c'est elle qui tranche.
+     *
+     * @param quantites `null` pour l'avoir total ; sinon la quantité à créditer
+     *   de chaque ligne, par identifiant de ligne de la facture.
+     */
+    suspend fun creerAvoir(
+        origine: Facture,
+        quantites: Map<String, Double>? = null,
+    ): Facture? {
+        if (!origine.creditable) return null
+        val lignesOrigine = dao.lignesDe(origine.id)
+
+        val avoir = Facture(
+            nature = NatureFacture.AVOIR,
+            factureOrigineId = origine.id,
+            factureOrigineNumero = origine.numero,
+            factureOrigineEmiseLe = origine.emiseLe,
+            clientId = origine.clientId,
+            clientNom = origine.clientNom,
+            clientAdresse = origine.clientAdresse,
+            equipementNom = origine.equipementNom,
+            objet = origine.objet,
+            tauxTva = origine.tauxTva,
+            tvaOfferte = origine.tvaOfferte,
+            assujettiTva = origine.assujettiTva,
+            // Un avoir ne se paie pas : il n'a ni échéance ni pénalités, et un
+            // taux recopié ici ne servirait qu'à laisser croire le contraire.
+            tauxPenalites = 0.0,
+        )
+        val lignes = Avoirs.lignes(avoir.id, lignesOrigine, quantites) ?: return null
+        val complet = FactureComplete(avoir, lignes)
+        if (complet.totalHt < UN_DEMI_CENTIME) return null
+
+        val autres = dao.avoirsDe(origine.id).filter { it.statut != StatutFacture.ANNULEE }
+        if (depasse(origine, lignesOrigine, autres, complet)) return null
+
+        val horodate = avoir.copy(modifieLe = Instant.now())
+        dao.creer(horodate, lignes)
+        return horodate
+    }
+
+    /**
      * Émet la facture : elle prend son numéro, sa date et son échéance.
      *
      * C'est le seul endroit où un numéro est attribué, et il ne l'est **qu'une
@@ -164,6 +234,14 @@ class FactureRepository(private val dao: FactureDao) {
      * cela, un second appui sur le bouton lui donnerait un second numéro et
      * laisserait le premier orphelin — le trou qu'on cherche précisément à
      * éviter.
+     *
+     * Un avoir s'émet par le même chemin, dans **sa** séquence (`AV`), et sans
+     * échéance : il ne réclame rien. C'est ici que la garde du dépassement
+     * **tranche**, parce que c'est ici que l'avoir devient réel : un avoir qui
+     * crédite plus que ce qu'il reste à créditer, ou dont la facture a été
+     * annulée entre-temps, ou qui ne crédite rien, est rendu **tel quel**, en
+     * brouillon et sans numéro — même forme de refus que la réémission, et aucun
+     * rang n'est consommé.
      */
     suspend fun emettre(
         facture: Facture,
@@ -171,25 +249,61 @@ class FactureRepository(private val dao: FactureDao) {
         aujourdhui: LocalDate = LocalDate.now(),
     ): Facture {
         if (facture.numerotee) return facture
+        if (facture.estAvoir && !avoirEmettable(facture)) return facture
 
         val delai = parametres.delaiPaiementJours.coerceAtLeast(0).toLong()
         val emise = facture.copy(
             numero = Numerotation.suivantAnnuel(
-                prefixe = Numerotation.PREFIXE_FACTURE,
+                prefixe = if (facture.estAvoir) {
+                    Numerotation.PREFIXE_AVOIR
+                } else {
+                    Numerotation.PREFIXE_FACTURE
+                },
                 jour = aujourdhui,
                 existants = dao.numeros(),
             ),
             statut = StatutFacture.EMISE,
             emiseLe = aujourdhui,
-            echeanceLe = aujourdhui.plusDays(delai),
+            echeanceLe = if (facture.estAvoir) null else aujourdhui.plusDays(delai),
             modifieLe = Instant.now(),
         )
         dao.enregistrer(emise)
         return emise
     }
 
-    /** Le client a payé. */
+    /**
+     * L'avoir peut prendre son numéro : sa facture se crédite encore, il crédite
+     * quelque chose, et pas plus que ce que les autres avoirs **émis** ont laissé.
+     */
+    private suspend fun avoirEmettable(avoir: Facture): Boolean {
+        val origine = avoir.factureOrigineId?.let { dao.parId(it) } ?: return false
+        if (!origine.creditable) return false
+        val lignes = dao.lignesDe(avoir.id)
+        val complet = FactureComplete(avoir, lignes)
+        // Un avoir dont on a retiré toutes les lignes ne crédite rien : lui
+        // donner un numéro consommerait un rang pour un document vide.
+        if (complet.totalHt < UN_DEMI_CENTIME) return false
+        val emis = dao.avoirsDe(origine.id).filter { it.id != avoir.id && it.deduit }
+        return !depasse(origine, dao.lignesDe(origine.id), emis, complet)
+    }
+
+    /** Le crédit, ajouté à celui des [autres] avoirs, dépasserait l'[origine]. */
+    private suspend fun depasse(
+        origine: Facture,
+        lignesOrigine: List<LigneFacture>,
+        autres: List<Facture>,
+        avoir: FactureComplete,
+    ): Boolean = Avoirs.depasse(
+        factureHt = FactureComplete(origine, lignesOrigine).totalHt,
+        dejaCredites = autres
+            .filter { it.id != avoir.facture.id }
+            .map { FactureComplete(it, dao.lignesDe(it.id)).totalHt },
+        avoirHt = avoir.totalHt,
+    )
+
+    /** Le client a payé. Sans effet sur un avoir, qui ne se règle pas. */
     suspend fun marquerPayee(facture: Facture, le: LocalDate = LocalDate.now()): Facture {
+        if (facture.estAvoir) return facture
         val payee = facture.copy(
             statut = StatutFacture.PAYEE,
             payeeLe = le,
@@ -206,6 +320,7 @@ class FactureRepository(private val dao: FactureDao) {
      * marquée payée par erreur ne se relancerait plus jamais.
      */
     suspend fun marquerImpayee(facture: Facture): Facture {
+        if (facture.estAvoir) return facture
         val rouverte = facture.copy(
             statut = StatutFacture.EMISE,
             payeeLe = null,
@@ -224,6 +339,7 @@ class FactureRepository(private val dao: FactureDao) {
 
     /** Note qu'une relance est partie, pour ne pas la renvoyer le lendemain. */
     suspend fun marquerRelancee(facture: Facture, le: LocalDate = LocalDate.now()): Facture {
+        if (facture.estAvoir) return facture
         val relancee = facture.copy(relanceeLe = le, modifieLe = Instant.now())
         dao.enregistrer(relancee)
         return relancee
@@ -306,5 +422,11 @@ class FactureRepository(private val dao: FactureDao) {
             null
         }
         return listOfNotNull(type, lieu, reference).joinToString(" — ")
+    }
+
+    private companion object {
+
+        /** Sous ce montant, un avoir ne crédite rien : il n'y a pas un centime. */
+        const val UN_DEMI_CENTIME = 0.005
     }
 }

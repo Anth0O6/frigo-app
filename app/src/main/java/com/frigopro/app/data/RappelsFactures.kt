@@ -138,9 +138,15 @@ object RappelsFactures {
      * vérifie sans téléphone, l'envoi non. Il nomme le client quand il n'y en a
      * qu'un — « Boucherie Morel » appelle un geste, « 1 facture échue » demande
      * d'ouvrir l'application pour savoir laquelle.
+     *
+     * Le montant est ce qui **reste** à encaisser, et non le total facturé : une
+     * facture qu'un avoir a corrigée en partie se réclame pour son reste, et
+     * annoncer le total ferait réclamer ce qu'on a soi-même crédité. Celles que
+     * leurs avoirs couvrent n'arrivent pas jusqu'ici (voir
+     * [FactureRepository.enRetard]).
      */
     internal fun texte(echues: List<FactureChiffree>): Pair<String, String> {
-        val montant = echues.sumOf { it.totalTtc }.auCentime()
+        val montant = echues.sumOf { it.resteTtc }.auCentime()
         fun format(valeur: Double) = String.format(Locale.FRANCE, MONTANT, valeur)
         val titre = if (echues.size == 1) {
             "1 facture échue"
