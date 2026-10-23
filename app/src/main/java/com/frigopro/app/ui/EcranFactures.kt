@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.Avoirs
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.FactureComplete
@@ -49,6 +50,7 @@ import com.frigopro.app.ui.composants.BarreActions
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -119,6 +121,8 @@ fun FacturesRoute(
     val compteurs by viewModel.compteurs.collectAsStateWithLifecycle()
     val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
     val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
+    val solde by viewModel.solde.collectAsStateWithLifecycle()
+    val avoirRefuse by viewModel.avoirRefuse.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // La permission de notifier n'est demandée qu'ici, et jamais au démarrage :
@@ -137,15 +141,38 @@ fun FacturesRoute(
         val ouverte = complete?.facture
         contexte.envoyerDocument(
             document = fichier,
-            objet = listOf("Facture", ouverte?.numero.orEmpty())
+            objet = listOf(
+                if (ouverte?.estAvoir == true) "Avoir" else "Facture",
+                ouverte?.numero.orEmpty(),
+            )
                 .filter { it.isNotBlank() }
                 .joinToString(" "),
             corps = corpsDeLaFacture(ouverte),
         )
         viewModel.onDocumentPartage()
         // Envoyer une facture en retard, c'est la relancer : le noter ici évite
-        // qu'elle remonte le lendemain dans la liste des relances à faire.
-        if (ouverte != null && ouverte.enRetard(LocalDate.now())) viewModel.onRelancee(ouverte)
+        // qu'elle remonte le lendemain dans la liste des relances à faire. Le
+        // retard est celui du solde : une facture que ses avoirs couvrent ne se
+        // relance plus, même si on la renvoie.
+        val enRetard = solde?.takeIf { it.chiffree.facture.id == ouverte?.id }
+            ?.chiffree?.enRetard(LocalDate.now()) == true
+        if (ouverte != null && enRetard) viewModel.onRelancee(ouverte)
+    }
+
+    if (avoirRefuse) {
+        AlertDialog(
+            onDismissRequest = viewModel::onRefusVu,
+            title = { Text(text = "Avoir refusé") },
+            text = {
+                Text(
+                    text = "L'avoir dépasserait ce qu'il reste à créditer sur la facture, " +
+                        "ou la facture ne se crédite plus — annulée, ou déjà couverte par " +
+                        "un autre avoir. Aucun numéro n'a été consommé.",
+                )
+            },
+            confirmButton = { TextButton(onClick = viewModel::onRefusVu) { Text(text = "Fermer") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
     }
 
     if (echecExport) {
@@ -175,6 +202,12 @@ fun FacturesRoute(
     if (ouverte != null) {
         EcranFacture(
             facture = ouverte,
+            // Le solde n'est retenu que s'il est bien celui de la facture
+            // affichée : entre deux ouvertures, l'un des deux flux peut avoir
+            // une émission d'avance sur l'autre.
+            solde = solde?.takeIf { it.chiffree.facture.id == ouverte.facture.id },
+            onFaireAvoir = viewModel::onFaireAvoir,
+            onOuvrir = viewModel::onOuvrir,
             onEmettre = viewModel::onEmettre,
             onEnvoyer = viewModel::onExporterPdf,
             onPayee = viewModel::onPayee,
@@ -388,7 +421,9 @@ private fun CarteFacture(
     onSupprimer: (() -> Unit)? = null,
 ) {
     val facture = chiffree.facture
-    val retard = facture.joursDeRetard(aujourdhui)
+    // Le retard est celui du solde : une facture que ses avoirs couvrent n'est
+    // plus en retard de rien.
+    val retard = facture.joursDeRetard(aujourdhui)?.takeIf { chiffree.enRetard(aujourdhui) }
 
     Carte(
         onClick = onClick,
@@ -397,7 +432,7 @@ private fun CarteFacture(
         // geste. La convention reste celle du projet — appui simple pour ouvrir,
         // appui long pour détruire.
         onLongClick = onSupprimer.takeIf { !facture.numerotee },
-        liseré = couleurStatutFacture(facture, aujourdhui),
+        liseré = couleurStatutFacture(chiffree, aujourdhui),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
@@ -413,22 +448,44 @@ private fun CarteFacture(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Un avoir se lit au milieu des factures, et c'est là que son sens
+            // doit se voir : précédé d'un « − », comme la remise de TVA offerte.
+            // Le document, lui, porte un montant positif sous le titre « Avoir ».
             Text(
-                text = Nombres.enEuros(chiffree.totalTtc),
+                text = if (facture.estAvoir) {
+                    "− ${Nombres.enEuros(chiffree.totalTtc)}"
+                } else {
+                    Nombres.enEuros(chiffree.totalTtc)
+                },
                 style = MaterialTheme.typography.titleMedium,
+                color = if (facture.estAvoir) {
+                    MaterialTheme.colorScheme.secondary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (facture.estAvoir) {
+                Puce(texte = facture.nature.libelle, couleur = MaterialTheme.colorScheme.secondary)
+            }
             Puce(
                 texte = facture.statut.libelle,
-                couleur = couleurStatutFacture(facture, aujourdhui),
+                couleur = couleurStatutFacture(chiffree, aujourdhui),
             )
+            if (facture.estAvoir && facture.factureOrigineNumero.isNotBlank()) {
+                Puce(texte = "Sur ${facture.factureOrigineNumero}")
+            } else if (chiffree.couverte) {
+                Puce(texte = "Couverte par avoir", couleur = MaterialTheme.colorScheme.secondary)
+            } else if (chiffree.creditee) {
+                Puce(texte = "Avoir − ${Nombres.enEuros(chiffree.avoirsTtc)}")
+            }
             if (retard != null) {
                 Puce(
                     texte = "En retard de $retard j",
                     couleur = LocalStatuts.current.urgence,
                 )
-            } else if (facture.echeanceLe != null && facture.statut.attendPaiement) {
+            } else if (facture.echeanceLe != null && chiffree.attendPaiement) {
                 Puce(texte = "Échéance ${jourCourt(facture.echeanceLe!!)}")
             }
         }
@@ -439,15 +496,20 @@ private fun CarteFacture(
  * La couleur d'une facture.
  *
  * Le retard l'emporte sur le statut, et c'est voulu : « émise » et « émise depuis
- * quarante jours » ne demandent pas le même geste.
+ * quarante jours » ne demandent pas le même geste. Une facture que ses avoirs
+ * couvrent prend la couleur du fait accompli, comme une facture payée : il n'y
+ * a plus rien à en attendre.
  */
 @Composable
-private fun couleurStatutFacture(facture: Facture, aujourdhui: LocalDate) =
+private fun couleurStatutFacture(chiffree: FactureChiffree, aujourdhui: LocalDate) =
     when {
-        facture.enRetard(aujourdhui) -> LocalStatuts.current.urgence
-        facture.statut == StatutFacture.PAYEE -> LocalStatuts.current.termine
-        facture.statut == StatutFacture.ANNULEE -> MaterialTheme.colorScheme.onSurfaceVariant
-        facture.statut == StatutFacture.EMISE -> LocalStatuts.current.aValider
+        chiffree.enRetard(aujourdhui) -> LocalStatuts.current.urgence
+        chiffree.couverte -> LocalStatuts.current.termine
+        chiffree.facture.estAvoir && chiffree.facture.statut == StatutFacture.EMISE ->
+            MaterialTheme.colorScheme.secondary
+        chiffree.facture.statut == StatutFacture.PAYEE -> LocalStatuts.current.termine
+        chiffree.facture.statut == StatutFacture.ANNULEE -> MaterialTheme.colorScheme.onSurfaceVariant
+        chiffree.facture.statut == StatutFacture.EMISE -> LocalStatuts.current.aValider
         else -> LocalStatuts.current.planifie
     }
 
@@ -458,11 +520,22 @@ private fun couleurStatutFacture(facture: Facture, aujourdhui: LocalDate) =
  * brouillon s'émet, une facture émise s'envoie et s'encaisse, une facture payée
  * ne se réclame plus. Proposer les quatre en permanence aurait mis « Émettre » à
  * côté d'une facture déjà partie.
+ *
+ * Un avoir s'ouvre ici aussi, et la même règle le sert : un brouillon d'avoir
+ * s'émet ou se supprime, un avoir émis s'envoie ou s'annule — il ne se « paie »
+ * pas. « Faire un avoir » n'est pas dans la barre du bas, qui en porte déjà
+ * trois sur une facture émise : il est dans la section des avoirs, à côté de ce
+ * qui a déjà été crédité, qui est ce qu'on veut lire avant de créditer.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EcranFacture(
     facture: FactureComplete,
+    /** La facture imputée de ses avoirs ; `null` le temps du premier calcul. */
+    solde: SoldeFacture?,
+    onFaireAvoir: (Map<String, Double>?) -> Unit,
+    /** Ouvre un autre document : la facture d'un avoir, ou l'avoir d'une facture. */
+    onOuvrir: (String) -> Unit,
     onEmettre: () -> Unit,
     onEnvoyer: () -> Unit,
     onPayee: () -> Unit,
@@ -476,6 +549,7 @@ fun EcranFacture(
     val document = facture.facture
     val aujourdhui = remember { LocalDate.now() }
     var confirmation by remember { mutableStateOf<ConfirmationFacture?>(null) }
+    var saisieAvoir by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -504,7 +578,9 @@ fun EcranFacture(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = document.numero.ifBlank { "Brouillon" },
+                        text = document.numero.ifBlank {
+                            if (document.estAvoir) "Brouillon d'avoir" else "Brouillon"
+                        },
                         style = MaterialTheme.typography.headlineSmall,
                     )
                     Text(
@@ -516,14 +592,28 @@ fun EcranFacture(
                 BoutonContour(texte = "Fermer", onClick = onFermer)
             }
 
-            PenalitesDues.de(document, facture.totalTtc, aujourdhui)?.let { dues ->
-                SectionPenalites(dues)
+            // Les pénalités courent sur ce qui reste dû, et plus du tout sur une
+            // facture que ses avoirs couvrent : voir [PenalitesDues.de].
+            val chiffree = solde?.chiffree
+            if (chiffree != null && chiffree.enRetard(aujourdhui)) {
+                PenalitesDues.de(document, chiffree.resteTtc, aujourdhui)?.let { dues ->
+                    SectionPenalites(dues)
+                }
             }
 
             Section(intitule = "Document") {
+                if (document.estAvoir) {
+                    LigneInfoFacture("Nature", document.nature.libelle)
+                    LigneOrigineAvoir(
+                        avoir = document,
+                        onOuvrir = document.factureOrigineId?.let { id -> { onOuvrir(id) } },
+                    )
+                }
                 LigneInfoFacture("Statut", document.statut.libelle)
                 if (document.objet.isNotBlank()) LigneInfoFacture("Objet", document.objet)
-                document.emiseLe?.let { LigneInfoFacture("Émise le", jourCourt(it)) }
+                document.emiseLe?.let {
+                    LigneInfoFacture(if (document.estAvoir) "Émis le" else "Émise le", jourCourt(it))
+                }
                 document.echeanceLe?.let { LigneInfoFacture("Échéance", jourCourt(it)) }
                 document.payeeLe?.let { LigneInfoFacture("Payée le", jourCourt(it)) }
                 document.relanceeLe?.let { LigneInfoFacture("Relancée le", jourCourt(it)) }
@@ -566,15 +656,41 @@ fun EcranFacture(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                LigneInfoFacture("Total à payer", Nombres.enEuros(facture.totalTtc), forte = true)
+                LigneInfoFacture(
+                    if (document.estAvoir) "Total de l'avoir" else "Total à payer",
+                    Nombres.enEuros(facture.totalTtc),
+                    forte = true,
+                )
+            }
+
+            if (solde != null && (document.creditable || solde.avoirs.isNotEmpty())) {
+                SectionAvoirs(
+                    solde = solde,
+                    creditable = document.creditable,
+                    onFaireAvoir = { saisieAvoir = true },
+                    onOuvrir = onOuvrir,
+                )
             }
             EspaceVertical(24)
         }
     }
 
+    if (saisieAvoir && solde != null) {
+        DialogueAvoir(
+            facture = facture,
+            dejaCrediteHt = solde.dejaCrediteHt,
+            onConfirmer = { quantites ->
+                onFaireAvoir(quantites)
+                saisieAvoir = false
+            },
+            onFermer = { saisieAvoir = false },
+        )
+    }
+
     confirmation?.let { quoi ->
         DialogueConfirmationFacture(
             quoi = quoi,
+            avoir = document.estAvoir,
             onConfirmer = {
                 when (quoi) {
                     ConfirmationFacture.EMETTRE -> onEmettre()
@@ -593,11 +709,34 @@ private enum class ConfirmationFacture { EMETTRE, ANNULER, SUPPRIMER }
 @Composable
 private fun DialogueConfirmationFacture(
     quoi: ConfirmationFacture,
+    /** Le document est un avoir : les mêmes gestes, mais pas les mêmes mots. */
+    avoir: Boolean,
     onConfirmer: () -> Unit,
     onFermer: () -> Unit,
 ) {
-    val (titre, texte, bouton) = when (quoi) {
-        ConfirmationFacture.EMETTRE -> Triple(
+    val (titre, texte, bouton) = when {
+        avoir && quoi == ConfirmationFacture.EMETTRE -> Triple(
+            "Émettre l'avoir",
+            "Il prend son numéro dans la séquence des avoirs et ne se modifie plus. " +
+                "Ce qu'il crédite vient aussitôt en déduction de la facture d'origine.",
+            "Émettre",
+        )
+
+        avoir && quoi == ConfirmationFacture.ANNULER -> Triple(
+            "Annuler l'avoir",
+            "Il garde son numéro, et cesse de venir en déduction de la facture : " +
+                "ce qu'il créditait redevient dû.",
+            "Annuler l'avoir",
+        )
+
+        avoir && quoi == ConfirmationFacture.SUPPRIMER -> Triple(
+            "Supprimer le brouillon d'avoir",
+            "Ses lignes disparaissent avec lui. Aucun numéro n'a été attribué : " +
+                "rien ne manquera dans la séquence des avoirs.",
+            "Supprimer",
+        )
+
+        quoi == ConfirmationFacture.EMETTRE -> Triple(
             "Émettre la facture",
             "Elle prend son numéro, sa date et son échéance, et ne se modifie plus. " +
                 "Le numéro est définitivement consommé : une facture émise ne se " +
@@ -605,14 +744,14 @@ private fun DialogueConfirmationFacture(
             "Émettre",
         )
 
-        ConfirmationFacture.ANNULER -> Triple(
+        quoi == ConfirmationFacture.ANNULER -> Triple(
             "Annuler la facture",
             "Elle garde son numéro — l'effacer creuserait un trou dans la " +
                 "numérotation — et cesse d'être réclamée.",
             "Annuler la facture",
         )
 
-        ConfirmationFacture.SUPPRIMER -> Triple(
+        else -> Triple(
             "Supprimer le brouillon",
             "Ses lignes disparaissent avec lui. Aucun numéro n'a été attribué : " +
                 "rien ne manquera dans la séquence.",
@@ -683,6 +822,218 @@ private fun SectionPenalites(dues: PenalitesDues) {
     }
 }
 
+/**
+ * La facture qu'un avoir corrige, et le geste qui l'ouvre.
+ *
+ * Le numéro et la date viennent de la copie posée sur l'avoir : ils se lisent
+ * même si la facture n'est plus là pour être ouverte.
+ */
+@Composable
+private fun LigneOrigineAvoir(avoir: Facture, onOuvrir: (() -> Unit)?) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Sur la facture",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = listOfNotNull(
+                    avoir.factureOrigineNumero.ifBlank { null },
+                    avoir.factureOrigineEmiseLe?.let { "du ${jourCourt(it)}" },
+                ).joinToString(" ").ifBlank { "Référence non renseignée" },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        if (onOuvrir != null) {
+            TextButton(onClick = onOuvrir) { Text(text = "Ouvrir") }
+        }
+    }
+}
+
+/**
+ * Ce que les avoirs ont fait d'une facture, et le geste qui en ajoute un.
+ *
+ * Elle dit **de combien** la facture a été créditée et **ce qu'il en reste**,
+ * parce que c'est la question qu'on se pose devant une facture corrigée — la
+ * facture elle-même ne bouge pas, et ses totaux au-dessus restent ceux du
+ * document parti. Rien n'est stocké : le reste se dérive des avoirs émis, comme
+ * le retard de l'échéance.
+ *
+ * Une facture payée puis créditée ne « reste » rien devoir : c'est l'entreprise
+ * qui doit, et l'écran le dit plutôt que d'afficher un reste à zéro qui se lirait
+ * comme une affaire close.
+ */
+@Composable
+private fun SectionAvoirs(
+    solde: SoldeFacture,
+    creditable: Boolean,
+    onFaireAvoir: () -> Unit,
+    onOuvrir: (String) -> Unit,
+) {
+    val chiffree = solde.chiffree
+    Section(intitule = "Avoirs") {
+        if (solde.avoirs.isEmpty()) {
+            Text(
+                text = "Aucun avoir. Une facture émise ne se retouche pas : si elle est " +
+                    "fausse, c'est un avoir qui la corrige, en tout ou en partie.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        solde.avoirs.forEach { avoir ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = avoir.facture.numero.ifBlank { "Brouillon d'avoir" },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = avoir.facture.statut.libelle +
+                            (avoir.facture.emiseLe?.let { " le ${jourCourt(it)}" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "− ${Nombres.enEuros(avoir.totalTtc)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textDecoration = if (avoir.facture.deduit) null else TextDecoration.LineThrough,
+                )
+                TextButton(onClick = { onOuvrir(avoir.facture.id) }) { Text(text = "Ouvrir") }
+            }
+        }
+        if (chiffree.creditee) {
+            LigneInfoFacture("Crédité par avoir", "− ${Nombres.enEuros(chiffree.avoirsTtc)}")
+            if (chiffree.facture.statut == StatutFacture.PAYEE) {
+                Text(
+                    text = "La facture était réglée : ce qui a été crédité se rembourse au " +
+                        "client, ou s'impute sur une prochaine facture.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LigneInfoFacture("Reste dû", Nombres.enEuros(chiffree.resteTtc), forte = true)
+            }
+        }
+        // Proposé tant qu'il reste quelque chose à créditer, brouillons compris :
+        // c'est ce que compte le dépôt, et un geste qu'il refuserait à coup sûr
+        // vaut moins que pas de geste.
+        if (creditable && solde.dejaCrediteHt + DEMI_CENTIME < chiffree.totalHt) {
+            BoutonContour(
+                texte = "Faire un avoir",
+                onClick = onFaireAvoir,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/**
+ * Ce que l'avoir va créditer, ligne par ligne.
+ *
+ * Toutes les quantités sont pré-remplies à celles de la facture : c'est l'**avoir
+ * total**, le cas le plus fréquent — une facture partie au mauvais client, ou en
+ * double —, et il tient en un appui. L'avoir **partiel** est la même boîte, des
+ * quantités baissées ou mises à zéro : un détendeur repris, une heure facturée de
+ * trop. Le prix, lui, ne se saisit pas : un avoir crédite ce qui a été facturé, au
+ * prix où ça l'a été, et un prix libre en ferait une remise déguisée.
+ *
+ * La saisie vit en état local, comme celle du déplacement : rien n'est écrit
+ * avant le geste qui confirme, et ce qui est écrit alors n'est qu'un brouillon.
+ * Le total se recalcule à chaque frappe, par [Avoirs.lignes] et les totaux
+ * partagés — ceux-là mêmes que le dépôt appliquera.
+ */
+@Composable
+private fun DialogueAvoir(
+    facture: FactureComplete,
+    dejaCrediteHt: Double,
+    onConfirmer: (Map<String, Double>?) -> Unit,
+    onFermer: () -> Unit,
+) {
+    var quantites by remember {
+        mutableStateOf(facture.lignes.associate { it.id to it.quantite })
+    }
+    val prevues = Avoirs.lignes(APERCU_AVOIR, facture.lignes, quantites)
+    val avoirHt = prevues?.let { FactureComplete(facture.facture, it).totalHt } ?: 0.0
+    val avoirTtc = prevues?.let { FactureComplete(facture.facture, it).totalTtc } ?: 0.0
+    val possible = prevues != null &&
+        avoirHt >= DEMI_CENTIME &&
+        !Avoirs.depasse(facture.totalHt, listOf(dejaCrediteHt), avoirHt)
+    val total = facture.lignes.all { quantites[it.id] == it.quantite }
+
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Faire un avoir") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "La quantité à créditer, ligne par ligne. Tout laisser tel quel " +
+                        "fait l'avoir total ; une ligne à zéro n'y entre pas. L'avoir naît " +
+                        "brouillon, et ne prend son numéro qu'à l'émission.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (dejaCrediteHt > 0.0) {
+                    Text(
+                        text = "Déjà crédité, brouillons compris : " +
+                            "${Nombres.enEuros(dejaCrediteHt)} HT sur " +
+                            "${Nombres.enEuros(facture.totalHt)} HT.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                facture.lignes.forEach { ligne ->
+                    ChampChiffre(
+                        libelle = "${ligne.designation} — facturé " +
+                            Nombres.enTexte(ligne.quantite) +
+                            " × ${Nombres.enEuros(ligne.prixUnitaire)}",
+                        valeur = quantites[ligne.id],
+                        unite = ligne.unite,
+                        onValeur = { saisie -> quantites = quantites + (ligne.id to (saisie ?: 0.0)) },
+                    )
+                }
+                LigneInfoFacture(
+                    if (total) "Avoir total" else "Avoir partiel",
+                    Nombres.enEuros(avoirTtc),
+                    forte = true,
+                )
+                if (!possible) {
+                    Text(
+                        text = when {
+                            prevues == null ->
+                                "Une quantité dépasse celle facturée, ou aucune ligne n'est créditée."
+                            avoirHt < DEMI_CENTIME -> "Cet avoir ne crédite rien."
+                            else -> "L'avoir dépasserait ce qu'il reste à créditer sur la facture."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirmer(if (total) null else quantites) },
+                enabled = possible,
+            ) { Text(text = "Créer le brouillon") }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Revenir") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+/** Sous ce montant, il ne reste rien à créditer : moins d'un centime. */
+private const val DEMI_CENTIME = 0.005
+
+/**
+ * L'identifiant des lignes d'aperçu de [DialogueAvoir], qui ne sont jamais
+ * écrites : le dépôt refait les siennes, sous l'identifiant de l'avoir.
+ */
+private const val APERCU_AVOIR = "apercu"
+
 @Composable
 private fun ActionsFacture(
     facture: Facture,
@@ -709,7 +1060,8 @@ private fun ActionsFacture(
             }
 
             StatutFacture.EMISE -> {
-                BoutonContour(texte = "Payée", onClick = onPayee)
+                // Un avoir ne se règle pas : c'est l'entreprise qui doit.
+                if (!facture.estAvoir) BoutonContour(texte = "Payée", onClick = onPayee)
                 BoutonPlein(
                     texte = "Envoyer",
                     onClick = onEnvoyer,
@@ -802,6 +1154,13 @@ private fun LigneFactureAffichee(
 /** Le message qui accompagne le PDF, prêt à être complété. */
 private fun corpsDeLaFacture(facture: Facture?): String {
     if (facture == null) return "Veuillez trouver ci-joint notre facture."
+    if (facture.estAvoir) {
+        val origine = facture.factureOrigineNumero.takeIf { it.isNotBlank() }
+            ?.let { " sur la facture $it" }
+            .orEmpty()
+        return "Bonjour,\n\nVeuillez trouver ci-joint l'avoir ${facture.numero}$origine." +
+            "\n\nCordialement."
+    }
     val echeance = facture.echeanceLe?.let { " Règlement attendu pour le ${jourCourt(it)}." }.orEmpty()
     return "Bonjour,\n\nVeuillez trouver ci-joint la facture ${facture.numero}.$echeance" +
         "\n\nCordialement."

@@ -550,8 +550,10 @@ private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
                     color = LocalStatuts.current.urgence,
                 )
             }
+            // Ce qui reste dû et non le total : une facture qu'un avoir a corrigée
+            // en partie se réclame pour son reste.
             Text(
-                text = Nombres.enEuros(chiffree.totalTtc),
+                text = Nombres.enEuros(chiffree.resteTtc),
                 style = MaterialTheme.typography.titleSmall,
             )
         }

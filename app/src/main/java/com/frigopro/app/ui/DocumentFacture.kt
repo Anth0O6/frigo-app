@@ -28,6 +28,29 @@ import java.time.LocalDate
  *   l'article D. 441-5 du code de commerce.
  * - **L'absence d'escompte.** Faute de le dire, on s'expose à ce qu'un client
  *   en retienne un pour paiement anticipé.
+ *
+ * ## L'avoir
+ *
+ * Il passe par le même document, et c'est délibéré : un avoir a l'en-tête, les
+ * lignes, la TVA et les totaux d'une facture, et une seconde fonction aurait
+ * divergé de celle-ci au premier ajustement. Ce qui change tient en trois
+ * points, et chacun répare une façon de mentir :
+ *
+ * - **Il dit ce qu'il corrige** : le numéro **et la date** de la facture
+ *   d'origine, en tête et dans les mentions. C'est la mention qu'on attend d'un
+ *   avoir, et c'est ce qui permet de rapprocher les deux pièces sans rien
+ *   ouvrir d'autre. Elle vient de la copie posée sur l'avoir, pas d'une relecture
+ *   de la facture.
+ * - **Il ne réclame rien** : ni échéance, ni pénalités de retard, ni indemnité
+ *   de recouvrement, ni escompte. Ces mentions décrivent un paiement attendu du
+ *   client ; sur un avoir c'est l'entreprise qui doit, et les imprimer laisserait
+ *   croire qu'on lui demande de régler un crédit.
+ * - **Ses montants sont positifs**, sous un titre qui dit « Avoir » et un total
+ *   qui dit « Total de l'avoir » : c'est le titre qui porte le sens (voir
+ *   [com.frigopro.app.data.NatureFacture]).
+ *
+ * La mention de franchise en base, elle, reste : le régime de TVA de l'avoir est
+ * celui de sa facture, et il doit se lire de la même façon.
  */
 object DocumentFacture {
 
@@ -38,12 +61,13 @@ object DocumentFacture {
         aujourdhui: LocalDate = LocalDate.now(),
     ): DocumentImprime {
         val document = facture.facture
+        val avoir = document.estAvoir
         return DocumentImprime(
-            titre = "FACTURE",
+            titre = if (avoir) "AVOIR" else "FACTURE",
             numero = document.numero,
-            emetteur = emetteurDe(parametres, "Facture"),
+            emetteur = emetteurDe(parametres, if (avoir) "Avoir" else "Facture"),
             destinataire = destinataire(document, client),
-            dates = dates(document, aujourdhui),
+            dates = if (avoir) datesAvoir(document, aujourdhui) else dates(document, aujourdhui),
             objet = document.objet,
             machine = document.equipementNom,
             lignes = facture.lignes.map { ligne ->
@@ -61,13 +85,46 @@ object DocumentFacture {
                 )
             },
             totaux = totaux(facture),
-            mentions = mentions(document, parametres),
+            mentions = if (avoir) {
+                mentionsAvoir(document, parametres)
+            } else {
+                mentions(document, parametres)
+            },
             logoFichier = parametres.logoFichier,
             // Une facture n'est exportable qu'émise, donc numérotée : ce nom de
             // repli ne devrait jamais servir, et il existe pour que l'absence de
-            // numéro ne produise pas un fichier nommé « .pdf ».
-            nomSansNumero = "facture",
+            // numéro ne produise pas un fichier nommé « .pdf ». Un avoir a le
+            // sien, pour ne jamais porter le nom d'une facture.
+            nomSansNumero = if (avoir) "avoir" else "facture",
         )
+    }
+
+    /**
+     * La facture que l'avoir corrige, en une ligne : « facture FAC-2026-0042 du
+     * 12/03/2026 ». La date manque seulement si la copie n'a pas été posée — un
+     * avoir d'une sauvegarde abîmée —, et elle est alors tue plutôt qu'inventée.
+     */
+    private fun referenceOrigine(avoir: Facture): String = buildString {
+        append("facture ")
+        append(avoir.factureOrigineNumero.ifBlank { "d'origine" })
+        avoir.factureOrigineEmiseLe?.let { append(" du ${it.format(FORMAT_DATE_DOCUMENT)}") }
+    }
+
+    private fun datesAvoir(avoir: Facture, aujourdhui: LocalDate): List<String> = listOf(
+        "Émis le ${(avoir.emiseLe ?: aujourdhui).format(FORMAT_DATE_DOCUMENT)}",
+        "Sur la ${referenceOrigine(avoir)}",
+    )
+
+    /**
+     * Les mentions d'un avoir : la référence de la facture, le régime de TVA, et
+     * rien de ce qui décrit un paiement attendu.
+     */
+    private fun mentionsAvoir(avoir: Facture, parametres: Parametres): List<String> = buildList {
+        add("Avoir établi sur la ${referenceOrigine(avoir)}, en déduction de son montant.")
+        if (!avoir.assujettiTva) add(Parametres.MENTION_FRANCHISE)
+        if (parametres.entrepriseSiret.isBlank()) {
+            add("(SIRET non renseigné dans les Réglages)")
+        }
     }
 
     /**
@@ -111,7 +168,13 @@ object DocumentFacture {
                 )
             }
         }
-        add(LigneTotalImprimee("TOTAL À PAYER", Nombres.enEuros(facture.totalTtc), forte = true))
+        add(
+            LigneTotalImprimee(
+                if (facture.facture.estAvoir) "TOTAL DE L'AVOIR" else "TOTAL À PAYER",
+                Nombres.enEuros(facture.totalTtc),
+                forte = true,
+            ),
+        )
     }
 
     private fun mentions(facture: Facture, parametres: Parametres): List<String> = buildList {

@@ -17,7 +17,9 @@ import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.LigneFacture
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.data.SuiviRepository
+import com.frigopro.app.data.auCentime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -45,6 +47,32 @@ data class CompteursFactures(
     val enRetard: Int = 0,
     val montantEnRetard: Double = 0.0,
 )
+
+/**
+ * La facture ouverte, imputée de ses avoirs, et ces avoirs eux-mêmes.
+ *
+ * L'écran en a besoin pour dire **ce qu'il reste à payer** et de quoi la facture
+ * a fait l'objet, et pour ne pas proposer de créditer plus qu'il ne reste. Les
+ * avoirs y sont tous, brouillons et annulés compris : la liste dit ce qui
+ * existe, et [FactureChiffree.avoirsTtc] ce qui compte.
+ */
+data class SoldeFacture(
+    val chiffree: FactureChiffree,
+    val avoirs: List<FactureChiffree> = emptyList(),
+) {
+
+    /**
+     * Le hors-taxes déjà pris par d'autres avoirs, brouillons compris : c'est ce
+     * que compte le dépôt quand il crée un avoir (voir
+     * [FactureRepository.creerAvoir]), et la boîte de saisie compte de même pour
+     * ne pas proposer ce qu'il refuserait.
+     */
+    val dejaCrediteHt: Double
+        get() = avoirs
+            .filter { it.facture.statut != StatutFacture.ANNULEE }
+            .sumOf { it.totalHt }
+            .auCentime()
+}
 
 /**
  * Les factures : la liste, celle qu'on regarde, et ce qu'on en fait.
@@ -100,13 +128,15 @@ class FacturesViewModel(
 
     val compteurs: StateFlow<CompteursFactures> =
         combine(liste, _aujourdhui) { toutes, jour ->
-            val enAttente = toutes.filter { it.facture.statut.attendPaiement }
-            val enRetard = enAttente.filter { it.facture.enRetard(jour) }
+            // Les avoirs n'attendent rien, et une facture que les siens couvrent
+            // non plus ; une facture partiellement créditée compte pour son reste.
+            val enAttente = toutes.filter { it.attendPaiement }
+            val enRetard = enAttente.filter { it.enRetard(jour) }
             CompteursFactures(
                 enAttente = enAttente.size,
-                montantEnAttente = enAttente.sumOf { it.totalTtc },
+                montantEnAttente = enAttente.sumOf { it.resteTtc }.auCentime(),
                 enRetard = enRetard.size,
-                montantEnRetard = enRetard.sumOf { it.totalTtc },
+                montantEnRetard = enRetard.sumOf { it.resteTtc }.auCentime(),
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), CompteursFactures())
 
@@ -123,6 +153,35 @@ class FacturesViewModel(
     val complete: StateFlow<FactureComplete?> = _ouverte
         .flatMapLatest { id -> if (id == null) flowOf(null) else factures.observerComplete(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), null)
+
+    /**
+     * Le solde de celle qu'on regarde : ce qu'il en reste à payer, et ses avoirs.
+     *
+     * Un flux et non une fonction qui lirait `liste.value` : le piège du projet,
+     * mordu trois fois, est qu'un `.value` sur un flux que personne ne collecte
+     * reste à sa valeur initiale pour toujours. L'écran le collecte, et la
+     * dépendance est portée par le type.
+     */
+    val solde: StateFlow<SoldeFacture?> =
+        combine(_ouverte, factures.facturesChiffrees) { id, toutes ->
+            toutes.firstOrNull { it.facture.id == id }?.let { chiffree ->
+                SoldeFacture(
+                    chiffree = chiffree,
+                    avoirs = toutes.filter { it.facture.factureOrigineId == id },
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), null)
+
+    private val _avoirRefuse = MutableStateFlow(false)
+
+    /**
+     * Le dépôt a refusé un avoir — à la création ou à l'émission.
+     *
+     * La boîte de saisie ne propose pas de dépasser la facture, mais le dépôt
+     * reste seul juge : un autre avoir a pu être émis entre-temps, ou la facture
+     * annulée. Un refus silencieux laisserait croire que le geste n'a pas pris.
+     */
+    val avoirRefuse: StateFlow<Boolean> = _avoirRefuse.asStateFlow()
 
     private val _documentPret = MutableStateFlow<Uri?>(null)
 
@@ -160,8 +219,32 @@ class FacturesViewModel(
     fun onEmettre() {
         val courante = complete.value?.facture ?: return
         viewModelScope.launch {
-            factures.emettre(courante, parametres.lire())
+            val emise = factures.emettre(courante, parametres.lire())
+            // Un avoir rendu sans numéro est un avoir refusé : voir
+            // [FactureRepository.emettre].
+            if (!emise.numerotee) _avoirRefuse.value = true
         }
+    }
+
+    /**
+     * Le brouillon d'un avoir sur la facture ouverte, créé puis **ouvert**.
+     *
+     * Ouvert, parce qu'un brouillon d'avoir se relit avant de s'émettre comme une
+     * facture : on vérifie ce qu'on crédite avant que le numéro soit consommé.
+     *
+     * @param quantites `null` pour l'avoir total, sinon la quantité de chaque
+     *   ligne à créditer — voir [FactureRepository.creerAvoir].
+     */
+    fun onFaireAvoir(quantites: Map<String, Double>?) {
+        val origine = complete.value?.facture ?: return
+        viewModelScope.launch {
+            val avoir = factures.creerAvoir(origine, quantites)
+            if (avoir == null) _avoirRefuse.value = true else _ouverte.value = avoir.id
+        }
+    }
+
+    fun onRefusVu() {
+        _avoirRefuse.value = false
     }
 
     fun onPayee() {
@@ -297,7 +380,7 @@ class FacturesViewModel(
     /** Les factures qu'il est temps de relancer, pour l'accueil. */
     val aRelancer: StateFlow<List<FactureChiffree>> =
         combine(liste, _aujourdhui) { toutes, jour ->
-            toutes.filter { it.facture.aRelancer(jour) }.sortedBy { it.facture.echeanceLe }
+            toutes.filter { it.aRelancer(jour) }.sortedBy { it.facture.echeanceLe }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), emptyList())
 
     companion object {

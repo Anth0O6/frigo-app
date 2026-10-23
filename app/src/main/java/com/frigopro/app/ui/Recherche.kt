@@ -102,13 +102,22 @@ internal fun DevisChiffre.correspondA(recherche: String): Boolean = Recherche.co
     devis.equipementNom,
 )
 
-/** Le pendant pour une facture. Voir [DevisChiffre.correspondA]. */
+/**
+ * Le pendant pour une facture. Voir [DevisChiffre.correspondA].
+ *
+ * Un avoir se trouve par son numéro comme une facture, et aussi **par celui de
+ * la facture qu'il corrige** : un client qui conteste cite le numéro qu'il a
+ * reçu en premier, et « FAC-2026-0042 » doit ramener la facture et son avoir
+ * côte à côte. Le mot « avoir » les isole tous.
+ */
 internal fun FactureChiffree.correspondA(recherche: String): Boolean = Recherche.correspond(
     recherche,
     facture.numero,
     facture.clientNom,
     facture.objet,
     facture.equipementNom,
+    facture.factureOrigineNumero,
+    facture.nature.libelle.takeIf { facture.estAvoir },
 )
 
 /**

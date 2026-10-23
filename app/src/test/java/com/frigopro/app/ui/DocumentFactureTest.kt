@@ -4,6 +4,7 @@ import com.frigopro.app.data.Client
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureComplete
 import com.frigopro.app.data.LigneFacture
+import com.frigopro.app.data.NatureFacture
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.StatutFacture
 import org.junit.Assert.assertEquals
@@ -171,6 +172,90 @@ class DocumentFactureTest {
         assertEquals("FAC-2026-0042.pdf", DocumentFacture.de(facture(), entreprise, client, LE_12_MARS).nomFichier)
     }
 
+    // — L'avoir ——————————————————————————————————————————————————————————
+
+    /**
+     * Un avoir dit ce qu'il corrige : le numéro **et la date** de la facture
+     * d'origine, en tête comme en pied.
+     */
+    @Test
+    fun `l'avoir porte la reference de la facture d'origine`() {
+        val document = DocumentFacture.de(avoir(), entreprise, client, LE_20_MARS)
+
+        assertEquals("AVOIR", document.titre)
+        assertEquals("AV-2026-0001", document.numero)
+        assertTrue(document.dates.contains("Émis le 20/03/2026"))
+        assertTrue(document.dates.contains("Sur la facture FAC-2026-0042 du 12/03/2026"))
+        assertTrue(
+            document.mentions.any { it.contains("FAC-2026-0042") && it.contains("12/03/2026") },
+        )
+        assertTrue("le destinataire est celui de la facture", document.destinataire.contains("Boucherie Morel"))
+    }
+
+    /**
+     * Rien de ce qui décrit un paiement attendu : sur un avoir c'est l'entreprise
+     * qui doit, et des pénalités imprimées laisseraient croire qu'on demande au
+     * client de régler un crédit.
+     */
+    @Test
+    fun `l'avoir ne porte ni echeance ni penalites`() {
+        val document = DocumentFacture.de(avoir(), entreprise, client, LE_20_MARS)
+        val tout = (document.dates + document.mentions).joinToString(" ")
+
+        assertFalse(tout.contains("échéance", ignoreCase = true))
+        assertFalse(tout.contains("pénalités"))
+        assertFalse(tout.contains("D. 441-5"))
+        assertFalse(tout.contains(Nombres.enEuros(Facture.INDEMNITE_RECOUVREMENT)))
+        assertFalse(tout.contains("escompte"))
+    }
+
+    /** Positif, sous un titre qui dit ce que c'est : c'est le titre qui porte le sens. */
+    @Test
+    fun `le total de l'avoir est positif et se nomme`() {
+        val document = DocumentFacture.de(avoir(), entreprise, client, LE_20_MARS)
+
+        assertEquals("TOTAL DE L'AVOIR", document.totaux.last().intitule)
+        assertEquals(Nombres.enEuros(720.0), document.totaux.last().valeur)
+        assertFalse(document.totaux.any { it.intitule.contains("À PAYER") })
+    }
+
+    /** La franchise en base suit l'avoir : c'est le régime de sa facture. */
+    @Test
+    fun `l'avoir d'une facture en franchise garde la mention`() {
+        val document = DocumentFacture.de(avoir(assujettiTva = false), entreprise, client, LE_20_MARS)
+
+        assertTrue(document.mentions.contains(Parametres.MENTION_FRANCHISE))
+    }
+
+    @Test
+    fun `le fichier d'un avoir porte son propre nom`() {
+        assertEquals("AV-2026-0001.pdf", DocumentFacture.de(avoir(), entreprise, client, LE_20_MARS).nomFichier)
+        assertEquals(
+            "un brouillon d'avoir ne s'appelle jamais « facture »",
+            "avoir.pdf",
+            DocumentFacture.de(avoir(numero = ""), entreprise, client, LE_20_MARS).nomFichier,
+        )
+    }
+
+    private fun avoir(numero: String = "AV-2026-0001", assujettiTva: Boolean = true): FactureComplete {
+        val avoir = Facture(
+            id = "av-1",
+            numero = numero,
+            nature = NatureFacture.AVOIR,
+            factureOrigineId = "fac-1",
+            factureOrigineNumero = "FAC-2026-0042",
+            factureOrigineEmiseLe = LE_12_MARS,
+            clientNom = "Boucherie Morel",
+            clientAdresse = "8 place du Marché, Lyon",
+            objet = "Fuite de fluide — INT-2603-001",
+            statut = if (numero.isBlank()) StatutFacture.BROUILLON else StatutFacture.EMISE,
+            tauxTva = 20.0,
+            assujettiTva = assujettiTva,
+            emiseLe = if (numero.isBlank()) null else LE_20_MARS,
+        )
+        return FactureComplete(avoir, lignes(avoir.id))
+    }
+
     private fun facture(
         statut: StatutFacture = StatutFacture.EMISE,
         assujettiTva: Boolean = true,
@@ -209,5 +294,6 @@ class DocumentFactureTest {
 
     private companion object {
         val LE_12_MARS: LocalDate = LocalDate.of(2026, 3, 12)
+        val LE_20_MARS: LocalDate = LocalDate.of(2026, 3, 20)
     }
 }

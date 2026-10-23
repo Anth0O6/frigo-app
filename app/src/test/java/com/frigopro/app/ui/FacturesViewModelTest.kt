@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Chrono
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.FactureRepository
@@ -24,8 +25,10 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -160,6 +163,48 @@ class FacturesViewModelTest {
         assertEquals(12.0, emise.tauxPenalites, 0.001)
     }
 
+    /**
+     * « Faire un avoir » ouvre le brouillon créé, et la facture d'origine sait
+     * ensuite de combien elle a été créditée.
+     *
+     * Le solde passe par un flux que l'écran collecte, et non par un `.value`
+     * lu au vol : c'est le piège qui a déjà fait partir des factures sans logo,
+     * et le test collecte le flux comme l'écran le fait.
+     */
+    @Test
+    fun `faire un avoir l'ouvre, et la facture d'origine se sait couverte`() = runTest {
+        val viewModel = creerViewModel()
+        ParametresRepository(daoParametres, stockage).enregistrer(entreprise)
+        advanceUntilIdle()
+
+        val travail = intervention.copy(
+            chrono = Chrono(arriveeLe = Instant.parse("2026-03-12T08:00:00Z"), cumuleS = 3600L),
+        )
+        viewModel.onFacturerIntervention(travail)
+        advanceUntilIdle()
+        viewModel.onEmettre()
+        advanceUntilIdle()
+        val factureId = requireNotNull(viewModel.ouverte.value)
+
+        viewModel.onFaireAvoir(null)
+        advanceUntilIdle()
+        val avoir = requireNotNull(viewModel.complete.value).facture
+        assertTrue("c'est l'avoir qui s'ouvre, pour être relu avant émission", avoir.estAvoir)
+        assertEquals(factureId, avoir.factureOrigineId)
+
+        viewModel.onEmettre()
+        advanceUntilIdle()
+        assertTrue(requireNotNull(viewModel.complete.value).facture.numero.startsWith("AV-"))
+
+        viewModel.onOuvrir(factureId)
+        advanceUntilIdle()
+        val solde = requireNotNull(viewModel.solde.value)
+        assertEquals(1, solde.avoirs.size)
+        assertTrue(solde.chiffree.couverte)
+        assertEquals(0, viewModel.compteurs.value.enAttente)
+        assertFalse("rien n'a été refusé", viewModel.avoirRefuse.value)
+    }
+
     /** Même raison que dans [DevisViewModelTest] pour `Dispatchers.Main`. */
     private fun TestScope.creerViewModel(): FacturesViewModel {
         val ordonnanceur = UnconfinedTestDispatcher(testScheduler)
@@ -177,7 +222,12 @@ class FacturesViewModelTest {
                 null
             },
         )
-        listOf(viewModel.liste, viewModel.complete).forEach { flux ->
+        listOf(
+            viewModel.liste,
+            viewModel.complete,
+            viewModel.solde,
+            viewModel.compteurs,
+        ).forEach { flux ->
             backgroundScope.launch(ordonnanceur) { flux.collect { } }
         }
         return viewModel

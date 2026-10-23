@@ -1,5 +1,8 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Facture
+import com.frigopro.app.data.FactureChiffree
+import com.frigopro.app.data.NatureFacture
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -93,5 +96,29 @@ class RechercheTest {
             "et une zone qui n'est pas la sienne ne la trouve pas",
             Recherche.correspond("cuisine", "Rooftop 1", "Toiture"),
         )
+    }
+
+    /**
+     * Un avoir se trouve par son numéro, et par celui de la facture qu'il
+     * corrige : un client qui conteste cite le numéro qu'il a reçu en premier.
+     */
+    @Test
+    fun `un avoir se trouve par son numero et par celui de sa facture`() {
+        val avoir = FactureChiffree(
+            Facture(
+                numero = "AV-2026-0001",
+                clientNom = "Boucherie Morel",
+                nature = NatureFacture.AVOIR,
+                factureOrigineId = "fac-1",
+                factureOrigineNumero = "FAC-2026-0042",
+            ),
+            totalHt = 100.0,
+        )
+        val facture = FactureChiffree(Facture(numero = "FAC-2026-0042"), totalHt = 100.0)
+
+        assertTrue(avoir.correspondA("av 2026 0001"))
+        assertTrue(avoir.correspondA("FAC-2026-0042"))
+        assertTrue("le mot « avoir » les isole", avoir.correspondA("avoir morel"))
+        assertFalse("une facture n'est pas un avoir", facture.correspondA("avoir"))
     }
 }
