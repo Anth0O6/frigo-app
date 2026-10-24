@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
@@ -51,7 +53,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,6 +110,13 @@ fun ClientsRoute(
 ) {
     val carnet by viewModel.groupes.collectAsStateWithLifecycle()
     val fiche by viewModel.fiche.collectAsStateWithLifecycle()
+    val recherche by viewModel.recherche.collectAsStateWithLifecycle()
+    val deplies by viewModel.deplies.collectAsStateWithLifecycle()
+    val parcsComplets by viewModel.parcsComplets.collectAsStateWithLifecycle()
+    // La position dans la liste est tenue par la route, qui reste composée quand
+    // une machine s'ouvre : revenir d'une fiche doit retrouver la carte d'où l'on
+    // est parti, et non le haut d'un carnet de trois cents lignes.
+    val etatListe = rememberLazyListState()
     val parc by machines.parc.collectAsStateWithLifecycle()
     val groupes by machines.groupes.collectAsStateWithLifecycle()
     val ouverte by machines.ouverte.collectAsStateWithLifecycle()
@@ -302,6 +310,17 @@ fun ClientsRoute(
         ClientsScreen(
             carnet = carnet,
             groupes = groupes,
+            lecture = LectureCarnet(
+                recherche = recherche,
+                deplies = deplies,
+                parcsComplets = parcsComplets,
+            ),
+            actionsLecture = ActionsLectureCarnet(
+                onRecherche = viewModel::onRecherche,
+                onBasculerParc = viewModel::onBasculerParc,
+                onVoirToutLeParc = viewModel::onVoirToutLeParc,
+            ),
+            etatListe = etatListe,
             vue = vue,
             onVue = onVue,
             onNouveauClient = viewModel::onNouveauClient,
@@ -645,12 +664,16 @@ fun ClientsScreen(
      * et les mettrait au même rang que le groupe dont elles dépendent.
      */
     groupes: List<GroupeMachines>,
+    /** La recherche et les parcs dépliés, tenus par [ClientsViewModel]. */
+    lecture: LectureCarnet,
+    actionsLecture: ActionsLectureCarnet,
     onNouveauClient: () -> Unit,
     onOuvrirFiche: (Client) -> Unit,
     onNouveauSite: (Client) -> Unit,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: (String) -> Unit,
     modifier: Modifier = Modifier,
+    etatListe: LazyListState = rememberLazyListState(),
     /** Le carnet ouvert, et la bascule vers les deux autres. Voir [CadreCarnet]. */
     vue: VueCarnet = VueCarnet.CLIENTS,
     onVue: (VueCarnet) -> Unit = {},
@@ -659,7 +682,7 @@ fun ClientsScreen(
     actionsSelection: ActionsSelection = ActionsSelection(),
 ) {
     val parClient = groupes.groupBy { it.groupe.clientId }
-    var recherche by rememberSaveable { mutableStateOf("") }
+    val recherche = lecture.recherche
     // Le client dont on coche le parc. Introuvable — supprimé entre-temps —, le
     // carnet reparaît plutôt qu'un écran vide qu'aucun geste ne ferait quitter.
     val clientSelection = selection?.let { courante ->
@@ -667,7 +690,32 @@ fun ClientsScreen(
     }
 
     fun correspondant(client: Client) =
-        correspond(client, parClient[client.id].orEmpty(), recherche)
+        correspondAuCarnet(client, parClient[client.id].orEmpty(), recherche)
+
+    // La carte d'un client telle que la recherche la montre : dépliée sur les
+    // seules machines trouvées, ou comme on l'avait laissée. Voir [parcTrouve].
+    @Composable
+    fun CarteClient(client: Client, carteModifier: Modifier, ajoutSite: (() -> Unit)?, nombreSites: Int) {
+        val machines = parClient[client.id].orEmpty()
+        val trouvees = parcTrouve(client, machines, recherche)
+            ?.takeUnless { client.id in lecture.parcsComplets }
+        ClientCard(
+            client = client,
+            machines = machines,
+            trouvees = trouvees,
+            deplie = trouvees != null || client.id in lecture.deplies,
+            onBasculerParc = { actionsLecture.onBasculerParc(client.id) },
+            onVoirToutLeParc = { actionsLecture.onVoirToutLeParc(client.id) },
+            onClick = { onOuvrirFiche(client) },
+            onOuvrirMachine = onOuvrirMachine,
+            onAjouterMachine = { onAjouterMachine(client.id) },
+            onNouveauSite = ajoutSite,
+            nombreSites = nombreSites,
+            onSelectionner = { actionsSelection.onSelectionner(client.id) },
+            onSelectionnerDepuis = actionsSelection.onSelectionnerDepuis,
+            modifier = carteModifier,
+        )
+    }
 
     // Un groupe est retenu si le donneur d'ordre correspond — ses sites suivent
     // alors tous — ou si l'un de ses sites correspond, auquel cas seuls ceux-là
@@ -702,8 +750,8 @@ fun ClientsScreen(
         Column {
             ChampRecherche(
                 valeur = recherche,
-                onValeur = { recherche = it },
-                indication = "Nom, ville, machine…",
+                onValeur = actionsLecture.onRecherche,
+                indication = "Nom, ville, machine, zone…",
                 modifier = Modifier.padding(horizontal = MargeEcran),
             )
             if (carnet.isEmpty()) {
@@ -716,6 +764,7 @@ fun ClientsScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    state = etatListe,
                     contentPadding = PaddingValues(
                         start = MargeEcran,
                         end = MargeEcran,
@@ -739,34 +788,23 @@ fun ClientsScreen(
                         }
                         groupe.forEach { entree ->
                             item(key = entree.donneur.id) {
-                                ClientCard(
+                                CarteClient(
                                     client = entree.donneur,
-                                    machines = parClient[entree.donneur.id].orEmpty(),
-                                    onClick = { onOuvrirFiche(entree.donneur) },
-                                    onOuvrirMachine = onOuvrirMachine,
-                                    onAjouterMachine = { onAjouterMachine(entree.donneur.id) },
-                                    onNouveauSite = { onNouveauSite(entree.donneur) },
+                                    carteModifier = Modifier,
+                                    ajoutSite = { onNouveauSite(entree.donneur) },
                                     nombreSites = entree.nombreSites,
-                                    onSelectionner = {
-                                        actionsSelection.onSelectionner(entree.donneur.id)
-                                    },
-                                    onSelectionnerDepuis = actionsSelection.onSelectionnerDepuis,
                                 )
                             }
                             items(items = entree.sites, key = { it.id }) { site ->
-                                ClientCard(
+                                CarteClient(
                                     client = site,
-                                    machines = parClient[site.id].orEmpty(),
-                                    onClick = { onOuvrirFiche(site) },
-                                    onOuvrirMachine = onOuvrirMachine,
-                                    onAjouterMachine = { onAjouterMachine(site.id) },
-                                    onSelectionner = { actionsSelection.onSelectionner(site.id) },
-                                    onSelectionnerDepuis = actionsSelection.onSelectionnerDepuis,
                                     // Le retrait est ce qui dit le rattachement :
                                     // une carte pleine largeur au même rang que
                                     // son enseigne se lirait comme un client de
                                     // plus.
-                                    modifier = Modifier.padding(start = RETRAIT_SITE),
+                                    carteModifier = Modifier.padding(start = RETRAIT_SITE),
+                                    ajoutSite = null,
+                                    nombreSites = 0,
                                 )
                             }
                         }
@@ -778,32 +816,25 @@ fun ClientsScreen(
 }
 
 /**
- * La recherche du carnet.
+ * Ce que l'écran du carnet montre de sa propre lecture : la recherche, les parcs
+ * dépliés, et ceux dont on a demandé tout le parc malgré la recherche.
  *
- * Elle porte aussi sur les machines : un technicien se souvient souvent de
- * « la vitrine Costan » sans retrouver le nom du commerce.
+ * Passés en un objet, comme [PlanMachine] : l'écran portait déjà treize
+ * paramètres. Tout vient de [ClientsViewModel], et c'est le point — voir
+ * [ClientsViewModel.recherche].
  */
-private fun correspond(client: Client, machines: List<GroupeMachines>, recherche: String): Boolean {
-    // Les unités intérieures comptent dans la recherche même si elles ne comptent
-    // pas dans l'affichage : « chambre 3 » est ce dont le client parle au
-    // téléphone, et c'est par là qu'on retrouve l'appareil.
-    //
-    // Tous les champs partent d'un coup dans [Recherche.correspond] plutôt qu'en
-    // une disjonction de `contains` : c'est ce qui replie les accents — « pean »
-    // trouve « Péan », ce que ce carnet ne faisait pas — et ce qui laisse chercher
-    // « carrefour lens » sans savoir lequel des deux mots est la ville.
-    val champs = buildList {
-        add(client.nom)
-        add(client.ville)
-        machines.forEach { groupe ->
-            (listOf(groupe.groupe) + groupe.unites).forEach { machine ->
-                add(machine.nom)
-                add(machine.designation)
-            }
-        }
-    }
-    return Recherche.correspond(recherche, *champs.toTypedArray())
-}
+data class LectureCarnet(
+    val recherche: String = "",
+    val deplies: Set<String> = emptySet(),
+    val parcsComplets: Set<String> = emptySet(),
+)
+
+/** Les trois gestes de [LectureCarnet]. */
+data class ActionsLectureCarnet(
+    val onRecherche: (String) -> Unit = {},
+    val onBasculerParc: (String) -> Unit = {},
+    val onVoirToutLeParc: (String) -> Unit = {},
+)
 
 /** L'initiale sous laquelle ranger un nom, accents repliés. */
 private fun initiale(nom: String): String {
@@ -835,6 +866,12 @@ fun ClientCard(
     /** Entre en sélection sur ce parc : voir [ParcEnSelection]. */
     onSelectionner: () -> Unit = {},
     onSelectionnerDepuis: (Equipement) -> Unit = {},
+    /** Le parc est-il déplié. L'état vit dans [ClientsViewModel.deplies]. */
+    deplie: Boolean = false,
+    onBasculerParc: () -> Unit = {},
+    /** Les seules machines que la recherche retient, `null` sinon : voir [parcTrouve]. */
+    trouvees: List<GroupeMachines>? = null,
+    onVoirToutLeParc: () -> Unit = {},
 ) {
     val contexte = LocalContext.current
 
@@ -898,6 +935,10 @@ fun ClientCard(
             SectionMachines(
                 client = client,
                 machines = machines,
+                trouvees = trouvees,
+                deplie = deplie,
+                onBasculerParc = onBasculerParc,
+                onVoirToutLeParc = onVoirToutLeParc,
                 onOuvrirMachine = onOuvrirMachine,
                 onAjouterMachine = onAjouterMachine,
                 onSelectionner = onSelectionner,
@@ -967,22 +1008,32 @@ private val RETRAIT_SITE = 20.dp
 private fun SectionMachines(
     client: Client,
     machines: List<GroupeMachines>,
+    trouvees: List<GroupeMachines>?,
+    deplie: Boolean,
+    onBasculerParc: () -> Unit,
+    onVoirToutLeParc: () -> Unit,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: () -> Unit,
     onSelectionner: () -> Unit,
     onSelectionnerDepuis: (Equipement) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Clé sur l'identifiant du client : la liste recycle ses cartes, et sans
-    // cela l'état déplié sauterait d'un client à l'autre au défilement.
-    var deplie by rememberSaveable(client.id) { mutableStateOf(false) }
+    // L'état déplié vient du ViewModel, par identifiant de client : la liste
+    // recycle ses cartes, et il ne doit ni sauter d'un client à l'autre au
+    // défilement, ni se perdre quand une machine s'ouvre puis se referme.
+    //
+    // Une recherche qui désigne des machines **déplie de force** et ne montre
+    // qu'elles : l'en-tête ne replie alors plus rien — replier ce qu'on vient de
+    // chercher n'a pas de sens —, et « voir tout le parc » rend la main.
+    val filtre = trouvees != null
+    val montrees = trouvees ?: machines
 
     Column(modifier = modifier.fillMaxWidth()) {
         HorizontalDivider()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { deplie = !deplie }
+                .clickable(enabled = !filtre, onClick = onBasculerParc)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -994,7 +1045,11 @@ private fun SectionMachines(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = libelleParc(machines.size),
+                text = if (trouvees != null) {
+                    libelleTrouvees(trouvees.size, machines.size)
+                } else {
+                    libelleParc(machines.size)
+                },
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
@@ -1017,14 +1072,16 @@ private fun SectionMachines(
                     Text(text = "Sélectionner")
                 }
             }
-            Icon(
-                imageVector = if (deplie) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = if (deplie) "Replier le parc" else "Déplier le parc",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!filtre) {
+                Icon(
+                    imageVector = if (deplie) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (deplie) "Replier le parc" else "Déplier le parc",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (deplie) {
-            machines.forEach { groupe ->
+            montrees.forEach { groupe ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1062,6 +1119,16 @@ private fun SectionMachines(
                     )
                 }
             }
+            if (trouvees != null) {
+                TextButton(
+                    onClick = onVoirToutLeParc,
+                    modifier = Modifier
+                        .padding(start = 30.dp)
+                        .heightIn(min = LocalCibles.current.action),
+                ) {
+                    Text(text = "Voir tout le parc (${machines.size})")
+                }
+            }
             TextButton(
                 onClick = onAjouterMachine,
                 modifier = Modifier.padding(start = 30.dp, bottom = 4.dp),
@@ -1077,6 +1144,10 @@ private fun SectionMachines(
         }
     }
 }
+
+/** « 1 machine trouvée sur 40 », « 3 machines trouvées sur 40 ». */
+private fun libelleTrouvees(trouvees: Int, total: Int): String =
+    if (trouvees == 1) "1 machine trouvée sur $total" else "$trouvees machines trouvées sur $total"
 
 /** « Aucune machine », « 1 machine », « 3 machines ». */
 private fun libelleParc(nombre: Int): String = when (nombre) {
@@ -1149,6 +1220,8 @@ private fun ClientsScreenPreview() {
                         ),
                     ),
                 ),
+                lecture = LectureCarnet(deplies = setOf("1")),
+                actionsLecture = ActionsLectureCarnet(),
                 onNouveauClient = {},
                 onOuvrirFiche = {},
                 onNouveauSite = {},

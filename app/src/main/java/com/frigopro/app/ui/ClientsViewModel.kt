@@ -45,6 +45,65 @@ class ClientsViewModel(private val repository: ClientRepository) : ViewModel() {
             initialValue = emptyList(),
         )
 
+    // — La lecture du carnet ————————————————————————————————————————————
+
+    private val _recherche = MutableStateFlow("")
+
+    /**
+     * Ce qu'on cherche dans le carnet.
+     *
+     * Tenue ici et non dans l'écran, sur le modèle de [MaterielViewModel.recherche]
+     * : l'écran du carnet **quitte la composition** quand une machine s'ouvre, et
+     * un `rememberSaveable` posé dedans repartait vide au retour. Contrôler cinq
+     * machines d'un site obligeait alors à retaper cinq fois sa recherche et à
+     * redéplier cinq fois sa carte, sur un carnet de trois cents lignes.
+     */
+    val recherche: StateFlow<String> = _recherche.asStateFlow()
+
+    private val _deplies = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Les clients dont le parc est déplié, par identifiant — même raison que
+     * [recherche]. L'identifiant et non la position : la liste recycle ses cartes,
+     * et l'état déplié ne doit pas sauter d'un client à l'autre au défilement.
+     */
+    val deplies: StateFlow<Set<String>> = _deplies.asStateFlow()
+
+    private val _parcsComplets = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Les clients dont on a demandé **tout le parc** alors que la recherche n'en
+     * retenait que quelques machines. Vidé à chaque nouvelle recherche : « voir
+     * tout » répondait à celle d'avant, et le garder ferait croire que la
+     * suivante ne filtre plus rien.
+     */
+    val parcsComplets: StateFlow<Set<String>> = _parcsComplets.asStateFlow()
+
+    fun onRecherche(saisie: String) {
+        if (saisie != _recherche.value) _parcsComplets.value = emptySet()
+        _recherche.value = saisie
+    }
+
+    /** Déplie ou replie le parc d'un client. */
+    fun onBasculerParc(clientId: String) {
+        val courants = _deplies.value
+        _deplies.value = if (clientId in courants) courants - clientId else courants + clientId
+    }
+
+    /**
+     * Montre tout le parc d'un client malgré la recherche : voir [parcsComplets].
+     *
+     * Le parc est aussi **noté déplié** : la recherche le dépliait de force, et
+     * « voir tout » qui le replierait d'un coup cacherait ce qu'on vient de
+     * demander à voir.
+     */
+    fun onVoirToutLeParc(clientId: String) {
+        _parcsComplets.value = _parcsComplets.value + clientId
+        _deplies.value = _deplies.value + clientId
+    }
+
+    // — La fiche ————————————————————————————————————————————————————————
+
     private val _fiche = MutableStateFlow<EtatFicheClient?>(null)
 
     /** Fiche ouverte, ou `null` quand l'écran n'affiche que le carnet. */

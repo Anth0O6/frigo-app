@@ -119,6 +119,47 @@ class ClientsViewModelTest {
         assertTrue(dao.contenu.isEmpty())
     }
 
+    /**
+     * La recherche et les parcs dépliés vivent dans le ViewModel, et non dans
+     * l'écran du carnet qui quitte la composition quand une machine s'ouvre :
+     * contrôler cinq machines d'un site ne doit pas demander de retaper cinq fois
+     * la recherche ni de redéplier cinq fois la carte.
+     */
+    @Test
+    fun `la recherche et les parcs deplies survivent a l'ecran`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onRecherche("carrefour")
+        viewModel.onBasculerParc("cl-1")
+        viewModel.onBasculerParc("cl-2")
+        viewModel.onBasculerParc("cl-2")
+
+        assertEquals("carrefour", viewModel.recherche.value)
+        assertEquals("un second appui replie", setOf("cl-1"), viewModel.deplies.value)
+    }
+
+    /**
+     * « Voir tout le parc » répond à une recherche : une nouvelle saisie l'oublie,
+     * sans quoi la suivante semblerait ne plus rien filtrer. Le parc, lui, reste
+     * déplié — le replier cacherait ce qu'on vient de demander à voir.
+     */
+    @Test
+    fun `voir tout le parc vaut pour la recherche en cours seulement`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onRecherche("vitrine")
+
+        viewModel.onVoirToutLeParc("cl-1")
+        assertEquals(setOf("cl-1"), viewModel.parcsComplets.value)
+        assertEquals(setOf("cl-1"), viewModel.deplies.value)
+
+        viewModel.onRecherche("vitrine")
+        assertEquals("la même saisie ne l'oublie pas", setOf("cl-1"), viewModel.parcsComplets.value)
+
+        viewModel.onRecherche("vitrine 12")
+        assertTrue(viewModel.parcsComplets.value.isEmpty())
+        assertEquals(setOf("cl-1"), viewModel.deplies.value)
+    }
+
     /** Même raison que dans [InterventionsViewModelTest]. */
     private fun TestScope.creerViewModel(): ClientsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))

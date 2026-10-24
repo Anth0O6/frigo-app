@@ -1,9 +1,14 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Client
+import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
+import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.NatureFacture
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,6 +101,47 @@ class RechercheTest {
             "et une zone qui n'est pas la sienne ne la trouve pas",
             Recherche.correspond("cuisine", "Rooftop 1", "Toiture"),
         )
+    }
+
+    /**
+     * Le carnet trouve un client **par la zone** d'une de ses machines, comme le
+     * Préventif : la même saisie ne doit pas trouver dans une vue et pas dans
+     * l'autre.
+     */
+    @Test
+    fun `le carnet trouve un client par la zone de ses machines`() {
+        val carrefour = Client(id = "cl-1", nom = "Carrefour Vaise", ville = "Lyon")
+        val parc = listOf(
+            GroupeMachines(Equipement(id = "r1", clientId = "cl-1", nom = "Rooftop 1", zone = "Toiture")),
+        )
+
+        assertTrue(correspondAuCarnet(carrefour, parc, "toiture"))
+        assertTrue("les mots traversent client et machine", correspondAuCarnet(carrefour, parc, "vaise toit"))
+        assertFalse(correspondAuCarnet(carrefour, parc, "cuisine"))
+    }
+
+    /**
+     * Une recherche qui désigne des machines ne montre **qu'elles** ; une
+     * recherche qui désigne le client, ou rien, laisse tout le parc. Une unité
+     * intérieure trouvée ramène son groupe, le seul que le carnet montre.
+     */
+    @Test
+    fun `le parc trouve ne garde que les machines designees`() {
+        val carrefour = Client(id = "cl-1", nom = "Carrefour Vaise", ville = "Lyon")
+        val vitrine = GroupeMachines(Equipement(id = "v12", clientId = "cl-1", nom = "Vitrine 12"))
+        val autre = GroupeMachines(Equipement(id = "v3", clientId = "cl-1", nom = "Vitrine 3"))
+        val split = GroupeMachines(
+            groupe = Equipement(id = "g1", clientId = "cl-1", nom = "Groupe bureaux"),
+            unites = listOf(Equipement(id = "u1", clientId = "cl-1", parentId = "g1", nom = "Chambre 3")),
+        )
+        val parc = listOf(vitrine, autre, split)
+
+        assertEquals(listOf(vitrine), parcTrouve(carrefour, parc, "vitrine 12"))
+        assertEquals("le client prête ses mots", listOf(vitrine), parcTrouve(carrefour, parc, "vaise vitrine 12"))
+        assertEquals("l'unité ramène son groupe", listOf(split), parcTrouve(carrefour, parc, "chambre"))
+        assertNull("une recherche vide ne filtre rien", parcTrouve(carrefour, parc, " "))
+        assertNull("chercher le client, c'est demander tout son parc", parcTrouve(carrefour, parc, "carrefour"))
+        assertNull("rien de trouvé, rien de filtré", parcTrouve(carrefour, parc, "pompe"))
     }
 
     /**

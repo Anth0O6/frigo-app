@@ -1,8 +1,11 @@
 package com.frigopro.app.ui
 
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.DevisChiffre
 import com.frigopro.app.data.EcheanceMaintenance
+import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.FactureChiffree
+import com.frigopro.app.data.GroupeMachines
 import java.text.Normalizer
 
 /**
@@ -172,3 +175,65 @@ internal fun EcheanceMaintenance.correspondA(recherche: String): Boolean = Reche
     clientNom,
     gamme.libelle,
 )
+
+/**
+ * Ce qu'une machine apporte à une recherche du carnet : son nom, sa marque et son
+ * modèle, et **sa zone** — « toiture » doit ramener le site dont le toit porte
+ * les groupes, exactement comme au Préventif, sans quoi la même saisie trouverait
+ * dans une vue et pas dans l'autre.
+ */
+private fun Equipement.champsRecherche(): List<String> = listOf(nom, designation, zone)
+
+/**
+ * Les champs d'un groupe pour la recherche : le groupe **et ses unités**. Les
+ * unités comptent même si le carnet ne les montre pas — « chambre 3 » est ce dont
+ * le client parle au téléphone, et c'est par là qu'on retrouve l'appareil.
+ */
+private fun GroupeMachines.champsRecherche(): List<String> =
+    (listOf(groupe) + unites).flatMap { it.champsRecherche() }
+
+/**
+ * Le client paraît-il dans le carnet pour cette recherche ?
+ *
+ * Tous les champs partent d'un coup dans [Recherche.correspond] : « carrefour
+ * toiture » trouve le site sans qu'on sache lequel des deux mots est la machine.
+ */
+internal fun correspondAuCarnet(client: Client, machines: List<GroupeMachines>, recherche: String): Boolean =
+    Recherche.correspond(
+        recherche,
+        client.nom,
+        client.ville,
+        *machines.flatMap { it.champsRecherche() }.toTypedArray(),
+    )
+
+/**
+ * Les machines que la recherche désigne dans le parc d'un client, ou `null` quand
+ * elle ne désigne pas de machine en particulier.
+ *
+ * C'est ce qui rend la recherche du carnet utile sur un site de trois cents
+ * machines : taper « vitrine 12 » retrouvait le client, puis laissait chercher la
+ * vitrine à la main dans un parc replié. Le carnet **déplie** donc la carte et ne
+ * montre que ces machines-là, « voir tout le parc » restant à un geste.
+ *
+ * Une machine est retenue si la recherche correspond à **elle, son client compris**
+ * : « carrefour vitrine » garde les vitrines de Carrefour, le premier mot venant
+ * du client et le second de la machine. Rien n'est filtré quand la recherche est
+ * vide, ou quand le client y répond **seul** — chercher « Carrefour » demande le
+ * client, pas une partie de son parc. Et rien non plus quand aucune machine ne
+ * répond seule alors que le client paraît : les mots tombent alors sur deux
+ * machines différentes, et n'en montrer aucune ferait croire le parc vide.
+ */
+internal fun parcTrouve(client: Client, machines: List<GroupeMachines>, recherche: String): List<GroupeMachines>? {
+    if (Recherche.decouper(recherche).isEmpty()) return null
+    if (Recherche.correspond(recherche, client.nom, client.ville)) return null
+    return machines
+        .filter { groupe ->
+            Recherche.correspond(
+                recherche,
+                client.nom,
+                client.ville,
+                *groupe.champsRecherche().toTypedArray(),
+            )
+        }
+        .takeIf { it.isNotEmpty() }
+}
