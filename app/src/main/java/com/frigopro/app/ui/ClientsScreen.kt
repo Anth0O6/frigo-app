@@ -98,11 +98,11 @@ fun ClientsRoute(
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
     /**
      * Le plan de maintenance préventive. `viewModel()` rend une seule
-     * instance par classe, si bien que c'est **le même** que celui du
-     * « Préventif » de la tournée : une gamme rattachée ici se voit là sans que
+     * instance par classe, si bien que c'est **le même** que celui de
+     * l'Entretien du Planning : une gamme rattachée ici se voit là sans que
      * rien ne transporte d'état, et une visite consignée ici éteint l'échéance
      * qui paraissait dans la liste. C'est le mécanisme qui fait déjà passer le
-     * formulaire d'intervention de l'accueil au planning.
+     * formulaire d'intervention d'un onglet à l'autre.
      */
     maintenance: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
 ) {

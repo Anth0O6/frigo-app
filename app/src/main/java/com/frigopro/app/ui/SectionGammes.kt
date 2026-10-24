@@ -4,14 +4,20 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,26 +32,97 @@ import com.frigopro.app.data.GammeMaintenance
 import com.frigopro.app.data.Periodicite
 import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.PointGamme
+import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
+import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
 
 /**
- * Les gammes de maintenance, dans les Réglages.
+ * L'écran des gammes, ouvert depuis l'Entretien du Planning.
  *
- * Elles y sont et non dans la tournée pour la raison qui y range le catalogue de
- * prestations et la liste des types d'intervention : une gamme se décrit une fois
- * et se consulte des centaines de fois. L'écran qui **l'applique** est ailleurs —
- * la vue Préventif de la tournée, et la fiche d'une machine.
+ * Il **remplace** l'Entretien plutôt que de s'empiler dessus, comme un devis ou
+ * une machine ouverts ailleurs : une seule profondeur, un `BackHandler` posé par
+ * la route, et toujours pas de graphe de navigation. Un bouton de retour visible
+ * double le geste système, parce qu'un geste qui ne se voit pas n'est pas une
+ * fonctionnalité.
+ */
+@Composable
+fun EcranGammes(
+    gammes: List<GammeMaintenance>,
+    points: List<PointGamme>,
+    machinesParGamme: Map<String, Int>,
+    realisationParGamme: Map<String, RealisationGamme>,
+    gammeOuverte: String?,
+    actions: ActionsGammes,
+    onFermer: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        // La coquille pose les marges des barres système.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MargeEcran, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BoutonCarre(
+                    icone = Icons.AutoMirrored.Filled.ArrowBack,
+                    description = "Revenir à l'entretien",
+                    onClick = onFermer,
+                )
+                Text(
+                    text = "Gammes de maintenance",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        },
+    ) { marges ->
+        Column(
+            modifier = Modifier
+                .padding(marges)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = MargeEcran)
+                .padding(top = 12.dp, bottom = 24.dp),
+        ) {
+            SectionGammes(
+                gammes = gammes,
+                points = points,
+                machinesParGamme = machinesParGamme,
+                realisationParGamme = realisationParGamme,
+                gammeOuverte = gammeOuverte,
+                actions = actions,
+            )
+        }
+    }
+}
+
+/**
+ * Les gammes de maintenance : la liste, et la boîte qui en édite une.
+ *
+ * Elles vivaient dans les Réglages, pour la raison qui y range le catalogue de
+ * prestations : une gamme se décrit une fois et se consulte des centaines de
+ * fois. La raison ne tenait pas : la maintenance se trouvait alors éclatée entre
+ * trois onglets — décrite aux Réglages, affectée depuis le carnet, visitée depuis
+ * la tournée —, et qui voulait créer son premier contrat ne savait pas où aller.
+ * Elles sont donc à l'**Entretien** du Planning (voir [EcranGammes]), à côté de
+ * ce qu'elles doivent. L'écran qui les **affecte** reste le carnet des clients,
+ * où l'on coche un parc.
  *
  * L'édition passe par une **boîte de dialogue** et non par une page dans la page :
- * l'onglet Réglages tient déjà une seule profondeur, et un troisième niveau y
- * aurait demandé une pile arrière que le projet n'a pas. C'est le motif de
- * `DialoguePrestation`, qui édite une prestation du catalogue depuis cette même
- * liste.
+ * l'écran des gammes est déjà une profondeur, et un niveau de plus aurait demandé
+ * une pile arrière que le projet n'a pas. C'est le motif de `DialoguePrestation`,
+ * qui édite une prestation du catalogue dans les Réglages.
  */
 @Composable
 fun SectionGammes(
@@ -119,8 +196,8 @@ fun SectionGammes(
  * Les rappels de l'écran des gammes, en un objet.
  *
  * Sept rappels portés un à un auraient allongé d'autant la signature de
- * `ReglagesScreen`, qui en comptait déjà trente : c'est le geste déjà fait pour le
- * tarif de déplacement et pour le registre.
+ * `ReglagesScreen`, qui les a portés et en comptait déjà trente : c'est le geste
+ * déjà fait pour le tarif de déplacement et pour le registre.
  */
 data class ActionsGammes(
     val onOuvrir: (String) -> Unit = {},

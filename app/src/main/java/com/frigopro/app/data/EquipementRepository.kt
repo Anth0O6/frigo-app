@@ -179,7 +179,7 @@ class EquipementRepository(
      * Range une sélection de machines dans une zone, ou les en retire.
      *
      * La zone est **nettoyée** comme le nom d'une machine, et pour une raison plus
-     * forte : « Toiture » et « Toiture  » feraient deux groupes au Préventif, et
+     * forte : « Toiture » et « Toiture  » feraient deux groupes à l'Entretien, et
      * l'espace de trop ne se voit pas à l'écran. Vide veut dire **non rangée** —
      * c'est le chemin de retour vers « Sans zone », et il doit exister : une zone
      * posée sur la mauvaise sélection se corrige en la retirant, pas en inventant

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.StatutEcheance
+import com.frigopro.app.ui.composants.BoutonDiscret
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
@@ -39,11 +41,17 @@ import java.time.LocalDate
 import java.util.Locale
 
 /**
- * Le Préventif : ce que le calendrier doit.
+ * L'Entretien : ce que le calendrier doit. La seconde vue du Planning.
  *
- * Il répond à une question que les trois autres vues de la tournée ne posent
- * pas — elles montrent des interventions **posées sur une date**, celle-ci montre
- * du travail **dû**. Voir [VueTournee.PREVENTIF].
+ * Il répond à une question que la semaine ne pose pas — elle montre des
+ * interventions **posées sur une date**, celui-ci montre du travail **dû**. Voir
+ * [VuePlanning.ENTRETIEN].
+ *
+ * Il porte aussi **les gammes**, derrière un bouton visible de l'en-tête : elles
+ * vivaient dans les Réglages, si bien que la maintenance était éclatée entre
+ * trois onglets — la gamme décrite aux Réglages, affectée depuis le carnet,
+ * visitée depuis la tournée — et que créer son premier contrat demandait de
+ * savoir où aller. Une gamme se décrit là où l'on voit ce qu'elle doit.
  *
  * **Groupé par état et non par date**, et c'est la décision de l'écran : sur un
  * site de plusieurs centaines d'équipements, une liste chronologique noierait les
@@ -59,13 +67,19 @@ import java.util.Locale
 @Composable
 fun EcranPreventif(
     echeances: List<EcheanceMaintenance>,
-    vue: VueTournee,
-    onVue: (VueTournee) -> Unit,
+    vue: VuePlanning,
+    onVue: (VuePlanning) -> Unit,
     onOuvrir: (EcheanceMaintenance) -> Unit,
     modifier: Modifier = Modifier,
     aujourdhui: LocalDate = LocalDate.now(),
-    /** Aucune gamme n'existe encore : l'écran dit où elles se créent. */
-    onVoirReglages: () -> Unit = {},
+    /** Ouvre les gammes : le bouton de l'en-tête. */
+    onVoirGammes: () -> Unit = {},
+    /**
+     * L'état vide : il mène droit à la **création** de la première gamme, ici
+     * même. Il envoyait aux Réglages, c'est-à-dire dans un autre onglet, chercher
+     * une page parmi dix.
+     */
+    onNouvelleGamme: () -> Unit = onVoirGammes,
 ) {
     var recherche by rememberSaveable { mutableStateOf("") }
     var aVenirDeplie by rememberSaveable { mutableStateOf(false) }
@@ -83,12 +97,27 @@ fun EcranPreventif(
         containerColor = MaterialTheme.colorScheme.background,
     ) { marges ->
         Column(modifier = Modifier.padding(marges)) {
-            Text(
-                text = VueTournee.PREVENTIF.libelle,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
-            )
-            BasculeTournee(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MargeEcran, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = VuePlanning.ENTRETIEN.libelle,
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                // Un bouton nommé et non une icône : « Gammes » est le mot du
+                // contrat, et c'est lui qu'on cherche pour en créer un.
+                BoutonDiscret(
+                    texte = "Gammes",
+                    onClick = onVoirGammes,
+                    modifier = Modifier.widthIn(min = 112.dp),
+                )
+            }
+            BasculePlanning(
                 vue = vue,
                 onVue = onVue,
                 modifier = Modifier
@@ -98,11 +127,11 @@ fun EcranPreventif(
 
             if (echeances.isEmpty()) {
                 Encart(
-                    texte = "Aucun plan de maintenance. Créez une gamme dans les Réglages — " +
-                        "une liste de points et une cadence —, puis affectez-la à un parc : " +
-                        "ce qu'elle doit apparaîtra ici.",
-                    complement = "Ouvrir les Réglages",
-                    onClick = onVoirReglages,
+                    texte = "Aucun plan de maintenance. Créez une gamme — une liste de points " +
+                        "et une cadence —, puis affectez-la à un parc depuis le carnet des " +
+                        "clients : ce qu'elle doit apparaîtra ici.",
+                    complement = "Créer une gamme",
+                    onClick = onNouvelleGamme,
                     modifier = Modifier.padding(horizontal = MargeEcran),
                 )
                 return@Column

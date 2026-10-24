@@ -179,7 +179,7 @@ internal fun EcheanceMaintenance.correspondA(recherche: String): Boolean = Reche
 /**
  * Ce qu'une machine apporte à une recherche du carnet : son nom, sa marque et son
  * modèle, et **sa zone** — « toiture » doit ramener le site dont le toit porte
- * les groupes, exactement comme au Préventif, sans quoi la même saisie trouverait
+ * les groupes, exactement comme à l'Entretien, sans quoi la même saisie trouverait
  * dans une vue et pas dans l'autre.
  */
 private fun Equipement.champsRecherche(): List<String> = listOf(nom, designation, zone)

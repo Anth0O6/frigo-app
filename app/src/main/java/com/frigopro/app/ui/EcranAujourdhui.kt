@@ -1,342 +1,730 @@
 package com.frigopro.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditCalendar
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.EcheanceMaintenance
+import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutEcheance
 import com.frigopro.app.data.StatutIntervention
+import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.ChampRecherche
+import com.frigopro.app.ui.composants.Encart
+import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.Section
-import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.FrigoProTheme
 import com.frigopro.app.ui.theme.LocalStatuts
 import com.frigopro.app.ui.theme.StyleChiffrePetit
+import com.frigopro.app.ui.theme.StyleSection
 import java.time.LocalDate
 import java.time.LocalTime
 
 /**
- * L'écran d'accueil : ce qu'il faut savoir en ouvrant l'application.
+ * La recherche d'« Aujourd'hui » : ouverte ou non, ce qu'on a tapé, et ce
+ * qu'elle trouve dans **toute** la tournée.
  *
- * Il répond à une seule question — « et maintenant ? » — et tout y est
- * subordonné : l'intervention en cours occupe le haut, en grand, avec de quoi
- * l'ouvrir ou s'y rendre sans rien chercher ; le reste de la journée suit en
- * lignes serrées ; les chiffres et les échéances ferment la marche.
+ * Tant qu'elle est fermée, l'écran est la journée. Ouverte, il devient la liste
+ * des interventions qui correspondent, groupées par date : retrouver
+ * « Carrefour en mars » demandait sinon de remonter jour par jour.
+ */
+data class RechercheJournee(
+    val ouverte: Boolean = false,
+    val saisie: String = "",
+    val trouvees: List<LigneTournee> = emptyList(),
+)
+
+/** Les gestes de la recherche, en un objet : voir [RechercheJournee]. */
+data class ActionsRecherche(
+    val onOuvrir: () -> Unit = {},
+    val onSaisie: (String) -> Unit = {},
+    val onFermer: () -> Unit = {},
+)
+
+/**
+ * Ce qui attend, réuni sous « À traiter » : les factures à relancer, les visites
+ * dues, les articles à racheter, les échéances F-Gas et les réglages qui
+ * manquent.
  *
- * Aucune navigation dans le temps ici. L'accueil montre *aujourd'hui*, et le
- * Planning montre les autres jours : donner deux façons de changer de date
- * conduirait à se demander laquelle des deux on regarde.
+ * Aucune de ces listes n'est stockée — un impayé, un manque, une visite due et
+ * une échéance se déduisent tous d'un seuil et d'une date, et un booléen en base
+ * serait faux le lendemain. Toutes sont **plafonnées à trois lignes** à
+ * l'affichage : l'accueil alerte, les onglets tiennent le détail.
+ */
+data class ATraiter(
+    /**
+     * Les factures échues qu'il est temps de relancer. Une facture de six
+     * semaines est une réponse à « et maintenant ? » au même titre qu'une
+     * intervention en cours.
+     */
+    val impayees: List<FactureChiffree> = emptyList(),
+    /**
+     * Les visites préventives en retard ou dues dans leur préavis : le seul
+     * travail du métier que **personne ne vient demander**. Une ronde du matin
+     * oubliée ne se manifeste jamais — elle se découvre à la fin du contrat,
+     * quand le client compte les visites.
+     */
+    val visites: List<EcheanceMaintenance> = emptyList(),
+    /**
+     * Ce qu'il faut racheter, atelier et camion confondus : un manque découvert
+     * sur un toit coûte la journée.
+     */
+    val manquants: List<ArticleEnStock> = emptyList(),
+    val echeances: List<EcheanceFgas> = emptyList(),
+    val reglages: List<ReglageManquant> = emptyList(),
+) {
+
+    val vide: Boolean
+        get() = impayees.isEmpty() && visites.isEmpty() && manquants.isEmpty() &&
+            echeances.isEmpty() && reglages.isEmpty()
+}
+
+/**
+ * Où mène chaque ligne de « À traiter ».
+ *
+ * **Chaque ligne ouvre l'objet lui-même**, et c'est ce que ce bloc a corrigé :
+ * une visite due menait à la liste du préventif, où il fallait la retrouver ; un
+ * article manquant menait au magasin, où il fallait le chercher ; une échéance
+ * F-Gas ne menait nulle part. Une alerte qui demande encore de chercher n'est
+ * qu'à moitié une réponse à « et maintenant ? ». Les « N autres » mènent, eux, à
+ * la liste entière, là où elle se tient.
+ */
+data class ActionsATraiter(
+    val onOuvrirFacture: (Facture) -> Unit = {},
+    val onVoirFactures: () -> Unit = {},
+    val onOuvrirVisite: (EcheanceMaintenance) -> Unit = {},
+    val onVoirEntretien: () -> Unit = {},
+    val onOuvrirArticle: (ArticleEnStock) -> Unit = {},
+    val onVoirMagasin: () -> Unit = {},
+    val onOuvrirMachine: (Equipement) -> Unit = {},
+    val onReglage: (PageReglages) -> Unit = {},
+)
+
+/**
+ * « Aujourd'hui » : la journée, et ce qui attend.
+ *
+ * L'écran réunit ce qui était deux vues de la Tournée, **Maintenant** et
+ * **Jour**, et c'était le même défaut que l'ancien couple accueil / planning :
+ * la « suite de la journée » de l'une était la liste de l'autre, si bien que les
+ * mêmes interventions paraissaient sous deux pastilles sans que rien ne dise
+ * laquelle regarder. Il ne reste qu'un écran, qui répond dans l'ordre aux
+ * questions qu'on se pose en sortant le téléphone : chez qui je suis — la carte
+ * du haut, avec « Démarrer » —, ce qui suit — la journée —, et ce qui m'attend
+ * par ailleurs — « À traiter ».
+ *
+ * Il **navigue dans le temps**, à la différence de l'ancien accueil : la date et
+ * ses flèches sont en tête, et c'était le prix de la fusion — la vue Jour les
+ * portait. La carte du haut ne paraît que **sur aujourd'hui** : « Démarrer » sur
+ * une intervention de jeudi prochain lancerait un chronomètre qui n'a rien à
+ * mesurer. « À traiter », lui, reste en bas quel que soit le jour regardé, parce
+ * qu'une facture échue ne l'est pas moins un autre jour.
+ *
+ * Pas de bascule : la frise est une **préférence d'affichage** de la journée et
+ * non une destination, et elle se choisit par un bouton à côté du titre de la
+ * journée. La semaine et l'entretien sont l'onglet Planning.
  */
 @Composable
 fun EcranAujourdhui(
     etat: EtatAujourdhui,
-    /** Laquelle des trois vues de la tournée est ouverte : celle-ci, ici. */
-    vue: VueTournee,
-    onVue: (VueTournee) -> Unit,
-    onOuvrir: (Intervention) -> Unit,
+    jour: LocalDate,
+    lignes: List<LigneTournee>,
+    onJourPrecedent: () -> Unit,
+    onJourSuivant: () -> Unit,
+    onJourChoisi: (LocalDate) -> Unit,
+    onNouvelleIntervention: () -> Unit,
+    onOuvrirIntervention: (Intervention) -> Unit,
+    onModifierIntervention: (Intervention) -> Unit,
     /**
-     * Démarrer le travail en un appui : le chronomètre part, l'intervention
-     * passe en cours, et sa fiche s'ouvre. Voir `InterventionViewModel.onDemarrer`.
+     * La pastille d'une ligne, et « Terminer » sur une carte en cours. Ce n'est
+     * plus un cycle de statuts : voir [GesteStatut] pour ce que chacun fait.
+     */
+    onChangerStatut: (Intervention) -> Unit,
+    /**
+     * Démarrer le travail en un appui, depuis la carte du haut : le chronomètre
+     * part, l'intervention passe en cours, et sa fiche s'ouvre. Voir
+     * `InterventionViewModel.onDemarrer`.
      */
     onDemarrer: (Intervention) -> Unit,
     onItineraire: (Client) -> Unit,
-    onVoirDevis: () -> Unit,
+    /** La journée en frise horaire plutôt qu'en liste. */
+    frise: Boolean,
+    onBasculerVue: () -> Unit,
+    /** La roue crantée : les Réglages, en plein écran, par la coquille. */
+    onOuvrirReglages: () -> Unit,
     modifier: Modifier = Modifier,
-    /**
-     * Les factures échues qu'il est temps de relancer.
-     *
-     * Elles paraissent ici et non seulement dans leur onglet, pour la raison qui
-     * a fait poser les échéances F-Gas au même endroit : l'accueil répond à
-     * « et maintenant ? », et une facture de six semaines est une réponse à
-     * cette question. Rien n'est stocké — « en retard » se déduit de l'échéance
-     * et du jour, et un booléen en base serait faux le lendemain.
-     */
-    impayees: List<FactureChiffree> = emptyList(),
-    onOuvrirFacture: (Facture) -> Unit = {},
-    /**
-     * Ce qu'il faut racheter, atelier et camion confondus.
-     *
-     * Même raison que les factures échues, et c'est la dernière liste du projet
-     * à rejoindre l'accueil : un article sous son seuil répond à « et
-     * maintenant ? » aussi franchement qu'un impayé — il décide de ce qu'on
-     * charge avant de partir, et un manque découvert sur un toit coûte la
-     * journée. Le manque est dérivé du seuil et de la quantité, jamais stocké.
-     */
-    manquants: List<ArticleEnStock> = emptyList(),
-    onVoirMagasin: () -> Unit = {},
-    /**
-     * Les visites préventives en retard ou dues dans leur préavis.
-     *
-     * Elles rejoignent l'accueil pour la raison des trois autres listes, et avec
-     * un argument de plus : une visite préventive est le seul travail du métier
-     * que **personne ne vient demander**. Un dépannage arrive par un appel, une
-     * facture par une échéance, un manque se voit en chargeant ; une ronde du
-     * matin oubliée ne se manifeste jamais — elle se découvre à la fin du
-     * contrat, quand le client compte les visites. L'accueil est donc le seul
-     * endroit où elle peut se rappeler d'elle-même.
-     *
-     * Elles passent **avant** les échéances F-Gas, qui sont une obligation
-     * légale mais à des mois : un préavis de maintenance va de zéro à trente
-     * jours, et l'ordre de l'écran suit l'urgence et non la gravité.
-     */
-    preventif: List<EcheanceMaintenance> = emptyList(),
-    onVoirPreventif: () -> Unit = {},
-    /** Ouvrir la page des Réglages où se pose un réglage qui manque. */
-    onReglage: (PageReglages) -> Unit = {},
+    recherche: RechercheJournee = RechercheJournee(),
+    actionsRecherche: ActionsRecherche = ActionsRecherche(),
+    aTraiter: ATraiter = ATraiter(),
+    actionsATraiter: ActionsATraiter = ActionsATraiter(),
 ) {
+    var selecteurOuvert by remember { mutableStateOf(false) }
+    val aujourdhui = LocalDate.now()
+    val estAujourdhui = jour == aujourdhui
+    // La carte du haut n'existe que sur aujourd'hui, et ce qu'elle montre sort
+    // de la liste : la même intervention deux fois l'une sous l'autre est
+    // exactement le doublon que la fusion a supprimé.
+    val enAvant = if (estAujourdhui) AujourdhuiViewModel.enAvantDe(lignes) else null
+    val reste = lignes.filter { it !== enAvant }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         // La coquille pose déjà les marges des barres système.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
+        floatingActionButton = {
+            // Le bouton + qui manquait à « Maintenant » : on y était le plus
+            // souvent, et c'est là qu'arrive l'appel d'un client à caser.
+            if (!recherche.ouverte) {
+                FloatingActionButton(
+                    onClick = onNouvelleIntervention,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(imageVector = Icons.Filled.Add, contentDescription = "Ajouter une intervention")
+                }
+            }
+        },
     ) { marges ->
-        Column(
-            modifier = Modifier
-                .padding(marges)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = MargeEcran),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            EnTeteAccueil(etat = etat)
-
-            // La bascule des trois vues, juste sous le titre : exactement où
-            // les carnets et la facturation posent la leur. Elle remplace le
-            // bouton « Planning » qui était en bas de l'écran — un bouton qui
-            // changeait d'onglet, là où ces trois vues sont maintenant le même.
-            // Sans marge propre : la colonne de l'écran pose déjà la marge des
-            // côtés et espace ses enfants.
-            BasculeTournee(vue = vue, onVue = onVue)
-
-            if (etat.enAvant != null) {
-                CarteEnAvant(
-                    ligne = etat.enAvant,
-                    onOuvrir = { onOuvrir(etat.enAvant.intervention) },
-                    onDemarrer = { onDemarrer(etat.enAvant.intervention) },
-                    onItineraire = { etat.enAvant.client?.let(onItineraire) },
-                )
-            } else {
-                Carte {
-                    Text(
-                        text = if (etat.journeeVide) "Aucune intervention aujourd'hui" else "Journée terminée",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = if (etat.journeeVide) {
-                            "Le planning est libre. De quoi rattraper une échéance, ou souffler."
-                        } else {
-                            "Tout ce qui était prévu est fait."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (etat.reglagesManquants.isNotEmpty()) {
-                CarteReglagesManquants(
-                    manquants = etat.reglagesManquants,
-                    onReglage = onReglage,
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TuileChiffre(
-                    valeur = "${etat.nombreDuJour}",
-                    libelle = "aujourd'hui",
-                    modifier = Modifier.weight(1f),
-                )
-                TuileChiffre(
-                    valeur = "${etat.devisEnAttente}",
-                    libelle = "devis en attente",
-                    modifier = Modifier.weight(1f),
-                    couleur = LocalStatuts.current.aValider,
-                )
-                TuileChiffre(
-                    valeur = Nombres.enEurosCourt(etat.chiffreDuMois),
-                    libelle = "acceptés ce mois",
-                    modifier = Modifier.weight(1f),
-                )
-            }
-
-            if (etat.suite.isNotEmpty()) {
-                Section(intitule = "Suite de la journée", espacement = 8.dp) {
-                    etat.suite.forEach { ligne ->
-                        LigneSuite(ligne = ligne, onOuvrir = { onOuvrir(ligne.intervention) })
-                    }
-                }
-            }
-
-            if (impayees.isNotEmpty()) {
-                Section(intitule = "À relancer", espacement = 8.dp) {
-                    impayees.take(IMPAYEES_MONTREES).forEach { chiffree ->
-                        LigneImpayee(
-                            chiffree = chiffree,
-                            onClick = { onOuvrirFacture(chiffree.facture) },
-                        )
-                    }
-                    // Plafonnée comme les trois autres listes, et c'était la
-                    // seule à ne pas l'être : un trimestre difficile en pose
-                    // quinze, et l'accueil alerte, l'onglet des factures relance.
-                    val reste = impayees.size - IMPAYEES_MONTREES
-                    if (reste > 0) {
-                        BoutonContour(
-                            texte = "$reste autre${if (reste > 1) "s" else ""} à relancer",
-                            onClick = onVoirDevis,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-
-            if (manquants.isNotEmpty()) {
-                Section(intitule = "À racheter", espacement = 8.dp) {
-                    manquants.take(MANQUANTS_MONTRES).forEach { entree ->
-                        LigneManquant(entree = entree, onClick = onVoirMagasin)
-                    }
-                    // Le reste est compté plutôt que déroulé : l'accueil alerte,
-                    // le magasin tient l'inventaire. Une liste de trente lignes
-                    // ici ne serait plus lue — même règle que les échéances.
-                    val reste = manquants.size - MANQUANTS_MONTRES
-                    if (reste > 0) {
-                        BoutonContour(
-                            texte = "$reste autre${if (reste > 1) "s" else ""} au magasin",
-                            onClick = onVoirMagasin,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-
-            if (preventif.isNotEmpty()) {
-                Section(intitule = "Visites à faire", espacement = 8.dp) {
-                    preventif.take(PREVENTIF_MONTRE).forEach { echeance ->
-                        LignePreventif(
-                            echeance = echeance,
-                            aujourdhui = etat.jour,
-                            onClick = onVoirPreventif,
-                        )
-                    }
-                    // Le reste est compté plutôt que déroulé, comme le magasin :
-                    // sur un site de plusieurs centaines de machines une ronde
-                    // journalière en pose des dizaines, et trente lignes ici ne
-                    // seraient plus lues. L'accueil alerte, le Préventif tient
-                    // la liste.
-                    val reste = preventif.size - PREVENTIF_MONTRE
-                    if (reste > 0) {
-                        BoutonContour(
-                            texte = "$reste autre${if (reste > 1) "s" else ""} au préventif",
-                            onClick = onVoirPreventif,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-
-            if (etat.echeances.isNotEmpty()) {
-                Section(intitule = "Échéances F-Gas", espacement = 8.dp) {
-                    etat.echeances.forEach { echeance -> LigneEcheance(echeance = echeance) }
-                }
-            }
-
-            // Le seul raccourci qui reste : les trois vues de la tournée sont
-            // dans la bascule du haut, et la facturation est un autre onglet.
-            BoutonContour(
-                texte = "Devis et factures",
-                onClick = onVoirDevis,
-                modifier = Modifier.fillMaxWidth(),
+        Column(modifier = Modifier.padding(marges)) {
+            BarreAujourdhui(
+                technicien = etat.technicien,
+                recherche = recherche,
+                actions = actionsRecherche,
+                onOuvrirReglages = onOuvrirReglages,
             )
-            EspaceVertical(24)
+            if (recherche.ouverte) {
+                ResultatsRecherche(
+                    recherche = recherche,
+                    onOuvrir = onOuvrirIntervention,
+                    onModifier = onModifierIntervention,
+                    onChangerStatut = onChangerStatut,
+                )
+                return@Column
+            }
+
+            EnTeteJour(
+                jour = jour,
+                onJourPrecedent = onJourPrecedent,
+                onJourSuivant = onJourSuivant,
+                onOuvrirSelecteur = { selecteurOuvert = true },
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                // Pas de marge de côté sur la colonne : les pastilles de la
+                // semaine et le bandeau posent la leur, et chaque autre élément
+                // la reçoit de [aLaMarge].
+                contentPadding = PaddingValues(top = 0.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item(key = "semaine") { PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi) }
+                item(key = "bandeau") { BandeauJournee(lignes = lignes) }
+
+                if (estAujourdhui) {
+                    item(key = "en-avant") {
+                        Box(modifier = aLaMarge) {
+                            if (enAvant != null) {
+                                CarteEnAvant(
+                                    ligne = enAvant,
+                                    onOuvrir = { onOuvrirIntervention(enAvant.intervention) },
+                                    onDemarrer = { onDemarrer(enAvant.intervention) },
+                                    onItineraire = { enAvant.client?.let(onItineraire) },
+                                )
+                            } else {
+                                CarteJourneeLibre(journeeVide = lignes.isEmpty())
+                            }
+                        }
+                    }
+                }
+
+                if (lignes.isNotEmpty()) {
+                    item(key = "titre-journee") {
+                        TitreJournee(
+                            texte = if (enAvant != null && !frise) "Suite de la journée" else "La journée",
+                            frise = frise,
+                            onBasculerVue = onBasculerVue,
+                        )
+                    }
+                }
+
+                when {
+                    // Hors d'aujourd'hui, une journée vide se dit ici ; sur
+                    // aujourd'hui, la carte du haut le dit déjà.
+                    lignes.isEmpty() && !estAujourdhui -> item(key = "vide") { JourneeVide() }
+
+                    lignes.isEmpty() -> Unit
+
+                    frise -> item(key = "frise") {
+                        Box(modifier = aLaMarge) {
+                            FriseHoraire(
+                                lignes = lignes,
+                                // Le trait de l'heure courante n'a de sens que
+                                // sur aujourd'hui : ailleurs il désignerait un
+                                // instant qui n'appartient pas à la journée.
+                                maintenant = if (estAujourdhui) LocalTime.now() else null,
+                                onOuvrir = onOuvrirIntervention,
+                            )
+                        }
+                    }
+
+                    reste.isEmpty() -> item(key = "rien-d-autre") {
+                        Text(
+                            text = "Rien d'autre de prévu aujourd'hui.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = aLaMarge,
+                        )
+                    }
+
+                    else -> items(items = reste, key = { it.intervention.id }) { ligne ->
+                        Box(modifier = aLaMarge) {
+                            if (ligne.intervention.statut == StatutIntervention.EN_COURS) {
+                                CarteEnCours(
+                                    ligne = ligne,
+                                    onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                    onModifier = { onModifierIntervention(ligne.intervention) },
+                                    onChangerStatut = { onChangerStatut(ligne.intervention) },
+                                )
+                            } else {
+                                LigneCompacte(
+                                    ligne = ligne,
+                                    onOuvrir = { onOuvrirIntervention(ligne.intervention) },
+                                    onModifier = { onModifierIntervention(ligne.intervention) },
+                                    onChangerStatut = { onChangerStatut(ligne.intervention) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                blocATraiter(contenu = aTraiter, actions = actionsATraiter, aujourdhui = aujourdhui)
+            }
         }
+    }
+
+    if (selecteurOuvert) {
+        SelecteurDate(
+            date = jour,
+            onDateChoisie = {
+                onJourChoisi(it)
+                selecteurOuvert = false
+            },
+            onFermer = { selecteurOuvert = false },
+        )
     }
 }
 
-/** « Bonjour Karim », la date du jour, et la pastille des initiales. */
+/** La marge de côté d'un élément de la colonne d'« Aujourd'hui ». */
+private val aLaMarge: Modifier = Modifier.padding(horizontal = MargeEcran)
+
+/**
+ * La rangée du haut : qui est au volant, la loupe et la roue crantée.
+ *
+ * Elle est **séparée de la date**, et c'est une leçon déjà payée : la barre de la
+ * vue Jour avait porté quatre boutons carrés sur la rangée du titre, et en mode
+ * gants « Aujourd'hui » s'affichait « Auj… ». Deux boutons par rangée, et chaque
+ * titre se lit en entier — la date avec ses deux flèches dessous, la salutation
+ * avec la loupe et les Réglages ici.
+ *
+ * La **roue crantée** est la seule entrée des Réglages : ils ont quitté la barre
+ * du bas, qui avait besoin de la place pour le Planning, et c'est l'endroit où
+ * les applications les rangent — on ne les ouvre que rarement, mais on sait où
+ * les chercher.
+ */
 @Composable
-private fun EnTeteAccueil(etat: EtatAujourdhui) {
+private fun BarreAujourdhui(
+    technicien: String,
+    recherche: RechercheJournee,
+    actions: ActionsRecherche,
+    onOuvrirReglages: () -> Unit,
+) {
+    val focus = remember { FocusRequester() }
+    // La loupe ouvre un champ où l'on écrit aussitôt : un champ qu'il faut
+    // encore toucher est un geste de trop. `runCatching` parce qu'un champ pas
+    // encore posé refuserait le focus — on n'en perd alors que la commodité.
+    LaunchedEffect(recherche.ouverte) {
+        if (recherche.ouverte) runCatching { focus.requestFocus() }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(start = MargeEcran, end = MargeEcran, top = 8.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = libelleDate(etat.jour),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (recherche.ouverte) {
+            ChampRecherche(
+                valeur = recherche.saisie,
+                onValeur = actions.onSaisie,
+                indication = "Client, ville, machine, numéro…",
+                modifier = Modifier.weight(1f),
+                focus = focus,
             )
+            BoutonCarre(
+                icone = Icons.Filled.Close,
+                description = "Fermer la recherche",
+                onClick = actions.onFermer,
+            )
+        } else {
             Text(
-                text = if (etat.technicien.isBlank()) "Bonjour" else "Bonjour ${etat.technicien}",
-                style = MaterialTheme.typography.headlineMedium,
+                text = if (technicien.isBlank()) "Bonjour" else "Bonjour $technicien",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            BoutonCarre(
+                icone = Icons.Filled.Search,
+                description = "Chercher une intervention",
+                onClick = actions.onOuvrir,
+            )
+            BoutonCarre(
+                icone = Icons.Filled.Settings,
+                description = "Réglages",
+                onClick = onOuvrirReglages,
             )
         }
-        // Les initiales viennent des réglages ; tant que le nom n'y est pas,
-        // il n'y a rien à afficher et la pastille disparaît plutôt que de
-        // montrer un point d'interrogation.
-        if (etat.initiales.isNotBlank()) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer,
+    }
+}
+
+/**
+ * La date affichée, et les deux flèches qui en changent.
+ *
+ * Le titre ouvre le sélecteur de date, et **le dit** : une icône de calendrier le
+ * signale. Un texte cliquable dont rien n'annonce qu'il l'est n'est pas une
+ * fonctionnalité — c'est la même règle qui fait doubler tout appui long par un
+ * bouton visible.
+ */
+@Composable
+private fun EnTeteJour(
+    jour: LocalDate,
+    onJourPrecedent: () -> Unit,
+    onJourSuivant: () -> Unit,
+    onOuvrirSelecteur: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = MargeEcran, end = MargeEcran, bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onOuvrirSelecteur),
+        ) {
+            Text(
+                text = libelleDate(jour).uppercase(),
+                style = StyleSection,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = etat.initiales,
-                        style = StyleChiffrePetit,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
+                Text(
+                    // `headlineMedium` et non `displaySmall` : « Aujourd'hui »
+                    // ne tient pas en 36 sp à côté de deux boutons et d'une
+                    // icône sur un téléphone étroit, et un titre tronqué ne se
+                    // rattrape par aucun réglage.
+                    text = titreJour(jour),
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = Icons.Filled.EditCalendar,
+                    contentDescription = "Choisir une date",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        BoutonCarre(
+            icone = Icons.AutoMirrored.Filled.ArrowBack,
+            description = "Jour précédent",
+            onClick = onJourPrecedent,
+        )
+        BoutonCarre(
+            icone = Icons.AutoMirrored.Filled.ArrowForward,
+            description = "Jour suivant",
+            onClick = onJourSuivant,
+        )
+    }
+}
+
+/**
+ * Le titre de la journée, et le choix frise / liste à côté.
+ *
+ * Frise ou liste est une **préférence d'affichage**, pas une navigation : elle
+ * est donc à côté du titre et non dans une bascule — une pastille de plus aurait
+ * laissé croire à une destination de plus.
+ */
+@Composable
+private fun TitreJournee(texte: String, frise: Boolean, onBasculerVue: () -> Unit) {
+    Row(
+        modifier = aLaMarge.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IntituleSection(texte = texte, modifier = Modifier.weight(1f))
+        BoutonCarre(
+            icone = if (frise) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.Schedule,
+            description = if (frise) "Voir en liste" else "Voir en frise",
+            onClick = onBasculerVue,
+        )
+    }
+}
+
+/** Aujourd'hui sans intervention à mettre en avant : vide, ou déjà faite. */
+@Composable
+private fun CarteJourneeLibre(journeeVide: Boolean) {
+    Carte {
+        Text(
+            text = if (journeeVide) "Aucune intervention aujourd'hui" else "Journée terminée",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = if (journeeVide) {
+                "Le planning est libre. De quoi rattraper une échéance, ou souffler."
+            } else {
+                "Tout ce qui était prévu est fait."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * Ce que la recherche trouve, **toutes dates confondues**.
+ *
+ * La semaine, la date et la frise disparaissent pendant ce temps : les
+ * résultats viennent de toutes les dates, et une pastille « mercredi » retenue
+ * au-dessus d'une intervention de mars ferait croire que l'une désigne l'autre.
+ */
+@Composable
+private fun ResultatsRecherche(
+    recherche: RechercheJournee,
+    onOuvrir: (Intervention) -> Unit,
+    onModifier: (Intervention) -> Unit,
+    onChangerStatut: (Intervention) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = MargeEcran,
+            end = MargeEcran,
+            top = 4.dp,
+            bottom = 24.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        when {
+            recherche.saisie.isBlank() -> item {
+                Encart(
+                    texte = "La recherche traverse toutes les dates : un client, une ville, " +
+                        "une machine, un numéro de compte-rendu.",
+                )
+            }
+
+            recherche.trouvees.isEmpty() -> item {
+                Encart(
+                    texte = "Aucune intervention ne correspond à « ${recherche.saisie.trim()} ».",
+                )
+            }
+        }
+        // `groupBy` garde l'ordre d'arrivée, et la liste vient déjà
+        // antichronologique : les dates se suivent donc de la plus récente à la
+        // plus ancienne sans être triées deux fois.
+        recherche.trouvees.groupBy { it.intervention.date }.forEach { (date, duJour) ->
+            item(key = "date-$date") {
+                IntituleSection(texte = libelleDateAvecAnnee(date))
+            }
+            items(items = duJour, key = { it.intervention.id }) { ligne ->
+                LigneCompacte(
+                    ligne = ligne,
+                    onOuvrir = { onOuvrir(ligne.intervention) },
+                    onModifier = { onModifier(ligne.intervention) },
+                    onChangerStatut = { onChangerStatut(ligne.intervention) },
+                )
             }
         }
     }
 }
 
 /**
- * La carte du haut : l'intervention en cours, ou la prochaine.
+ * « À traiter », en fin de colonne.
  *
- * C'est la seule carte de l'application à porter deux boutons pleins. Elle les
- * mérite : ouvrir la fiche et lancer l'itinéraire sont les deux gestes du
- * matin, et les faire chercher dans une liste coûterait plus cher que la place
- * qu'ils prennent.
+ * L'ordre suit l'urgence et non la gravité : les relances d'abord, parce qu'un
+ * impayé fait courir des pénalités chaque jour ; les visites ensuite, dont le
+ * préavis va de zéro à trente jours ; les achats, qui décident de ce qu'on charge
+ * ce soir ; les échéances F-Gas, une obligation légale mais à des mois ; et les
+ * réglages en dernier, qui ne bougent pas d'un jour à l'autre.
  */
+private fun LazyListScope.blocATraiter(
+    contenu: ATraiter,
+    actions: ActionsATraiter,
+    aujourdhui: LocalDate,
+) {
+    item(key = "a-traiter") {
+        IntituleSection(
+            texte = "À traiter",
+            modifier = aLaMarge.padding(top = 12.dp),
+        )
+    }
+    if (contenu.vide) {
+        item(key = "a-traiter-vide") {
+            Encart(
+                texte = "Rien qui attende : aucune facture à relancer, aucune visite due, " +
+                    "rien à racheter, aucune échéance F-Gas en vue.",
+                modifier = aLaMarge,
+            )
+        }
+        return
+    }
+
+    if (contenu.impayees.isNotEmpty()) {
+        item(key = "a-relancer") {
+            Section(intitule = "À relancer", espacement = 8.dp, modifier = aLaMarge) {
+                contenu.impayees.take(IMPAYEES_MONTREES).forEach { chiffree ->
+                    LigneImpayee(
+                        chiffree = chiffree,
+                        onClick = { actions.onOuvrirFacture(chiffree.facture) },
+                    )
+                }
+                val reste = contenu.impayees.size - IMPAYEES_MONTREES
+                if (reste > 0) {
+                    BoutonContour(
+                        texte = "$reste autre${pluriel(reste)} à relancer",
+                        onClick = actions.onVoirFactures,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+
+    if (contenu.visites.isNotEmpty()) {
+        item(key = "visites") {
+            Section(intitule = "Visites à faire", espacement = 8.dp, modifier = aLaMarge) {
+                contenu.visites.take(PREVENTIF_MONTRE).forEach { echeance ->
+                    LignePreventif(
+                        echeance = echeance,
+                        aujourdhui = aujourdhui,
+                        onClick = { actions.onOuvrirVisite(echeance) },
+                    )
+                }
+                // Sur un site de plusieurs centaines de machines une ronde
+                // journalière en pose des dizaines : le reste se compte, et
+                // l'Entretien du Planning tient la liste.
+                val reste = contenu.visites.size - PREVENTIF_MONTRE
+                if (reste > 0) {
+                    BoutonContour(
+                        texte = "$reste autre${pluriel(reste)} à l'entretien",
+                        onClick = actions.onVoirEntretien,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+
+    if (contenu.manquants.isNotEmpty()) {
+        item(key = "a-racheter") {
+            Section(intitule = "À racheter", espacement = 8.dp, modifier = aLaMarge) {
+                contenu.manquants.take(MANQUANTS_MONTRES).forEach { entree ->
+                    LigneManquant(entree = entree, onClick = { actions.onOuvrirArticle(entree) })
+                }
+                val reste = contenu.manquants.size - MANQUANTS_MONTRES
+                if (reste > 0) {
+                    BoutonContour(
+                        texte = "$reste autre${pluriel(reste)} au magasin",
+                        onClick = actions.onVoirMagasin,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+
+    if (contenu.echeances.isNotEmpty()) {
+        item(key = "fgas") {
+            Section(intitule = "Échéances F-Gas", espacement = 8.dp, modifier = aLaMarge) {
+                contenu.echeances.forEach { echeance ->
+                    LigneEcheance(
+                        echeance = echeance,
+                        onClick = { actions.onOuvrirMachine(echeance.equipement) },
+                    )
+                }
+            }
+        }
+    }
+
+    if (contenu.reglages.isNotEmpty()) {
+        item(key = "reglages") {
+            Box(modifier = aLaMarge) {
+                CarteReglagesManquants(manquants = contenu.reglages, onReglage = actions.onReglage)
+            }
+        }
+    }
+}
+
 /**
  * Ce qu'il reste à régler, et ce que cela empêche.
  *
- * Elle se lit sur l'accueil et non dans les Réglages, et c'est tout l'intérêt :
+ * Elle se lit sous « À traiter » et non dans les Réglages, et c'est tout l'intérêt :
  * un réglage qui manque ne se découvre pas en ouvrant l'écran des réglages — on
  * n'y va justement pas — mais en voyant un devis sortir à 0 €. L'accueil répond
  * à « et maintenant ? », et « vos factures partent sans raison sociale » est une
@@ -389,6 +777,14 @@ private fun CarteReglagesManquants(
     }
 }
 
+/**
+ * La carte du haut : l'intervention en cours, ou la prochaine.
+ *
+ * C'est la seule carte de l'application à porter deux boutons pleins. Elle les
+ * mérite : ouvrir la fiche et lancer l'itinéraire sont les deux gestes du
+ * matin, et les faire chercher dans une liste coûterait plus cher que la place
+ * qu'ils prennent.
+ */
 @Composable
 private fun CarteEnAvant(
     ligne: LigneTournee,
@@ -486,51 +882,6 @@ private fun CarteEnAvant(
     }
 }
 
-/** Une ligne de la suite du jour : l'heure, le client, et ce qu'on y fait. */
-@Composable
-private fun LigneSuite(ligne: LigneTournee, onOuvrir: () -> Unit) {
-    val intervention = ligne.intervention
-    Carte(onClick = onOuvrir, forme = MaterialTheme.shapes.medium) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = intervention.heure.format(FORMAT_HEURE),
-                style = StyleChiffrePetit,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Box(
-                modifier = Modifier
-                    .size(width = 3.dp, height = 30.dp)
-                    .background(couleurStatut(intervention), MaterialTheme.shapes.extraSmall),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = intervention.client,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = intervention.typeLibelle.ifBlank { intervention.ville },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Une échéance de contrôle d'étanchéité.
- *
- * Le retard est dit en rouge et en toutes lettres : c'est le seul élément de
- * l'accueil qui expose à une sanction, et une date seule ne se compare pas
- * d'un coup d'œil à celle du jour.
- */
 /**
  * Une facture échue.
  *
@@ -574,7 +925,11 @@ private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
 /**
  * Une visite due, sur l'accueil.
  *
- * Elle nomme la machine **et son client**, là où la ligne du Préventif peut se
+ * Toucher la ligne ouvre **sa feuille de visite**, sur place : la visite se
+ * consigne d'ici, sans passer par la liste de l'Entretien où il fallait la
+ * retrouver.
+ *
+ * Elle nomme la machine **et son client**, là où la ligne de l'Entretien peut se
  * contenter de la machine : on y est déjà dans le contexte d'un site, tandis que
  * l'accueil mélange tout ce qui attend. Le liseré prend la couleur du statut,
  * comme l'article en manque prend celle de l'urgence — l'ambre d'un préavis et le
@@ -644,7 +999,8 @@ private fun LignePreventif(
  * Il dit **où** il manque, et c'est tout l'intérêt de tenir deux stocks : « 1 u
  * au camion, mini 3 » n'appelle pas le même geste que le même manque à
  * l'atelier — l'un se recharge le soir, l'autre se commande. Toucher la ligne
- * ouvre le magasin, où le mouvement se pose.
+ * ouvre **la fiche de l'article** au magasin, où le stock se corrige et le
+ * transfert se pose.
  */
 @Composable
 private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
@@ -700,14 +1056,26 @@ private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Une échéance de contrôle d'étanchéité.
+ *
+ * Le retard est dit en rouge et en toutes lettres : c'est le seul élément de
+ * l'accueil qui expose à une sanction, et une date seule ne se compare pas
+ * d'un coup d'œil à celle du jour.
+ *
+ * Toucher la ligne ouvre **la fiche de la machine**, dans l'onglet Clients :
+ * c'est là que se lisent le fluide, la charge, le dernier contrôle et ce qui a
+ * doublé la périodicité, et là qu'on note le contrôle une fois fait. La ligne ne
+ * menait nulle part, et une échéance qu'on ne peut que regarder s'oublie.
+ */
 @Composable
-private fun LigneEcheance(echeance: EcheanceFgas) {
+private fun LigneEcheance(echeance: EcheanceFgas, onClick: () -> Unit) {
     val couleur = if (echeance.etat.enRetard) {
         LocalStatuts.current.urgence
     } else {
         LocalStatuts.current.aValider
     }
-    Carte(contour = true, forme = MaterialTheme.shapes.medium) {
+    Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -786,6 +1154,7 @@ private fun creneau(intervention: Intervention): String {
 private fun ApercuAujourdhui() {
     val client = Client(nom = "Boulangerie Martin", ville = "Lyon 2e", adresse = "12 rue des Halles")
     val intervention = Intervention(
+        id = "1",
         date = LocalDate.now(),
         heure = LocalTime.of(8, 0),
         client = client.nom,
@@ -796,23 +1165,32 @@ private fun ApercuAujourdhui() {
         urgente = true,
         dureeMin = 90,
     )
+    val suivante = Intervention(
+        id = "2",
+        date = LocalDate.now(),
+        heure = LocalTime.of(10, 30),
+        client = "SCI Le Vallon",
+        ville = "Ivry",
+        typeLibelle = "Entretien PAC",
+    )
     FrigoProTheme {
         EcranAujourdhui(
-            etat = EtatAujourdhui(
-                technicien = "Karim",
-                initiales = "K",
-                enAvant = LigneTournee(intervention, client),
-                suite = emptyList(),
-                nombreDuJour = 1,
-                devisEnAttente = 2,
-                chiffreDuMois = 12400.0,
-            ),
-            vue = VueTournee.MAINTENANT,
-            onVue = {},
-            onOuvrir = {},
+            etat = EtatAujourdhui(technicien = "Karim"),
+            jour = LocalDate.now(),
+            lignes = listOf(LigneTournee(intervention, client), LigneTournee(suivante, null)),
+            onJourPrecedent = {},
+            onJourSuivant = {},
+            onJourChoisi = {},
+            onNouvelleIntervention = {},
+            onOuvrirIntervention = {},
+            onModifierIntervention = {},
+            onChangerStatut = {},
             onDemarrer = {},
             onItineraire = {},
-            onVoirDevis = {},
+            frise = false,
+            onBasculerVue = {},
+            onOuvrirReglages = {},
+            aTraiter = ATraiter(reglages = listOf(ReglageManquant.TAUX_HORAIRE)),
         )
     }
 }

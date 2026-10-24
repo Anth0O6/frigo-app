@@ -1,47 +1,25 @@
 package com.frigopro.app.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.EditCalendar
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,209 +27,34 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.enDuree
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
-import com.frigopro.app.ui.composants.ChampRecherche
-import com.frigopro.app.ui.composants.Encart
-import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
-import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.AValider
-import com.frigopro.app.ui.theme.FrigoProTheme
 import com.frigopro.app.ui.theme.Planifie
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
-import com.frigopro.app.ui.theme.StyleSection
 import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalTime
-
-/**
- * La tournée du jour, avec son état.
- *
- * Elle héberge aussi l'écran d'une intervention : ouvrir une intervention
- * remplace la liste plutôt que de l'empiler, comme la fiche machine remplace
- * le carnet. Une seule profondeur, et donc toujours pas de graphe de
- * navigation.
- */
-@Composable
-fun TourneeRoute(
-    /** Chiffrer depuis une intervention : la coquille seule sait changer d'onglet. */
-    onAllerAuxDevis: () -> Unit,
-    /**
-     * Facturer depuis une intervention mène aux factures, sur la facture créée.
-     * Distinct de [onAllerAuxDevis] : facturer ne doit créer aucun devis.
-     */
-    onAllerAuxFactures: () -> Unit,
-    /** Le manque annoncé par l'accueil mène au magasin, dans un autre onglet. */
-    onVoirMagasin: () -> Unit,
-    /**
-     * Le réglage qui manque, annoncé par l'accueil, mène à sa page des
-     * Réglages — dans un autre onglet, et donc par la coquille.
-     */
-    onReglage: (PageReglages) -> Unit,
-    modifier: Modifier = Modifier,
-    viewModel: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
-    detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory),
-    devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
-    /**
-     * Le plan de maintenance, partagé avec la page des Réglages qui tient les
-     * gammes : `viewModel()` rend une seule instance par classe, si bien qu'une
-     * gamme créée là est déjà celle que le Préventif applique.
-     */
-    plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
-) {
-    val jour by viewModel.jour.collectAsStateWithLifecycle()
-    val lignes by viewModel.lignes.collectAsStateWithLifecycle()
-    val ouverte by detail.ouverte.collectAsStateWithLifecycle()
-    val vue by viewModel.vue.collectAsStateWithLifecycle()
-    val frise by viewModel.frise.collectAsStateWithLifecycle()
-    val semaine by viewModel.semaine.collectAsStateWithLifecycle()
-    val recherche by viewModel.recherche.collectAsStateWithLifecycle()
-    val trouvees by viewModel.trouvees.collectAsStateWithLifecycle()
-    val echeances by plan.echeances.collectAsStateWithLifecycle()
-    val pointsGamme by plan.points.collectAsStateWithLifecycle()
-    // La visite ouverte vit ici et non dans le ViewModel : c'est une feuille
-    // de saisie, pas un état du plan — même motif que le sélecteur de date.
-    var visite by remember { mutableStateOf<EcheanceMaintenance?>(null) }
-
-    // Le retour système ramène à « Maintenant », qui est le point de départ de
-    // l'onglet. Une seule profondeur à défaire : toujours pas de graphe de
-    // navigation.
-    // Le retour système défait une chose à la fois, la plus récente d'abord : la
-    // recherche en cours, puis la vue. Une seule profondeur à défaire dans les
-    // deux cas — toujours pas de graphe de navigation.
-    BackHandler(
-        enabled = ouverte == null && (recherche.isNotBlank() || vue != VueTournee.MAINTENANT),
-    ) {
-        if (recherche.isNotBlank()) {
-            viewModel.onRecherche("")
-        } else {
-            viewModel.onVue(VueTournee.MAINTENANT)
-        }
-    }
-
-    // Un `when` plutôt que des retours anticipés : le formulaire se pose **après**
-    // ce bloc et doit pouvoir recouvrir n'importe lequel des écrans. Avec des
-    // `return`, corriger l'heure depuis une intervention ouverte n'affichait rien —
-    // la feuille était bien là, mais on sortait de la fonction avant de la dessiner.
-    when {
-        ouverte != null -> InterventionRoute(
-            viewModel = detail,
-            onCreerDevis = {
-                // La machine de l'intervention suit dans le devis : c'est elle qui fait
-                // proposer le nombre d'unités d'une prestation comptée par unité.
-                val etat = detail.etat.value
-                devis.onNouveau(etat?.client, etat?.intervention?.equipementId)
-                onAllerAuxDevis()
-            },
-            onAllerAuxFactures = onAllerAuxFactures,
-            onModifierFiche = {
-                detail.etat.value?.intervention?.let(viewModel::onModifierIntervention)
-            },
-            modifier = modifier,
-        )
-
-        vue == VueTournee.MAINTENANT -> AujourdhuiRoute(
-            vue = vue,
-            onVue = viewModel::onVue,
-            onVoirDevis = onAllerAuxDevis,
-            onVoirMagasin = onVoirMagasin,
-            onReglage = onReglage,
-            modifier = modifier,
-        )
-
-        vue == VueTournee.SEMAINE -> EcranSemaine(
-            vue = vue,
-            onVue = viewModel::onVue,
-            lundi = lundiDe(jour),
-            jourRetenu = jour,
-            interventions = semaine,
-            // Toucher un jour de la semaine ouvre ce jour-là : c'est le geste
-            // qu'on fait pour aller voir, et rester sur la semaine après l'avoir
-            // choisi n'aurait mené nulle part.
-            onJourRetenu = {
-                viewModel.onJourChoisi(it)
-                viewModel.onVue(VueTournee.JOUR)
-            },
-            onSemainePrecedente = viewModel::onSemainePrecedente,
-            onSemaineSuivante = viewModel::onSemaineSuivante,
-            onOuvrir = detail::onOuvrir,
-            onModifier = viewModel::onModifierIntervention,
-            modifier = modifier,
-        )
-
-        vue == VueTournee.PREVENTIF -> EcranPreventif(
-            echeances = echeances,
-            vue = vue,
-            onVue = viewModel::onVue,
-            onOuvrir = { visite = it },
-            modifier = modifier,
-            onVoirReglages = { onReglage(PageReglages.GAMMES) },
-        )
-
-        else -> InterventionsScreen(
-            vue = vue,
-            onVue = viewModel::onVue,
-            jour = jour,
-            lignes = lignes,
-            onJourPrecedent = viewModel::onJourPrecedent,
-            onJourSuivant = viewModel::onJourSuivant,
-            onJourChoisi = viewModel::onJourChoisi,
-            onNouvelleIntervention = viewModel::onNouvelleIntervention,
-            onOuvrirIntervention = detail::onOuvrir,
-            onModifierIntervention = viewModel::onModifierIntervention,
-            // Un seul chemin par transition : voir [GesteStatut].
-            onChangerStatut = { intervention ->
-                when (gesteStatut(intervention.statut)) {
-                    GesteStatut.DEMARRER -> viewModel.onDemarrer(intervention)
-                    GesteStatut.CLOTURER, GesteStatut.VOIR_RAPPORT ->
-                        detail.onOuvrirSur(intervention, OngletIntervention.RAPPORT)
-                }
-            },
-            frise = frise,
-            onBasculerVue = viewModel::onBasculerVue,
-            recherche = recherche,
-            onRecherche = viewModel::onRecherche,
-            trouvees = trouvees,
-            modifier = modifier,
-        )
-    }
-
-    FeuilleFormulaireIntervention(viewModel)
-
-    visite?.let { echeance ->
-        FeuilleVisite(
-            echeance = echeance,
-            points = pointsGamme.filter { it.gammeId == echeance.gamme.id }
-                .sortedBy { it.rang },
-            onConsigner = { faitLe, notes ->
-                plan.onConsigner(echeance.equipement, echeance.gamme, faitLe, notes)
-                visite = null
-            },
-            onFermer = { visite = null },
-        )
-    }
-}
 
 /**
  * La feuille de saisie d'une intervention, où qu'on l'ouvre.
  *
  * Elle est un composable à part plutôt qu'un bloc recopié dans chaque route qui
- * la montre : l'accueil et le planning l'ouvrent tous les deux — `viewModel()`
- * leur rend la même instance, donc le même formulaire — et deux copies de ces
- * cinq flux auraient divergé au premier champ ajouté. Elle ne dessine rien tant
- * qu'aucune saisie n'est en cours.
+ * la montre, et elle n'est posée **qu'une fois, par la coquille**, au-dessus de
+ * tous les onglets : « Aujourd'hui » l'ouvre pour créer ou corriger, le Planning
+ * pour corriger un créneau depuis la semaine, la vue Devis pour planifier un
+ * devis accepté — `viewModel()` leur rend la même instance, donc le même
+ * formulaire —, et deux copies de ces cinq flux auraient divergé au premier
+ * champ ajouté. Elle ne dessine rien tant qu'aucune saisie n'est en cours.
  */
 @Composable
 fun FeuilleFormulaireIntervention(
@@ -286,313 +89,14 @@ fun FeuilleFormulaireIntervention(
     }
 }
 
-/**
- * La tournée d'une journée.
+/*
+ * Les morceaux d'une journée, partagés par « Aujourd'hui » (`EcranAujourdhui`).
  *
- * Trois choses la structurent, dans cet ordre : où l'on en est (le bandeau de
- * chiffres), ce qui vient maintenant (l'intervention en cours, dépliée), et ce
- * qui suit (les autres, en une ligne chacune). Un technicien consulte cet
- * écran vingt fois par jour et n'y cherche jamais qu'une chose : la suivante.
+ * Ce fichier portait l'écran de la vue « Jour » et la route de la Tournée ; les
+ * deux ont été fondus dans « Aujourd'hui », et il ne garde que ce qui dessine
+ * une journée — les pastilles de la semaine, le bandeau de chiffres, les lignes
+ * et la pastille de statut —, plus la feuille de saisie, que la coquille pose.
  */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun InterventionsScreen(
-    vue: VueTournee,
-    onVue: (VueTournee) -> Unit,
-    jour: LocalDate,
-    lignes: List<LigneTournee>,
-    onJourPrecedent: () -> Unit,
-    onJourSuivant: () -> Unit,
-    onJourChoisi: (LocalDate) -> Unit,
-    onNouvelleIntervention: () -> Unit,
-    onOuvrirIntervention: (Intervention) -> Unit,
-    onModifierIntervention: (Intervention) -> Unit,
-    /**
-     * La pastille d'une ligne, et « Terminer » sur la carte en cours. Ce n'est
-     * plus un cycle de statuts : voir [GesteStatut] pour ce que chacun fait.
-     */
-    onChangerStatut: (Intervention) -> Unit,
-    /** La journée en frise horaire plutôt qu'en liste. */
-    frise: Boolean,
-    onBasculerVue: () -> Unit,
-    /**
-     * La recherche, et ce qu'elle trouve dans **toute** la tournée.
-     *
-     * Tant qu'elle est vide, l'écran est la journée. Dès qu'on tape, il
-     * devient la liste des interventions qui correspondent, groupées par
-     * date : retrouver « Carrefour en mars » demandait sinon de remonter jour
-     * par jour.
-     */
-    recherche: String = "",
-    onRecherche: (String) -> Unit = {},
-    trouvees: List<LigneTournee> = emptyList(),
-    modifier: Modifier = Modifier,
-) {
-    var selecteurOuvert by remember { mutableStateOf(false) }
-    val cherche = recherche.isNotBlank()
-
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        // La barre d'onglets, sous cet écran, pose déjà la marge du bas.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNouvelleIntervention,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(imageVector = Icons.Filled.Add, contentDescription = "Ajouter une intervention")
-            }
-        },
-    ) { marges ->
-        Column(modifier = Modifier.padding(marges)) {
-            EnTeteTournee(
-                jour = jour,
-                onJourPrecedent = onJourPrecedent,
-                onJourSuivant = onJourSuivant,
-                onOuvrirSelecteur = { selecteurOuvert = true },
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = MargeEcran)
-                    .padding(bottom = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // La bascule défile si elle déborde : trois pastilles et un
-                // bouton carré tiennent sur un écran ordinaire mais se disputent
-                // le dernier point sur un écran de 360 dp en mode gants, et une
-                // pastille rognée est pire qu'une rangée qui glisse.
-                BasculeTournee(
-                    vue = vue,
-                    onVue = onVue,
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                )
-                // Frise ou liste : une préférence d'affichage, pas une
-                // navigation. Elle est donc **à côté** de la bascule et non
-                // dedans — une quatrième pastille aurait laissé croire à une
-                // quatrième destination — et elle a quitté la barre du haut, où
-                // elle prenait la place du titre.
-                if (!cherche) {
-                    BoutonCarre(
-                        icone = if (frise) {
-                            Icons.AutoMirrored.Filled.ViewList
-                        } else {
-                            Icons.Filled.Schedule
-                        },
-                        description = if (frise) "Voir en liste" else "Voir en frise",
-                        onClick = onBasculerVue,
-                    )
-                }
-            }
-            ChampRecherche(
-                valeur = recherche,
-                onValeur = onRecherche,
-                indication = "Client, ville, machine, numéro…",
-                modifier = Modifier
-                    .padding(horizontal = MargeEcran)
-                    .padding(bottom = 14.dp),
-            )
-            // Pendant une recherche, la semaine et le bandeau du jour ne disent
-            // plus rien : les résultats viennent de toutes les dates, et une
-            // pastille « mercredi » retenue au-dessus d'une intervention de mars
-            // ferait croire que l'une désigne l'autre. La frise disparaît pour la
-            // même raison — on ne dessine pas sur une journée des créneaux qui
-            // appartiennent à dix.
-            if (!cherche) {
-                PastillesSemaine(jour = jour, onJourChoisi = onJourChoisi)
-                BandeauJournee(lignes = lignes)
-            }
-            if (cherche) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = MargeEcran,
-                        end = MargeEcran,
-                        top = 4.dp,
-                        bottom = 96.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (trouvees.isEmpty()) {
-                        item {
-                            Encart(
-                                texte = "Aucune intervention ne correspond à " +
-                                    "« ${recherche.trim()} ».",
-                            )
-                        }
-                    }
-                    // `groupBy` garde l'ordre d'arrivée, et la liste vient déjà
-                    // antichronologique : les dates se suivent donc de la plus
-                    // récente à la plus ancienne sans être triées deux fois.
-                    trouvees.groupBy { it.intervention.date }.forEach { (date, duJour) ->
-                        item(key = "date-$date") {
-                            IntituleSection(texte = libelleDateAvecAnnee(date))
-                        }
-                        items(items = duJour, key = { it.intervention.id }) { ligne ->
-                            LigneCompacte(
-                                ligne = ligne,
-                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
-                                onModifier = { onModifierIntervention(ligne.intervention) },
-                                onChangerStatut = { onChangerStatut(ligne.intervention) },
-                            )
-                        }
-                    }
-                }
-            } else if (frise) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = MargeEcran),
-                ) {
-                    if (lignes.isEmpty()) {
-                        JourneeVide()
-                    } else {
-                        FriseHoraire(
-                            lignes = lignes,
-                            // Le trait de l'heure courante n'a de sens que sur
-                            // aujourd'hui : ailleurs il désignerait un instant
-                            // qui n'appartient pas à la journée affichée.
-                            maintenant = if (jour == LocalDate.now()) LocalTime.now() else null,
-                            onOuvrir = onOuvrirIntervention,
-                        )
-                    }
-                    // De quoi faire passer le dernier créneau au-dessus du bouton.
-                    EspaceVertical(96)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = MargeEcran,
-                        end = MargeEcran,
-                        top = 4.dp,
-                        // De quoi faire passer la dernière carte au-dessus du bouton.
-                        bottom = 96.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (lignes.isEmpty()) {
-                        item { JourneeVide() }
-                    }
-                    items(items = lignes, key = { it.intervention.id }) { ligne ->
-                        if (ligne.intervention.statut == StatutIntervention.EN_COURS) {
-                            CarteEnCours(
-                                ligne = ligne,
-                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
-                                onModifier = { onModifierIntervention(ligne.intervention) },
-                                onChangerStatut = { onChangerStatut(ligne.intervention) },
-                            )
-                        } else {
-                            LigneCompacte(
-                                ligne = ligne,
-                                onOuvrir = { onOuvrirIntervention(ligne.intervention) },
-                                onModifier = { onModifierIntervention(ligne.intervention) },
-                                onChangerStatut = { onChangerStatut(ligne.intervention) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (selecteurOuvert) {
-        SelecteurDate(
-            date = jour,
-            onDateChoisie = {
-                onJourChoisi(it)
-                selecteurOuvert = false
-            },
-            onFermer = { selecteurOuvert = false },
-        )
-    }
-}
-
-/**
- * L'en-tête de la journée : sa date, et les deux flèches qui en changent.
- *
- * Elle portait **quatre boutons carrés** — jour précédent, jour suivant,
- * frise/liste, et le menu de sauvegarde — sur la même rangée que le titre. Le
- * compte ne tenait pas : en mode gants les quatre laissaient une trentaine de
- * points au titre, si bien que « Aujourd'hui » s'affichait « Auj… ». C'était
- * exactement l'abréviation que la refonte de la barre du bas avait chassée,
- * revenue en haut de l'écran par le même mécanisme — un libellé qui paie la
- * place qu'on a donnée aux boutons.
- *
- * Deux boutons sont donc partis d'ici : la sauvegarde a rejoint les Réglages, où
- * l'on va la chercher (voir [SectionSauvegarde]), et le choix frise / liste a
- * rejoint la rangée de la bascule, qui en avait la place. Restent les deux
- * flèches, et le titre a de quoi se lire en entier.
- *
- * Le titre ouvre le sélecteur de date, et **le dit** : une icône de calendrier le
- * signale, là où rien ne le laissait deviner. Un texte cliquable dont rien
- * n'annonce qu'il l'est n'est pas une fonctionnalité — c'est la même règle qui
- * fait doubler tout appui long par un bouton visible.
- */
-@Composable
-private fun EnTeteTournee(
-    jour: LocalDate,
-    onJourPrecedent: () -> Unit,
-    onJourSuivant: () -> Unit,
-    onOuvrirSelecteur: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = MargeEcran, end = MargeEcran, top = 8.dp, bottom = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = onOuvrirSelecteur),
-        ) {
-            Text(
-                text = libelleDate(jour).uppercase(),
-                style = StyleSection,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    // `headlineMedium` et non `displaySmall` : « Aujourd'hui »
-                    // ne tient pas en 36 sp à côté de deux boutons et d'une
-                    // icône sur un téléphone étroit, et un titre tronqué ne se
-                    // rattrape par aucun réglage.
-                    text = titreJour(jour),
-                    style = MaterialTheme.typography.headlineMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Icon(
-                    imageVector = Icons.Filled.EditCalendar,
-                    contentDescription = "Choisir une date",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-        BoutonCarre(
-            icone = Icons.AutoMirrored.Filled.ArrowBack,
-            description = "Jour précédent",
-            onClick = onJourPrecedent,
-        )
-        BoutonCarre(
-            icone = Icons.AutoMirrored.Filled.ArrowForward,
-            description = "Jour suivant",
-            onClick = onJourSuivant,
-        )
-    }
-}
 
 /**
  * Les sept jours de la semaine, en pastilles.
@@ -603,7 +107,7 @@ private fun EnTeteTournee(
  * semaine sans passer par le sélecteur.
  */
 @Composable
-private fun PastillesSemaine(jour: LocalDate, onJourChoisi: (LocalDate) -> Unit) {
+internal fun PastillesSemaine(jour: LocalDate, onJourChoisi: (LocalDate) -> Unit) {
     val lundi = lundiDe(jour)
     Row(
         modifier = Modifier
@@ -658,30 +162,6 @@ private fun PastillesSemaine(jour: LocalDate, onJourChoisi: (LocalDate) -> Unit)
 private const val JOURS_SEMAINE = 7
 
 /**
- * La bascule des trois vues de la tournée.
- *
- * Elle passe par [RangeePastilles], comme celle des carnets et celle de la
- * facturation, là où cet écran portait sa propre bascule dessinée à la main. Le
- * projet nomme son vocabulaire visuel une fois pour cette raison précise : deux
- * bascules qui se ressemblent sans être la même divergent au premier
- * ajustement, et l'utilisateur apprend alors deux gestes pour une seule idée.
- */
-@Composable
-fun BasculeTournee(
-    vue: VueTournee,
-    onVue: (VueTournee) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    RangeePastilles(
-        options = VueTournee.entries,
-        retenue = vue,
-        libelle = { it.libelle },
-        onChoisir = onVue,
-        modifier = modifier,
-    )
-}
-
-/**
  * Le bandeau de chiffres : ce qui est fait, le temps saisi, les urgences.
  *
  * Le temps saisi est la somme des chronomètres de la journée. Il ne sert pas
@@ -689,7 +169,7 @@ fun BasculeTournee(
  * chrono, ou qu'une journée à rallonge n'a été facturée qu'à moitié.
  */
 @Composable
-private fun BandeauJournee(lignes: List<LigneTournee>) {
+internal fun BandeauJournee(lignes: List<LigneTournee>) {
     if (lignes.isEmpty()) return
 
     val terminees = lignes.count { it.intervention.statut == StatutIntervention.TERMINEE }
@@ -764,7 +244,7 @@ private fun SeparateurVertical() {
  * vers « terminé ». Voir [GesteStatut].
  */
 @Composable
-private fun CarteEnCours(
+internal fun CarteEnCours(
     ligne: LigneTournee,
     onOuvrir: () -> Unit,
     onModifier: () -> Unit,
@@ -858,7 +338,7 @@ private fun CarteEnCours(
  * de toutes les autres. Voir [GesteStatut].
  */
 @Composable
-private fun LigneCompacte(
+internal fun LigneCompacte(
     ligne: LigneTournee,
     onOuvrir: () -> Unit,
     onModifier: () -> Unit,
@@ -963,7 +443,7 @@ private fun PastilleStatut(statut: StatutIntervention, onClick: () -> Unit) {
 }
 
 @Composable
-private fun JourneeVide() {
+internal fun JourneeVide() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -989,51 +469,3 @@ private fun sousTitre(intervention: Intervention): String = listOf(
     intervention.equipementNom.ifBlank { intervention.typeLibelle },
     intervention.ville,
 ).filter { it.isNotBlank() }.joinToString(" · ")
-
-@Preview
-@Composable
-private fun ApercuTournee() {
-    FrigoProTheme(sombre = true) {
-        InterventionsScreen(
-            vue = VueTournee.JOUR,
-            onVue = {},
-            jour = LocalDate.of(2026, 5, 14),
-            lignes = listOf(
-                LigneTournee(
-                    intervention = Intervention(
-                        id = "1",
-                        date = LocalDate.of(2026, 5, 14),
-                        heure = LocalTime.of(8, 0),
-                        client = "Boucherie Martel",
-                        ville = "Vitry-sur-Seine",
-                        typeLibelle = "Dépannage",
-                        equipementNom = "Chambre froide positive",
-                        statut = StatutIntervention.EN_COURS,
-                        urgente = true,
-                    ),
-                    client = null,
-                ),
-                LigneTournee(
-                    intervention = Intervention(
-                        id = "2",
-                        date = LocalDate.of(2026, 5, 14),
-                        heure = LocalTime.of(10, 30),
-                        client = "SCI Le Vallon",
-                        ville = "Ivry",
-                        typeLibelle = "Entretien PAC",
-                    ),
-                    client = null,
-                ),
-            ),
-            onJourPrecedent = {},
-            onJourSuivant = {},
-            onJourChoisi = {},
-            onNouvelleIntervention = {},
-            onOuvrirIntervention = {},
-            onModifierIntervention = {},
-            onChangerStatut = {},
-            frise = true,
-            onBasculerVue = {},
-        )
-    }
-}

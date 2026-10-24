@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
 
-/** Les quatre volets de l'écran d'une intervention. */
+/** Les cinq volets de l'écran d'une intervention, sans défilement : voir `RangeeOnglets`. */
 enum class OngletIntervention(val libelle: String, val icone: ImageVector) {
     /**
      * Ce qu'on lit en arrivant : le créneau, l'adresse, la machine, et la liste
@@ -188,7 +188,7 @@ class InterventionViewModel(
 
     private val _ouverte = MutableStateFlow<String?>(null)
 
-    /** Intervention ouverte, ou `null` quand l'écran montre la tournée. */
+    /** Intervention ouverte, ou `null` quand « Aujourd'hui » montre la journée. */
     val ouverte: StateFlow<String?> = _ouverte.asStateFlow()
 
     private val _onglet = MutableStateFlow(OngletIntervention.RELEVES)

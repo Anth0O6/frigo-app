@@ -40,9 +40,9 @@ import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.LocalDate
 
 /**
- * La semaine : où l'on passe, et quand.
+ * La semaine : où l'on passe, et quand. La première vue du Planning.
  *
- * La tournée du jour répond à « et maintenant ? » ; cet écran répond à « est-ce
+ * « Aujourd'hui » répond à « et maintenant ? » ; cet écran répond à « est-ce
  * que je peux caser un dépannage jeudi ? », qui est une autre question et
  * demande une autre forme. D'où le bandeau des cinq jours, et le déroulé
  * horaire du jour retenu — les trous y sautent aux yeux, ce qu'une liste ne
@@ -50,9 +50,9 @@ import java.time.LocalDate
  */
 @Composable
 fun EcranSemaine(
-    /** Laquelle des trois vues de la tournée est ouverte : celle-ci, ici. */
-    vue: VueTournee,
-    onVue: (VueTournee) -> Unit,
+    /** Laquelle des deux vues du Planning est ouverte : celle-ci, ici. */
+    vue: VuePlanning,
+    onVue: (VuePlanning) -> Unit,
     lundi: LocalDate,
     jourRetenu: LocalDate,
     interventions: List<Intervention>,
@@ -78,7 +78,7 @@ fun EcranSemaine(
                 onPrecedente = onSemainePrecedente,
                 onSuivante = onSemaineSuivante,
             )
-            BasculeTournee(
+            BasculePlanning(
                 vue = vue,
                 onVue = onVue,
                 modifier = Modifier

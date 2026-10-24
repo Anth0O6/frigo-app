@@ -94,7 +94,7 @@ fun FeuilleMateriel(
             if (magasin.isEmpty()) {
                 Encart(
                     texte = "Le magasin est vide. Les articles se créent dans " +
-                        "l'onglet Carnets, avec leur référence et leurs deux prix — " +
+                        "le magasin de l'Atelier, avec leur référence et leurs deux prix — " +
                         "y compris ceux qu'on n'a pas en stock : le magasin sert de " +
                         "tarifaire autant que d'inventaire.",
                 )

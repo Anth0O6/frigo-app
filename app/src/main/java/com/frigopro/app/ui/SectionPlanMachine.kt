@@ -72,7 +72,7 @@ data class ActionsPlanMachine(
 /**
  * Le plan de maintenance d'une machine, sur sa fiche.
  *
- * C'est le pendant du « Préventif » de la tournée, qui répond pour tout le parc
+ * C'est le pendant de l'Entretien du Planning, qui répond pour tout le parc
  * à « qu'est-ce qui tombe ? » ; ici on est devant **une** machine et la question
  * est l'inverse : « qu'est-ce que celle-ci me doit, et qu'a-t-elle reçu ? ».
  * Les deux sont nécessaires — on arrive sur un site par la liste des échéances,
@@ -83,8 +83,8 @@ data class ActionsPlanMachine(
  * délibéré : une entreprise qui ne fait pas de contrat d'entretien n'a rien à
  * lire ici, et un bloc vide sur chaque fiche d'un parc de trois cents machines
  * serait du bruit sur l'écran qu'on ouvre le plus. Celui qui cherche la
- * fonctionnalité la trouve par la vue « Préventif », qui, elle, renvoie aux
- * Réglages quand la liste des gammes est vide — c'est le même partage que pour
+ * fonctionnalité la trouve par l'Entretien du Planning, qui, lui, mène à la
+ * création d'une gamme quand la liste est vide — c'est le même partage que pour
  * la tendance des relevés, qui ne s'affiche qu'à partir de deux visites.
  */
 @Composable

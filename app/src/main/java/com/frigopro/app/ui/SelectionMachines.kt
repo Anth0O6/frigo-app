@@ -334,7 +334,7 @@ private fun LigneSelection(
  * Les zones déjà employées sont proposées dessous, comme sur la fiche d'une
  * machine et pour la même raison — c'est le seul garde-fou du texte libre, et un
  * geste qui range douze machines d'un coup sous « toit » au lieu de « Toiture »
- * fendrait le Préventif en deux groupes d'un seul coup.
+ * fendrait l'Entretien en deux groupes d'un seul coup.
  *
  * Le champ s'ouvre **sur la zone commune** quand toutes les machines cochées en
  * partagent une, et vide sinon : proposer celle de la première aurait invité à

@@ -103,7 +103,7 @@ fun FeuilleVisite(
                 Encart(
                     texte = "Cette gamme n'a aucun point. Elle enregistrera la visite, mais " +
                         "ne dira pas ce qu'il fallait vérifier — les points se posent dans " +
-                        "les Réglages.",
+                        "les gammes, depuis l'Entretien du Planning.",
                 )
             } else {
                 Text(

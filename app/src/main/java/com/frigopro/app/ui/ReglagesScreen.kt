@@ -48,11 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.PalierPrestation
-import com.frigopro.app.data.GammeMaintenance
 import com.frigopro.app.data.Parametres
-import com.frigopro.app.data.PointGamme
 import com.frigopro.app.data.Prestation
-import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.TypeIntervention
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.MargeEcran
@@ -75,6 +72,11 @@ import com.frigopro.app.ui.theme.FrigoProTheme
  * remplit d'abord : qui je suis, quelle entreprise je suis, ce que je facture,
  * comment je me déplace, ce que je vends ; puis ce qu'on règle une fois
  * (l'affichage, les types), et le registre, qui sort un document.
+ *
+ * Les **gammes de maintenance** en sont parties : elles se décrivent désormais à
+ * l'Entretien du Planning, à côté de ce qu'elles doivent (voir `EcranGammes`).
+ * Elles étaient ici pour la raison qui y garde le catalogue — on les décrit une
+ * fois —, mais la maintenance se trouvait alors éclatée entre trois onglets.
  */
 enum class PageReglages(val titre: String) {
     SAUVEGARDE("Sauvegarde"),
@@ -83,13 +85,19 @@ enum class PageReglages(val titre: String) {
     TARIFS("Tarifs et paiement"),
     DEPLACEMENT("Déplacement"),
     CATALOGUE("Catalogue des prestations"),
-    GAMMES("Gammes de maintenance"),
     AFFICHAGE("Affichage"),
     TYPES("Types d'intervention"),
     REGISTRE("Registre des fluides"),
 }
 
-/** Point d'entrée de l'onglet, branché sur le [ReglagesViewModel]. */
+/**
+ * Les Réglages, branchés sur le [ReglagesViewModel].
+ *
+ * Ils ne sont plus un onglet : la roue crantée d'« Aujourd'hui » les ouvre **en
+ * plein écran**, par-dessus la barre du bas, et le retour ramène là d'où l'on
+ * venait. On les ouvre rarement, et la place qu'ils tenaient dans la barre est
+ * allée au Planning.
+ */
 @Composable
 fun ReglagesRoute(
     /**
@@ -98,18 +106,14 @@ fun ReglagesRoute(
      * Tenue par la coquille et non ici, parce que l'accueil doit pouvoir la
      * désigner : son bandeau « à régler » mène droit à la page concernée, et un
      * état posé dans cette route aurait été hors de sa portée. C'est le même
-     * motif que le carnet ouvert.
+     * motif que la vue de l'Atelier.
      */
     page: PageReglages?,
     onPage: (PageReglages?) -> Unit,
+    /** Refermer les Réglages : le bouton de retour du sommaire. */
+    onFermer: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ReglagesViewModel = viewModel(factory = ReglagesViewModel.Factory),
-    /**
-     * Le plan de maintenance, partagé avec la vue Préventif de la tournée :
-     * `viewModel()` rend une seule instance par classe, si bien qu'une gamme
-     * créée ici est déjà celle que l'autre écran montre.
-     */
-    plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
 ) {
     val types by viewModel.types.collectAsStateWithLifecycle()
     val dialogue by viewModel.dialogue.collectAsStateWithLifecycle()
@@ -119,11 +123,6 @@ fun ReglagesRoute(
     val anneesRegistre by viewModel.anneesRegistre.collectAsStateWithLifecycle()
     val documentPret by viewModel.documentPret.collectAsStateWithLifecycle()
     val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
-    val gammes by plan.gammes.collectAsStateWithLifecycle()
-    val pointsGamme by plan.points.collectAsStateWithLifecycle()
-    val affectations by plan.affectations.collectAsStateWithLifecycle()
-    val realisationParGamme by plan.realisations.collectAsStateWithLifecycle()
-    val gammeOuverte by plan.gammeOuverte.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // Le logo vient de la galerie : aucune permission, le sélecteur du système
@@ -163,6 +162,7 @@ fun ReglagesRoute(
     ReglagesScreen(
         page = page,
         onPage = onPage,
+        onFermer = onFermer,
         types = types,
         parametres = parametres,
         onAjouterType = viewModel::onAjouterType,
@@ -212,24 +212,6 @@ fun ReglagesRoute(
         // l'écran l'héberge sans la connaître, exactement comme la barre de la
         // tournée le faisait avant elle.
         sauvegarde = { SectionSauvegarde() },
-        gammes = gammes,
-        pointsGamme = pointsGamme,
-        // Combien de machines suivent chaque gamme : dérivé des affectations,
-        // jamais stocké — un compteur en base serait faux au premier
-        // rattachement fait depuis l'autre écran.
-        machinesParGamme = affectations.groupingBy { it.gammeId }.eachCount(),
-        gammeOuverte = gammeOuverte,
-        actionsGammes = ActionsGammes(
-            onOuvrir = plan::onOuvrirGamme,
-            onFermer = plan::onFermerGamme,
-            onCreer = plan::onCreerGamme,
-            onRenommer = plan::onRenommerGamme,
-            onPeriodicite = plan::onPeriodicite,
-            onSupprimer = plan::onSupprimerGamme,
-            onAjouterPoint = plan::onAjouterPoint,
-            onSupprimerPoint = plan::onSupprimerPoint,
-        ),
-        realisationParGamme = realisationParGamme,
         modifier = modifier,
     )
 
@@ -271,7 +253,7 @@ fun ReglagesRoute(
 
 private const val MESSAGE_TYPE_EXISTANT = "Ce type existe déjà."
 
-/** Écran sans état : pour l'instant, la seule liste des types d'intervention. */
+/** Écran sans état : le sommaire, ou la page ouverte. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReglagesScreen(
@@ -327,13 +309,11 @@ fun ReglagesScreen(
      * employait déjà pour le même composant.
      */
     sauvegarde: @Composable () -> Unit = {},
-    gammes: List<GammeMaintenance> = emptyList(),
-    pointsGamme: List<PointGamme> = emptyList(),
-    machinesParGamme: Map<String, Int> = emptyMap(),
-    gammeOuverte: String? = null,
-    actionsGammes: ActionsGammes = ActionsGammes(),
-    /** Le taux de réalisation de chaque gamme. Voir [SectionGammes]. */
-    realisationParGamme: Map<String, RealisationGamme> = emptyMap(),
+    /**
+     * Refermer les Réglages depuis le sommaire. Le retour système du sommaire
+     * est tenu par la coquille, qui sait d'où l'on venait.
+     */
+    onFermer: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Une seule profondeur à défaire : la page ouverte remplace le sommaire, et
@@ -343,7 +323,8 @@ fun ReglagesScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        // La barre d'onglets pose déjà la marge du bas ; voir `FrigoProApp`.
+        // La coquille pose les marges des barres système, celle du bas comprise
+        // quand les Réglages masquent la barre d'onglets ; voir `FrigoProApp`.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
@@ -353,14 +334,18 @@ fun ReglagesScreen(
                 navigationIcon = {
                     // Un bouton de retour visible **en plus** du geste système :
                     // un geste qui ne se voit pas n'est pas une fonctionnalité,
-                    // et c'est la règle que le projet suit partout.
-                    if (page != null) {
-                        IconButton(onClick = { onPage(null) }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Revenir aux réglages",
-                            )
-                        }
+                    // et c'est la règle que le projet suit partout. Sur le
+                    // sommaire, il referme les Réglages : ils ne sont plus un
+                    // onglet, et rien d'autre à l'écran n'y ramènerait.
+                    IconButton(onClick = { if (page != null) onPage(null) else onFermer() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = if (page != null) {
+                                "Revenir aux réglages"
+                            } else {
+                                "Fermer les réglages"
+                            },
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -403,8 +388,6 @@ fun ReglagesScreen(
                     parametres = parametres,
                     prestations = prestations,
                     types = types,
-                    gammes = gammes,
-                    machinesParGamme = machinesParGamme,
                     onPage = onPage,
                 )
 
@@ -461,17 +444,6 @@ fun ReglagesScreen(
                     )
                 }
 
-                PageReglages.GAMMES -> item {
-                    SectionGammes(
-                        gammes = gammes,
-                        points = pointsGamme,
-                        machinesParGamme = machinesParGamme,
-                        realisationParGamme = realisationParGamme,
-                        gammeOuverte = gammeOuverte,
-                        actions = actionsGammes,
-                    )
-                }
-
                 PageReglages.TYPES -> {
                     item {
                         Text(
@@ -522,7 +494,7 @@ fun ReglagesScreen(
  * Le résumé est ce qui distingue un sommaire d'un menu, et c'est lui qui fait le
  * travail : « 0,00 € HT · coût interne non réglé » dit d'un coup d'œil qu'il y a
  * là quelque chose à faire, là où « Tarifs et paiement › » aurait demandé
- * d'ouvrir les sept pages l'une après l'autre pour s'en assurer. Rien n'y est
+ * d'ouvrir les neuf pages l'une après l'autre pour s'en assurer. Rien n'y est
  * stocké — chaque résumé se lit dans les réglages courants, et un compteur en
  * base serait faux au premier tarif saisi.
  */
@@ -530,8 +502,6 @@ private fun LazyListScope.sommaire(
     parametres: Parametres,
     prestations: List<Prestation>,
     types: List<TypeIntervention>,
-    gammes: List<GammeMaintenance>,
-    machinesParGamme: Map<String, Int>,
     onPage: (PageReglages) -> Unit,
 ) {
     val tarifes = prestations.count { it.prixUnitaire > 0.0 }
@@ -562,18 +532,6 @@ private fun LazyListScope.sommaire(
                 "tarif non réglé"
             },
         ).joinToString(" · "),
-        PageReglages.GAMMES to when {
-            gammes.isEmpty() -> "Aucune gamme"
-            else -> {
-                val suivies = machinesParGamme.values.sum()
-                "${gammes.size} gamme${pluriel(gammes.size)}, " +
-                    if (suivies == 0) {
-                        "aucune machine suivie"
-                    } else {
-                        "$suivies machine${pluriel(suivies)} suivie${pluriel(suivies)}"
-                    }
-            }
-        },
         PageReglages.CATALOGUE to when {
             prestations.isEmpty() -> "Catalogue vide"
             tarifes == 0 -> "${prestations.size} prestations, aucune tarifée"

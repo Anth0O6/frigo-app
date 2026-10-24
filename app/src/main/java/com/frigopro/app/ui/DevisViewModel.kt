@@ -94,7 +94,7 @@ data class DevisRanges(
 data class DevisFacturé(val chiffre: DevisChiffre, val facture: DevisFacture)
 
 /**
- * L'onglet Devis : la liste, et le devis ouvert.
+ * La vue Devis de l'onglet Factures : la liste, et le devis ouvert.
  *
  * Même motif que partout ailleurs — le devis ouvert est retenu par son
  * identifiant, si bien qu'une ligne ajoutée ou un changement de statut se

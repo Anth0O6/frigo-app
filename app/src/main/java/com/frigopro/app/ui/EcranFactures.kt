@@ -349,8 +349,8 @@ fun ListeFactures(
         Column(modifier = Modifier.padding(marges)) {
             Text(
                 // Le titre nomme la vue ouverte et non l'onglet, comme celui
-                // des carnets : « Facturation » au-dessus d'une bascule
-                // « Devis · Factures » répétait le nom du groupe et laissait
+                // de l'Atelier : « Facturation » au-dessus d'une bascule
+                // « Factures · Devis » répétait le nom du groupe et laissait
                 // l'écran sans dire lequel des deux on regarde.
                 text = VueFacturation.FACTURES.libelle,
                 style = MaterialTheme.typography.headlineMedium,

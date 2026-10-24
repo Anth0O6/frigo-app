@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.RequestQuote
 import androidx.compose.material.icons.filled.Today
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -26,55 +26,54 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * Les cinq sections de l'application.
+ * Les cinq onglets de l'application.
  *
- * Elles étaient six, et c'était une de trop — Material n'en recommande pas plus
- * de cinq, et la contrepartie se lisait sur les libellés : « Auj. » ne voulait
- * rien dire pour personne, et l'onglet « Devis » ouvrait un écran intitulé
- * « Facturation ». Le sixième a disparu en réunissant **l'accueil et le
- * planning**, qui montraient les mêmes interventions sous deux entrées
- * différentes sans que rien ne dise laquelle regarder : ils sont maintenant deux
- * des trois vues de [VueTournee], sous la bascule que les carnets et la
- * facturation portent déjà.
+ * L'ordre est celui des questions qu'on se pose : **Aujourd'hui** d'abord —
+ * « et maintenant ? » —, le **Planning** ensuite — « et la semaine ? », « et ce
+ * que le contrat me doit ? » —, puis pour qui je travaille, ce que je réclame, et
+ * avec quoi je travaille.
  *
- * L'ordre reste celui des questions qu'on se pose : la tournée d'abord — « et
- * maintenant ? » —, ce qu'elle rapporte ensuite, puis les carnets qu'on tient.
- * **Outils** se range avant-dernier, et c'est une section d'une autre nature que
- * les quatre autres : elle ne regarde aucune donnée de l'application. Une
- * réglette, un convertisseur, une périodicité réglementaire se consultent sans
- * client ni intervention — au téléphone, devant une plaque —, et les enfouir
- * dans la fiche d'une intervention obligeait à en ouvrir une pour convertir des
- * psi. **Réglages** ferme la marche : c'est là que vivent la sauvegarde et le
- * registre des fluides, qu'on ouvre rarement mais dont l'absence se paierait
- * cher.
+ * La barre a été refaite après un audit, et trois défauts l'avaient décidé. La
+ * Tournée portait **quatre pastilles** — Maintenant, Jour, Semaine, Préventif —
+ * qui débordaient d'un écran de 320 points, si bien que « Préventif » était rogné
+ * ou caché ; **Maintenant et Jour faisaient doublon**, la suite de la journée de
+ * l'une étant la liste de l'autre ; et la **maintenance** était éclatée entre
+ * trois onglets. Maintenant et Jour sont devenus « Aujourd'hui », Semaine et
+ * Préventif le Planning, où les gammes ont rejoint les visites ; les Outils sont
+ * une vue de l'Atelier, avec le magasin et les fournisseurs ; et les **Réglages**
+ * ont quitté la barre pour une roue crantée en tête d'« Aujourd'hui » — on les
+ * ouvre rarement, et l'on sait où les chercher.
  *
- * Aucun libellé n'est abrégé, et aucun ne ment sur ce qu'il ouvre : c'est ce
- * que le cinquième onglet a payé.
+ * Aucun libellé n'est abrégé, aucun ne ment sur ce qu'il ouvre, et aucune
+ * bascule ne porte plus de trois pastilles.
  */
 enum class Onglet(val libelle: String, val icone: ImageVector) {
-    TOURNEE("Tournée", Icons.Filled.Today),
+    AUJOURDHUI("Aujourd'hui", Icons.Filled.Today),
+    PLANNING("Planning", Icons.Filled.DateRange),
     CLIENTS("Clients", Icons.Filled.Contacts),
     FACTURES("Factures", Icons.Filled.RequestQuote),
     ATELIER("Atelier", Icons.Filled.Build),
-    REGLAGES("Réglages", Icons.Filled.Tune),
 }
 
 /**
- * Coquille de l'application : la section affichée et la barre qui en change.
+ * Coquille de l'application : l'onglet affiché, la barre qui en change, les
+ * Réglages par-dessus, et la feuille de saisie d'une intervention.
  *
- * Pas de graphe de navigation. Avec cinq sections sans lien hiérarchique, une
+ * Pas de graphe de navigation. Avec cinq onglets sans lien hiérarchique, une
  * variable d'état suffit, et `rememberSaveable` la fait survivre à une rotation
- * comme à la mise en arrière-plan. La bibliothèque de navigation aura son
- * intérêt le jour où il faudra une pile arrière — une fiche client ouverte en
- * pleine page plutôt qu'en feuille, par exemple — ou des liens profonds.
+ * comme à la mise en arrière-plan. Chaque onglet n'a **qu'une profondeur** — un
+ * objet ouvert remplace sa liste —, et les Réglages en plein écran n'en ajoutent
+ * qu'une. La bibliothèque de navigation aura son intérêt le jour où il faudra une
+ * vraie pile arrière ou des liens profonds.
  *
  * **C'est la coquille qui pose les marges des barres système**, et elle seule :
  * la barre d'onglets porte celle du bas, et le contenu reçoit ici celle du haut
- * et des côtés. Les écrans qu'elle héberge passent donc
- * `contentWindowInsets = WindowInsets(0, 0, 0, 0)` à leur `Scaffold` — sans quoi
- * la marge serait comptée deux fois.
+ * et des côtés — et celle du bas quand les Réglages masquent la barre. Les écrans
+ * qu'elle héberge passent donc `contentWindowInsets = WindowInsets(0, 0, 0, 0)` à
+ * leur `Scaffold` — sans quoi la marge serait comptée deux fois.
  *
  * La marge du haut vient de `safeDrawing` et non des seules barres système,
  * parce qu'elle doit aussi écarter la **découpe d'écran** : sur un téléphone à
@@ -83,38 +82,107 @@ enum class Onglet(val libelle: String, val icone: ImageVector) {
  */
 @Composable
 fun FrigoProApp(modifier: Modifier = Modifier) {
-    var onglet by rememberSaveable { mutableStateOf(Onglet.TOURNEE) }
+    var onglet by rememberSaveable { mutableStateOf(Onglet.AUJOURDHUI) }
 
-    // Le carnet ouvert est tenu **ici** et non dans `CarnetsRoute`, parce que
-    // l'accueil doit pouvoir désigner le magasin : « il manque trois articles »
-    // n'est une réponse à « et maintenant ? » que si elle mène quelque part.
-    // C'est le même motif que la facture ouverte depuis l'accueil, à ceci près
-    // qu'un carnet n'est pas un `ViewModel` et ne peut donc pas être partagé
-    // par `viewModel()`.
+    // Les vues des onglets à bascule sont tenues **ici** et non dans leurs
+    // routes. Posées dans un `rememberSaveable` de la route, elles se perdaient
+    // au premier changement d'onglet — l'onglet Factures revenait sur sa vue par
+    // défaut après un détour par une intervention —, et elles auraient été hors
+    // d'atteinte de l'accueil : « il manque trois articles » n'est une réponse à
+    // « et maintenant ? » que si elle mène au magasin. Un onglet n'est pas un
+    // `ViewModel`, et ces vues ne peuvent donc pas être partagées par
+    // `viewModel()` comme les objets ouverts le sont.
+    var planning by rememberSaveable { mutableStateOf(VuePlanning.SEMAINE) }
+    var gammesOuvertes by rememberSaveable { mutableStateOf(false) }
+    var facturation by rememberSaveable { mutableStateOf(VueFacturation.FACTURES) }
     var atelier by rememberSaveable { mutableStateOf(VueAtelier.MAGASIN) }
 
-    // La vue des Factures, tenue ici pour la même raison : posée dans la route,
-    // elle se perdait à chaque changement d'onglet.
-    var facturation by rememberSaveable { mutableStateOf(VueFacturation.FACTURES) }
-
-    // La page des Réglages est tenue ici pour la même raison que le carnet, et
-    // c'est le bandeau de l'accueil qui l'exige : « une ligne de main-d'œuvre se
-    // chiffre à 0 € » n'est une réponse à « et maintenant ? » que si elle mène à
-    // la page qui le corrige, et un état posé dans `ReglagesRoute` aurait été
-    // hors d'atteinte de l'accueil.
+    // Les Réglages, en plein écran par-dessus l'onglet, et la page ouverte. La
+    // page est tenue ici pour la même raison que les vues : « une ligne de
+    // main-d'œuvre se chiffre à 0 € » n'est une réponse que si elle mène à la
+    // page qui le corrige.
+    var reglagesOuverts by rememberSaveable { mutableStateOf(false) }
     var pageReglages by rememberSaveable { mutableStateOf<PageReglages?>(null) }
 
-    // À la racine d'un onglet autre que la Tournée, le retour système **ramène à
-    // la Tournée** au lieu de fermer l'application : on ouvre les Réglages ou un
-    // carnet pour un geste, et le retour qui suit veut revenir à sa journée, pas
-    // quitter. Sur la Tournée, il ferme comme avant — c'est la porte de sortie.
+    // Les ViewModels que la coquille touche pour ramener un onglet à son début.
+    // `viewModel()` rend la même instance que celle des routes : refermer un
+    // objet ici le referme là-bas. Les créer n'observe rien — leurs flux ne
+    // coulent que collectés.
+    val tournee: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory)
+    val detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory)
+    val plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory)
+    val machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory)
+    val factures: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory)
+    val devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory)
+    val materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory)
+    val outils: OutilsViewModel = viewModel(factory = OutilsViewModel.Factory)
+
+    fun ouvrirReglages(page: PageReglages?) {
+        pageReglages = page
+        reglagesOuverts = true
+    }
+
+    /**
+     * Toucher l'onglet déjà ouvert le ramène à son début : vue par défaut, objet
+     * ouvert refermé. C'est le geste de qui s'est perdu, et il ne faisait rien.
+     *
+     * Ne sont refermés que les objets **dont rien n'est en cours de saisie** : une
+     * intervention, une machine, une facture, un devis, un article écrivent à
+     * chaque geste, et les refermer ne perd rien. La feuille de saisie d'une
+     * intervention, la fiche d'un client et la saisie groupée des prix tiennent
+     * en revanche une saisie qui n'est pas encore écrite — les refermer d'un
+     * appui sur la barre l'abandonnerait en silence, ce que le projet refuse
+     * partout ailleurs. Elles restent ouvertes.
+     */
+    fun revenirAuDebut(cible: Onglet) {
+        when (cible) {
+            Onglet.AUJOURDHUI -> {
+                detail.onFermer()
+                tournee.onRevenirAAujourdhui()
+            }
+
+            Onglet.PLANNING -> {
+                planning = VuePlanning.SEMAINE
+                gammesOuvertes = false
+                plan.onFermerGamme()
+            }
+
+            Onglet.CLIENTS -> machines.onRevenirAuCarnet()
+
+            Onglet.FACTURES -> {
+                facturation = VueFacturation.FACTURES
+                factures.onFermer()
+                devis.onFermer()
+            }
+
+            Onglet.ATELIER -> {
+                atelier = VueAtelier.MAGASIN
+                materiel.onFermerArticle()
+                materiel.onFermerFournisseur()
+                outils.onFermer()
+            }
+        }
+    }
+
+    // À la racine d'un onglet autre qu'« Aujourd'hui », le retour système **ramène
+    // à « Aujourd'hui »** au lieu de fermer l'application : on ouvre un autre
+    // onglet pour un geste, et le retour qui suit veut revenir à sa journée, pas
+    // quitter. Sur « Aujourd'hui », il ferme comme avant — c'est la porte de
+    // sortie.
     //
     // Il est posé **avant** les routes, et c'est ce qui le tient à sa place : le
     // dispatcher donne la main au rappel ajouté en dernier, si bien que celui-ci,
     // composé le premier et une seule fois, passe toujours après ceux des écrans
-    // — machine ouverte, page des Réglages, sélection, outil. Il ne court-circuite
+    // — machine ouverte, gammes, sélection, outil, facture. Il ne court-circuite
     // jamais une profondeur à défaire, et ne joue qu'une fois toutes défaites.
-    BackHandler(enabled = onglet != Onglet.TOURNEE) { onglet = Onglet.TOURNEE }
+    BackHandler(enabled = !reglagesOuverts && onglet != Onglet.AUJOURDHUI) {
+        onglet = Onglet.AUJOURDHUI
+    }
+
+    // Les Réglages se referment au retour, une fois leur page refermée : celle-ci
+    // a son propre rappel, posé par `ReglagesScreen` et donc plus récent. Même
+    // raison de placement que le précédent.
+    BackHandler(enabled = reglagesOuverts) { reglagesOuverts = false }
 
     Column(modifier = modifier.fillMaxSize()) {
         Box(
@@ -122,62 +190,102 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                 .weight(1f)
                 .windowInsetsPadding(
                     WindowInsets.safeDrawing.only(
-                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                        if (reglagesOuverts) {
+                            // Sans barre d'onglets, la marge du bas revient au
+                            // contenu ; `safeDrawing` y compte aussi le clavier,
+                            // que les champs des Réglages font monter.
+                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal +
+                                WindowInsetsSides.Bottom
+                        } else {
+                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                        },
                     ),
                 ),
         ) {
-            when (onglet) {
-                Onglet.TOURNEE -> TourneeRoute(
-                    onAllerAuxDevis = {
-                        facturation = VueFacturation.DEVIS
-                        onglet = Onglet.FACTURES
-                    },
-                    onAllerAuxFactures = {
-                        facturation = VueFacturation.FACTURES
-                        onglet = Onglet.FACTURES
-                    },
-                    onVoirMagasin = {
-                        atelier = VueAtelier.MAGASIN
-                        onglet = Onglet.ATELIER
-                    },
-                    onReglage = { page ->
-                        pageReglages = page
-                        onglet = Onglet.REGLAGES
-                    },
-                )
-
-                Onglet.CLIENTS -> ClientsRoute()
-                Onglet.FACTURES -> FacturationRoute(
-                    vue = facturation,
-                    onVue = { facturation = it },
-                    onAllerALaTournee = { onglet = Onglet.TOURNEE },
-                )
-                Onglet.ATELIER -> AtelierRoute(
-                    vue = atelier,
-                    onVue = { atelier = it },
-                    onReglage = { page ->
-                        pageReglages = page
-                        onglet = Onglet.REGLAGES
-                    },
-                )
-                Onglet.REGLAGES -> ReglagesRoute(
+            // Les Réglages **remplacent** l'onglet plutôt que de se poser dessus :
+            // l'onglet recouvert garderait ses rappels de retour, et le premier
+            // retour refermerait, sous les Réglages, une intervention qu'on ne
+            // voit pas. Rien n'est perdu à les retirer de la composition — les
+            // objets ouverts sont aux ViewModels et les vues à la coquille.
+            if (reglagesOuverts) {
+                ReglagesRoute(
                     page = pageReglages,
                     onPage = { pageReglages = it },
+                    onFermer = { reglagesOuverts = false },
                 )
+            } else {
+                when (onglet) {
+                    Onglet.AUJOURDHUI -> AujourdhuiRoute(
+                        onAllerAuxDevis = {
+                            facturation = VueFacturation.DEVIS
+                            onglet = Onglet.FACTURES
+                        },
+                        onAllerAuxFactures = {
+                            facturation = VueFacturation.FACTURES
+                            onglet = Onglet.FACTURES
+                        },
+                        onVoirMagasin = {
+                            atelier = VueAtelier.MAGASIN
+                            onglet = Onglet.ATELIER
+                        },
+                        onVoirEntretien = {
+                            planning = VuePlanning.ENTRETIEN
+                            gammesOuvertes = false
+                            onglet = Onglet.PLANNING
+                        },
+                        onVoirClients = { onglet = Onglet.CLIENTS },
+                        onReglages = { page -> ouvrirReglages(page) },
+                    )
+
+                    Onglet.PLANNING -> PlanningRoute(
+                        vue = planning,
+                        onVue = { planning = it },
+                        gammesOuvertes = gammesOuvertes,
+                        onGammes = { gammesOuvertes = it },
+                        onAllerAAujourdhui = { onglet = Onglet.AUJOURDHUI },
+                    )
+
+                    Onglet.CLIENTS -> ClientsRoute()
+
+                    Onglet.FACTURES -> FacturationRoute(
+                        vue = facturation,
+                        onVue = { facturation = it },
+                        // « Planifier » un devis accepté : la feuille de saisie
+                        // est déjà ouverte par la vue Devis, et c'est devant la
+                        // journée que la date se choisit.
+                        onAllerALaTournee = { onglet = Onglet.AUJOURDHUI },
+                    )
+
+                    Onglet.ATELIER -> AtelierRoute(
+                        vue = atelier,
+                        onVue = { atelier = it },
+                        onReglage = { page -> ouvrirReglages(page) },
+                    )
+                }
             }
         }
-        NavigationBar {
-            Onglet.entries.forEach { cible ->
-                NavigationBarItem(
-                    selected = onglet == cible,
-                    onClick = { onglet = cible },
-                    icon = { Icon(imageVector = cible.icone, contentDescription = null) },
-                    // `maxLines` explicite : la place d'un libellé se compte
-                    // encore à cinq, et un retour à la ligne décalerait toute
-                    // la barre.
-                    label = { Text(text = cible.libelle, maxLines = 1) },
-                )
+        if (!reglagesOuverts) {
+            NavigationBar {
+                Onglet.entries.forEach { cible ->
+                    NavigationBarItem(
+                        selected = onglet == cible,
+                        onClick = {
+                            if (onglet == cible) revenirAuDebut(cible) else onglet = cible
+                        },
+                        icon = { Icon(imageVector = cible.icone, contentDescription = null) },
+                        // `maxLines` explicite : la place d'un libellé se compte
+                        // à cinq, et un retour à la ligne décalerait toute la
+                        // barre.
+                        label = { Text(text = cible.libelle, maxLines = 1) },
+                    )
+                }
             }
         }
     }
+
+    // La feuille de saisie d'une intervention, posée **une fois** au-dessus de
+    // tout : « Aujourd'hui » l'ouvre, le Planning y corrige un créneau, la vue
+    // Devis y planifie un devis accepté. Une seule instance du formulaire, une
+    // seule feuille — voir [FeuilleFormulaireIntervention].
+    FeuilleFormulaireIntervention(tournee)
 }

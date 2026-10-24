@@ -203,7 +203,7 @@ private fun EnTeteIntervention(
             ) {
                 BoutonCarre(
                     icone = Icons.AutoMirrored.Filled.ArrowBack,
-                    description = "Revenir à la tournée",
+                    description = "Revenir à la journée",
                     onClick = actions.onFermer,
                 )
                 BoutonCarre(

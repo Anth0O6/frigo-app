@@ -744,20 +744,45 @@ class InterventionsViewModelTest {
     }
 
     /**
-     * Changer de vue abandonne la recherche : la laisser courir ferait retrouver
-     * une journée filtrée en revenant, sans que rien ne dise qu'on cherche encore.
+     * Refermer la recherche l'abandonne : la laisser courir ferait retrouver une
+     * journée filtrée à la loupe suivante, sans que rien ne dise qu'on cherche
+     * encore.
      */
     @Test
-    fun `changer de vue efface la recherche`() = runTest {
+    fun `refermer la recherche l'efface`() = runTest {
         val viewModel = creerViewModel()
 
+        viewModel.onOuvrirRecherche()
         viewModel.onRecherche("carrefour")
         advanceUntilIdle()
+        assertTrue(viewModel.rechercheOuverte.value)
         assertEquals("carrefour", viewModel.recherche.value)
 
-        viewModel.onVue(VueTournee.SEMAINE)
+        viewModel.onFermerRecherche()
         advanceUntilIdle()
 
+        assertFalse(viewModel.rechercheOuverte.value)
+        assertEquals("", viewModel.recherche.value)
+    }
+
+    /**
+     * Toucher l'onglet déjà ouvert ramène « Aujourd'hui » à son début : la date
+     * du jour, et la recherche refermée. C'est le geste de qui s'est perdu dans le
+     * calendrier.
+     */
+    @Test
+    fun `revenir a aujourd'hui remet la date et referme la recherche`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onJourChoisi(LocalDate.now().plusWeeks(3))
+        viewModel.onOuvrirRecherche()
+        viewModel.onRecherche("carrefour")
+
+        viewModel.onRevenirAAujourdhui()
+        advanceUntilIdle()
+
+        assertEquals(LocalDate.now(), viewModel.jour.value)
+        assertFalse(viewModel.rechercheOuverte.value)
         assertEquals("", viewModel.recherche.value)
     }
 

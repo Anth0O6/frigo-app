@@ -419,7 +419,7 @@ class EquipementRepositoryTest {
     }
 
     /**
-     * « Toiture » et « Toiture  » feraient deux groupes au Préventif, et l'espace
+     * « Toiture » et « Toiture  » feraient deux groupes à l'Entretien, et l'espace
      * de trop ne se voit pas à l'écran.
      */
     @Test

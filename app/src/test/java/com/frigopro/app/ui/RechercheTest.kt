@@ -104,8 +104,8 @@ class RechercheTest {
     }
 
     /**
-     * Le carnet trouve un client **par la zone** d'une de ses machines, comme le
-     * Préventif : la même saisie ne doit pas trouver dans une vue et pas dans
+     * Le carnet trouve un client **par la zone** d'une de ses machines, comme
+     * l'Entretien : la même saisie ne doit pas trouver dans une vue et pas dans
      * l'autre.
      */
     @Test

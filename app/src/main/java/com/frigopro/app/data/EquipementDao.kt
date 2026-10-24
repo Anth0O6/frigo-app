@@ -164,8 +164,8 @@ abstract class EquipementDao {
      * C'est le geste « ces douze meubles-là » : ranger un parc déjà saisi ne se
      * fait pas en ouvrant trois cents fois la fiche de chaque machine. Une seule
      * transaction, parce qu'une sélection rangée à moitié — sept meubles en
-     * « linéaire surgelés », cinq restés « Sans zone » — ne se verrait qu'au
-     * Préventif, en découvrant un linéaire coupé en deux.
+     * « linéaire surgelés », cinq restés « Sans zone » — ne se verrait qu'à
+     * l'Entretien, en découvrant un linéaire coupé en deux.
      *
      * Le nom est celui du métier et non celui du SQL : on **range** une machine
      * dans une zone. Le nettoyage de la saisie est l'affaire du dépôt.

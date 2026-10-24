@@ -243,6 +243,20 @@ class EquipementsViewModel(
         _ouverte.value = groupe
     }
 
+    /**
+     * Ramène l'onglet au carnet, d'un geste : la fiche refermée **sans** repasser
+     * par le groupe d'une unité, et la sélection abandonnée.
+     *
+     * C'est ce que fait toucher l'onglet Clients déjà ouvert. [onFermer] défait
+     * une profondeur à la fois, ce qui est juste pour le retour système et faux
+     * ici : le geste dit « au début », pas « un cran plus haut ».
+     */
+    fun onRevenirAuCarnet() {
+        retour = null
+        _ouverte.value = null
+        _selection.value = null
+    }
+
     private fun ouvrir(equipement: Equipement) {
         retour = equipement.parentId
         _ouverte.value = equipement.id

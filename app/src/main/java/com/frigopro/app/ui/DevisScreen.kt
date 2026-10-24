@@ -92,9 +92,9 @@ fun DevisRoute(
     viewModel: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
     facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
     /**
-     * Celui de la tournée, et c'est tout le mécanisme : `viewModel()` rend une
+     * Celui de la journée, et c'est tout le mécanisme : `viewModel()` rend une
      * seule instance par classe, si bien que le formulaire ouvert d'ici est
-     * exactement celui que `TourneeRoute` dessine déjà. Rien à transporter d'un
+     * exactement celui que la coquille dessine déjà. Rien à transporter d'un
      * onglet à l'autre — le même motif que la facture créée depuis un devis.
      */
     tournee: InterventionsViewModel = viewModel(factory = InterventionsViewModel.Factory),
@@ -346,8 +346,8 @@ fun ListeDevis(
         Column(modifier = Modifier.padding(marges)) {
             Text(
                 // Le titre nomme la vue ouverte et non l'onglet, comme celui
-                // des carnets : « Facturation » au-dessus d'une bascule
-                // « Devis · Factures » répétait le nom du groupe et laissait
+                // de l'Atelier : « Facturation » au-dessus d'une bascule
+                // « Factures · Devis » répétait le nom du groupe et laissait
                 // l'écran sans dire lequel des deux on regarde.
                 text = VueFacturation.DEVIS.libelle,
                 style = MaterialTheme.typography.headlineMedium,

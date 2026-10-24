@@ -876,7 +876,7 @@ data class ActionsRegistre(
 /**
  * Le registre des fluides, dans les Réglages.
  *
- * Il est ici et non dans l'onglet Outils — qui ne regarde aucune donnée de
+ * Il est ici et non dans les Outils de l'Atelier — qui ne regarde aucune donnée de
  * l'application — ni sur une fiche machine, qui n'en montrerait qu'une. Un
  * registre est un document **de l'entreprise**, au même titre que la
  * sauvegarde : c'est la pièce qu'on sort quand un contrôle la demande, et c'est

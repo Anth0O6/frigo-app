@@ -33,46 +33,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
- * Les trois vues de la tournée, sous une seule bascule.
- *
- * Elles ne sont pas trois écrans mais trois **distances de lecture** de la même
- * chose : « et maintenant ? », « et le reste de la journée ? », « et le reste de
- * la semaine ? ». Les avoir séparées en deux onglets — l'accueil et le planning
- * — était le point le plus déroutant de l'application : deux entrées de la barre
- * du bas montraient les mêmes interventions, sans que rien ne dise laquelle
- * regarder. Une bascule sous le titre est la réponse que le projet donne déjà
- * partout où un onglet porte plusieurs vues, les carnets et la facturation, et
- * les trois se comportent maintenant de la même façon.
- *
- * Le gain n'est pas seulement visuel : la barre du bas passe de six entrées à
- * cinq, c'est-à-dire au maximum que Material recommande, et les libellés
- * cessent d'être abrégés — « Auj. » ne voulait rien dire pour personne.
- */
-enum class VueTournee(val libelle: String) {
-    MAINTENANT("Maintenant"),
-    JOUR("Jour"),
-    SEMAINE("Semaine"),
-
-    /**
-     * Ce que le calendrier doit, et qui n'est pas encore un rendez-vous.
-     *
-     * Les trois premières vues sont des **distances de lecture** du même
-     * travail — « et maintenant ? », « et le reste de la journée ? », « et le
-     * reste de la semaine ? » — et toutes trois montrent des interventions
-     * **posées sur une date**. Celle-ci répond à une autre question : « qu'est-ce
-     * que le calendrier me doit ? ». C'est du travail dû et non planifié, et c'est
-     * ce qui en fait la quatrième vue de cet onglet plutôt qu'un onglet de plus :
-     * de là on planifie une intervention, qui retombe alors dans les trois
-     * premières. Le même geste que depuis un devis accepté.
-     *
-     * Elle ferme la marche parce qu'on l'ouvre le moins souvent : une ronde se
-     * fait tous les matins, mais on ne consulte le plan entier qu'en préparant une
-     * semaine.
-     */
-    PREVENTIF("Préventif"),
-}
-
-/**
  * Ce que fait la pastille de statut d'une ligne — et le bouton « Terminer » de
  * la carte en cours —, selon où en est l'intervention.
  *
@@ -113,10 +73,13 @@ fun gesteStatut(statut: StatutIntervention): GesteStatut = when (statut) {
 }
 
 /**
- * Détient l'état de l'écran « Interventions ».
+ * Détient l'état de la journée : celle qu'« Aujourd'hui » affiche, la semaine
+ * que le Planning montre autour d'elle, la recherche, et la feuille de saisie.
  *
  * L'UI observe [jour], [lignes], [clients], [types] et [formulaire], et remonte
- * les intentions utilisateur via les méthodes `on…`.
+ * les intentions utilisateur via les méthodes `on…`. Il est partagé par
+ * `viewModel()` entre la coquille — qui pose la feuille de saisie —,
+ * « Aujourd'hui », le Planning et la vue Devis, qui y planifie un devis accepté.
  */
 class InterventionsViewModel(
     private val interventionRepository: InterventionRepository,
@@ -138,46 +101,23 @@ class InterventionsViewModel(
     /** Journée affichée. Changer sa valeur suffit à recharger la liste. */
     val jour: StateFlow<LocalDate> = _jour.asStateFlow()
 
-    private val _frise = MutableStateFlow(true)
+    private val _frise = MutableStateFlow(false)
 
     /**
      * La journée en frise horaire plutôt qu'en liste.
      *
      * Les deux vues répondent à deux questions différentes : la liste dit ce qui
      * vient ensuite, la frise dit **où sont les trous** — et c'est dans les trous
-     * qu'on case le client qui vient d'appeler. La frise est retenue par défaut
-     * parce que la question de la journée en cours est aussi celle de la journée
-     * qu'on est en train de remplir.
+     * qu'on case le client qui vient d'appeler. La **liste** est retenue par
+     * défaut depuis que la journée est l'accueil : on ouvre l'application pour
+     * savoir chez qui l'on va, et la frise reste à un appui pour qui cherche un
+     * créneau. C'est une préférence d'affichage et non une navigation, d'où un
+     * bouton à côté plutôt qu'une pastille de plus.
      */
     val frise: StateFlow<Boolean> = _frise.asStateFlow()
 
     fun onBasculerVue() {
         _frise.value = !_frise.value
-    }
-
-    private val _vue = MutableStateFlow(VueTournee.MAINTENANT)
-
-    /**
-     * Laquelle des trois vues de la tournée est ouverte.
-     *
-     * Elle est tenue **ici** et non dans la coquille, à la différence du carnet,
-     * parce que l'accueil et le planning partagent déjà ce ViewModel : la carte
-     * de l'accueil n'a donc rien à transporter pour ouvrir la semaine, elle la
-     * demande à l'objet qu'elle a sous la main.
-     *
-     * On rouvre sur « Maintenant », qui est la question qu'on se pose en sortant
-     * le téléphone. Revenir sur la vue qu'on avait quittée aurait rouvert le
-     * planning de jeudi prochain un mardi matin.
-     */
-    val vue: StateFlow<VueTournee> = _vue.asStateFlow()
-
-    fun onVue(vue: VueTournee) {
-        _vue.value = vue
-        // Changer de vue abandonne la recherche : elle n'appartient qu'à la vue
-        // du jour, et la laisser courir ferait retrouver une journée filtrée en
-        // revenant — sans que rien, à ce moment-là, ne dise qu'on cherche encore.
-        // C'est aussi ce qui arrête le flux de toutes les interventions.
-        _recherche.value = ""
     }
 
     /** Les interventions de la semaine où tombe la journée affichée. */
@@ -209,15 +149,6 @@ class InterventionsViewModel(
             initialValue = emptyList(),
         )
 
-    /**
-     * Tournée de la journée consultée, chaque ligne accompagnée de la fiche du
-     * client chez qui elle a lieu.
-     *
-     * Le rapprochement se fait ici plutôt que par une jointure SQL : les deux
-     * flux sont déjà observés, et l'écran reçoit ainsi de quoi afficher
-     * l'intervention *et* de quoi agir — appeler, se rendre sur place.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
     private val _recherche = MutableStateFlow("")
 
     /** Ce qu'on cherche dans toute la tournée, et non dans la seule journée. */
@@ -225,6 +156,45 @@ class InterventionsViewModel(
 
     fun onRecherche(saisie: String) {
         _recherche.value = saisie
+    }
+
+    private val _rechercheOuverte = MutableStateFlow(false)
+
+    /**
+     * Le champ de recherche est ouvert, et l'écran montre les résultats au lieu
+     * de la journée.
+     *
+     * Distinct de [recherche] parce qu'un champ ouvert et vide n'est pas la
+     * journée : la loupe de l'en-tête l'ouvre avant qu'on ait tapé quoi que ce
+     * soit, et refermer la journée sous le doigt à la première lettre — puis la
+     * rouvrir à la dernière effacée — ferait sauter l'écran deux fois. Le flux
+     * lourd, lui, ne dépend que du texte : ouvert et vide, il n'observe rien.
+     */
+    val rechercheOuverte: StateFlow<Boolean> = _rechercheOuverte.asStateFlow()
+
+    fun onOuvrirRecherche() {
+        _rechercheOuverte.value = true
+    }
+
+    /**
+     * Referme la recherche **et l'efface** : la laisser courir ferait retrouver
+     * une journée filtrée à la prochaine loupe, sans que rien, à ce moment-là,
+     * ne dise qu'on cherche encore. C'est aussi ce qui arrête le flux de toutes
+     * les interventions.
+     */
+    fun onFermerRecherche() {
+        _rechercheOuverte.value = false
+        _recherche.value = ""
+    }
+
+    /**
+     * Ramène « Aujourd'hui » à son début : la recherche refermée, et la date
+     * remise à aujourd'hui. C'est ce que fait toucher l'onglet déjà ouvert — le
+     * geste de qui s'est perdu dans le calendrier et veut retrouver sa journée.
+     */
+    fun onRevenirAAujourdhui() {
+        onFermerRecherche()
+        _jour.value = LocalDate.now()
     }
 
     /**
@@ -277,6 +247,15 @@ class InterventionsViewModel(
             initialValue = emptyList(),
         )
 
+    /**
+     * Tournée de la journée consultée, chaque ligne accompagnée de la fiche du
+     * client chez qui elle a lieu.
+     *
+     * Le rapprochement se fait ici plutôt que par une jointure SQL : les deux
+     * flux sont déjà observés, et l'écran reçoit ainsi de quoi afficher
+     * l'intervention *et* de quoi agir — appeler, se rendre sur place.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
     val lignes: StateFlow<List<LigneTournee>> = combine(
         _jour.flatMapLatest { interventionRepository.observerJournee(it) },
         clients,
@@ -414,7 +393,7 @@ class InterventionsViewModel(
      *
      * Par le chronomètre et non par le statut seul : voir [GesteStatut]. Le
      * statut suit le chronomètre ([InterventionRepository.basculerChrono]),
-     * exactement comme « Démarrer » sur l'accueil.
+     * exactement comme « Démarrer » sur la carte du haut d'« Aujourd'hui ».
      *
      * Un chronomètre qui tourne déjà n'est pas mis en pause : `basculerChrono`
      * est une bascule, et le doigt qui insiste sur une pastille ne veut jamais

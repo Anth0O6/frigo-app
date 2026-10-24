@@ -116,7 +116,7 @@ class MaintenanceViewModel(
      * ne réémet cependant que sur une écriture, si bien qu'une application
      * laissée ouverte toute la nuit montre l'état de la veille — c'est sans
      * conséquence ici, puisque la liste ne fait que **manquer** une visite qui
-     * vient de tomber, et le Préventif la recalcule à l'ouverture.
+     * vient de tomber, et l'Entretien la recalcule à l'ouverture.
      */
     val aFaire: StateFlow<List<EcheanceMaintenance>> = echeances
         .map { liste -> liste.filter { it.statut(aujourdhui()).appelleUneAction } }

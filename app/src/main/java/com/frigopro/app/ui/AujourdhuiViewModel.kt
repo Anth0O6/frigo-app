@@ -8,23 +8,15 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
-import com.frigopro.app.data.DevisChiffre
-import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.EtatEtancheite
-import com.frigopro.app.data.Intervention
-import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
-import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.data.StatutIntervention
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 
@@ -142,28 +134,26 @@ enum class ReglageManquant(
 }
 
 /**
- * Tout ce que l'écran d'accueil affiche, réuni.
+ * Ce que l'accueil ajoute à la journée, réuni.
  *
- * Un seul objet plutôt que huit `StateFlow` : l'écran les lirait tous ensemble
- * de toute façon, et un état partiellement recomposé afficherait un instant des
- * chiffres qui ne vont pas avec la liste d'à côté.
+ * La journée elle-même — les interventions de la date affichée — vient de
+ * l'[InterventionsViewModel], qui tient la date : l'accueil et la vue « Jour »
+ * ont été réunis, et deux sources pour les mêmes lignes auraient fini par ne
+ * pas montrer la même chose. Il ne reste ici que ce qui ne dépend d'aucune
+ * date choisie : qui est au volant, les échéances F-Gas et les réglages qui
+ * manquent.
+ *
+ * Un seul objet plutôt que plusieurs `StateFlow` : l'écran les lirait tous
+ * ensemble de toute façon, et un état partiellement recomposé afficherait un
+ * instant une liste qui ne va pas avec celle d'à côté.
+ *
+ * Les **tuiles commerciales** — devis en attente, chiffre du mois — n'y sont
+ * plus. Elles répondaient à « où en est l'entreprise ? », qui n'est pas la
+ * question de l'accueil, et l'onglet Factures porte déjà ses compteurs.
  */
 data class EtatAujourdhui(
     val jour: LocalDate = LocalDate.now(),
     val technicien: String = "",
-    val initiales: String = "",
-    /**
-     * L'intervention mise en avant : celle en cours, ou à défaut la prochaine
-     * qui reste à faire. `null` quand la journée est vide ou déjà finie — et
-     * c'est alors une information en soi, que l'écran dit en clair.
-     */
-    val enAvant: LigneTournee? = null,
-    /** Le reste de la journée, l'intervention mise en avant exclue. */
-    val suite: List<LigneTournee> = emptyList(),
-    val nombreDuJour: Int = 0,
-    val devisEnAttente: Int = 0,
-    /** Le chiffre d'affaires du mois : les devis acceptés, TTC. */
-    val chiffreDuMois: Double = 0.0,
     val echeances: List<EcheanceFgas> = emptyList(),
     /**
      * Les réglages qu'il reste à poser. Vide dès qu'ils le sont tous, et le
@@ -171,23 +161,18 @@ data class EtatAujourdhui(
      * faire taire en la réglant est une alerte qu'on cesse de lire.
      */
     val reglagesManquants: List<ReglageManquant> = emptyList(),
-) {
-
-    val journeeVide: Boolean get() = nombreDuJour == 0
-}
+)
 
 /**
- * L'écran d'accueil : ce qu'il faut savoir en ouvrant l'application.
+ * Ce qu'« Aujourd'hui » annonce en plus de la journée : voir [EtatAujourdhui].
  *
- * Il ne possède rien en propre — ni date consultée, ni formulaire — et c'est
- * voulu : l'accueil montre *aujourd'hui*, jamais un autre jour. Se déplacer dans
- * le temps est le travail du Planning, et donner deux façons de le faire
- * conduirait à se demander laquelle des deux on regarde.
+ * Il ne possède aucune date consultée : la date affichée est celle de
+ * l'[InterventionsViewModel], que les flèches de l'en-tête déplacent. Ce qu'il
+ * annonce vaut pour aujourd'hui quel que soit le jour regardé — une échéance
+ * F-Gas ne recule pas parce qu'on consulte jeudi prochain.
  */
 class AujourdhuiViewModel(
-    interventionRepository: InterventionRepository,
     clientRepository: ClientRepository,
-    devisRepository: DevisRepository,
     equipementRepository: EquipementRepository,
     parametresRepository: ParametresRepository,
     /**
@@ -198,18 +183,12 @@ class AujourdhuiViewModel(
     private val aujourdhui: () -> LocalDate = { LocalDate.now() },
 ) : ViewModel() {
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val tournee = flowOf(Unit)
-        .flatMapLatest { interventionRepository.observerJournee(aujourdhui()) }
-
     val etat: StateFlow<EtatAujourdhui> = combine(
-        tournee,
         clientRepository.clients,
-        devisRepository.devisChiffres,
         equipementRepository.equipements,
         parametresRepository.parametres,
-    ) { interventions, carnet, devis, machines, parametres ->
-        assembler(interventions, carnet, devis, machines, parametres, aujourdhui())
+    ) { carnet, machines, parametres ->
+        assembler(carnet, machines, parametres, aujourdhui())
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
@@ -237,40 +216,32 @@ class AujourdhuiViewModel(
         private const val HORIZON_ECHEANCES_MOIS = 2L
 
         /**
+         * L'intervention mise en avant : celle en cours, ou à défaut la prochaine
+         * qui reste à faire. `null` quand la journée est vide ou déjà finie — et
+         * c'est alors une information en soi, que l'écran dit en clair.
+         *
+         * Une fonction pure sur la journée plutôt qu'un champ de l'état : la
+         * journée est celle de l'[InterventionsViewModel], et l'écran ne la met
+         * en avant que lorsqu'il montre aujourd'hui.
+         */
+        internal fun enAvantDe(lignes: List<LigneTournee>): LigneTournee? =
+            lignes.firstOrNull { it.intervention.statut == StatutIntervention.EN_COURS }
+                ?: lignes.firstOrNull { !it.intervention.statut.close }
+
+        /**
          * Assemble l'état. Séparé du `combine` et sans dépendance Android, pour
          * qu'un test puisse l'exercer directement.
          */
         internal fun assembler(
-            interventions: List<Intervention>,
             carnet: List<Client>,
-            devis: List<DevisChiffre>,
             machines: List<Equipement>,
             parametres: Parametres,
             jour: LocalDate,
         ): EtatAujourdhui {
             val parIdentifiant = carnet.associateBy { it.id }
-            val lignes = interventions.map { intervention ->
-                LigneTournee(intervention, intervention.clientId?.let { parIdentifiant[it] })
-            }
-            val enAvant = lignes.firstOrNull { it.intervention.statut == StatutIntervention.EN_COURS }
-                ?: lignes.firstOrNull { !it.intervention.statut.close }
-            val enAttente = devis.filter { it.enAttente }
-            val debutDuMois = jour.withDayOfMonth(1)
             return EtatAujourdhui(
                 jour = jour,
                 technicien = parametres.technicien,
-                initiales = parametres.initiales,
-                enAvant = enAvant,
-                suite = lignes.filter { it !== enAvant },
-                nombreDuJour = lignes.size,
-                devisEnAttente = enAttente.size,
-                chiffreDuMois = devis
-                    .filter { it.devis.statut == StatutDevis.ACCEPTE }
-                    .filter { chiffre ->
-                        val creeLe = chiffre.devis.creeLe
-                        creeLe != null && !creeLe.isBefore(debutDuMois) && !creeLe.isAfter(jour)
-                    }
-                    .sumOf { it.totalTtc },
                 echeances = echeancesProches(machines, parIdentifiant, jour),
                 reglagesManquants = ReglageManquant.de(parametres),
             )
@@ -311,9 +282,7 @@ class AujourdhuiViewModel(
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
                 AujourdhuiViewModel(
-                    interventionRepository = conteneur.interventions,
                     clientRepository = conteneur.clients,
-                    devisRepository = conteneur.devis,
                     equipementRepository = conteneur.equipements,
                     parametresRepository = conteneur.parametres,
                 )
