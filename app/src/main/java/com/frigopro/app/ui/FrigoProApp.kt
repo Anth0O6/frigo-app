@@ -1,5 +1,6 @@
 package com.frigopro.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -98,6 +99,18 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
     // la page qui le corrige, et un état posé dans `ReglagesRoute` aurait été
     // hors d'atteinte de l'accueil.
     var pageReglages by rememberSaveable { mutableStateOf<PageReglages?>(null) }
+
+    // À la racine d'un onglet autre que la Tournée, le retour système **ramène à
+    // la Tournée** au lieu de fermer l'application : on ouvre les Réglages ou un
+    // carnet pour un geste, et le retour qui suit veut revenir à sa journée, pas
+    // quitter. Sur la Tournée, il ferme comme avant — c'est la porte de sortie.
+    //
+    // Il est posé **avant** les routes, et c'est ce qui le tient à sa place : le
+    // dispatcher donne la main au rappel ajouté en dernier, si bien que celui-ci,
+    // composé le premier et une seule fois, passe toujours après ceux des écrans
+    // — machine ouverte, page des Réglages, sélection, outil. Il ne court-circuite
+    // jamais une profondeur à défaire, et ne joue qu'une fois toutes défaites.
+    BackHandler(enabled = onglet != Onglet.TOURNEE) { onglet = Onglet.TOURNEE }
 
     Column(modifier = modifier.fillMaxSize()) {
         Box(
