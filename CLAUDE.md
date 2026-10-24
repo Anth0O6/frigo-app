@@ -1081,7 +1081,6 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   sortir par un `return` avant de l'atteindre. Une heure mal saisie se corrige là
   où elle se voit : l'ouvrir depuis la seule liste du jour obligeait à en sortir
   d'abord, et depuis la fiche c'était impossible. La feuille elle-même est un
-  La Semaine porte maintenant un bouton visible en plus de l'appui long.
   composable à part, `FeuilleFormulaireIntervention` : l'accueil et le planning
   l'ouvrent tous deux, et la recopier dans chacun aurait fait diverger cinq flux
   au premier champ ajouté. Depuis la réunion des deux sous `TourneeRoute`, elle
