@@ -6,10 +6,12 @@ import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxFactureDao
 import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxParametresDao
+import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxSuiviDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.SuiviRepository
 import kotlinx.coroutines.Dispatchers
@@ -94,6 +96,7 @@ class FacturerInterventionTest {
             SuiviRepository(FauxSuiviDao(daoInterventions), stockage),
             ClientRepository(FauxClientDao(), stockage),
             ParametresRepository(FauxParametresDao(), stockage),
+            PrestationRepository(FauxPrestationDao()),
             ProducteurPdf { null },
         )
     }

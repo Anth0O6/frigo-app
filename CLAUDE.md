@@ -340,6 +340,17 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   modification. `DevisDao.observerTotaux` les calcule tous en un `GROUP BY`,
   d'où sortent `DevisChiffre` et les compteurs de l'accueil comme de l'onglet — et
   son `CASE WHEN offerte = 0` est ce qui en écarte les lignes offertes.
+  **Un devis facturé est figé**, et c'est la facture qui le fige, pas le
+  statut : « Accepté » se pose d'un doigt et doit pouvoir se reprendre.
+  `DevisRepository.estFige` (`DevisDao.estFacture`, une facture quel qu'en soit
+  le statut) fait refuser toute écriture — lignes, en-tête, déplacement, TVA
+  offerte, suppression — et l'écran ne propose plus les gestes. Une ligne de
+  devis se modifie par sa boîte (désignation, quantité, unité, prix, offerte,
+  retrait confirmé) : le toucher **offrait** la ligne, geste commercial
+  accidentel, et l'appui long la supprimait sans rien demander. Le devis désigne
+  sa machine dans le parc du client (`onMachine`, ou la machine de
+  l'intervention dont il naît), et c'est elle qui fait proposer le nombre
+  d'unités.
   **Offrir la TVA est une remise commerciale égale à son montant, pas un taux
   ramené à zéro.** La distinction n'est pas cosmétique : la taxe reste due, et un
   document annonçant « TVA 0 % » alors qu'on y est assujetti serait faux — c'est
@@ -523,6 +534,16 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   **devient des lignes de devis ordinaires** (`LignesDegressives`), comme le
   déplacement avant elle et pour les mêmes raisons — et c'est aussi ce qui la
   rend visible pour le client, là où un prix moyenné l'aurait cachée.
+  Elle est posée à l'**ajout** : choisir au catalogue une prestation comptée par
+  unité qui porte des paliers fait confirmer le nombre d'unités — proposé
+  d'après la machine du devis —, montre les tranches et leur total, puis pose
+  une ligne par tranche (`DevisRepository.ajouterLignes`). Elle **n'était appelée
+  par aucun écran** jusque-là, si bien que les paliers réglés aux Réglages
+  n'avaient aucun effet. Une fois posées, ce sont des lignes ordinaires :
+  changer leur quantité ne redécoupe pas les tranches, faute d'un lien entre une
+  ligne et sa prestation — l'ajouter demanderait une colonne. Un brouillon de
+  facture puise dans le catalogue à quantité 1, sans dégression : elle se pose
+  sur le devis, que la facture reprend.
   `Substitutions` répond à « par quoi remplacer ce fluide, et pourquoi celui-là
   plutôt que l'autre ? ». **Ce n'est jamais un verdict**, comme `Depannage` : la
   table connaît des familles de fluides, pas *cette* machine — le compresseur,
@@ -586,6 +607,18 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   plutôt que par SQL : `COLLATE NOCASE` ne replie pas les accents et rejetterait
   « Élise » après « Zoé ». `trouverOuCreer` est ce qui remplit le carnet — une
   intervention chez un client inconnu l'y inscrit au passage, sans écran dédié.
+  La recherche du carnet, les parcs dépliés et « voir tout le parc » vivent dans
+  `ClientsViewModel`, sur le modèle de `MaterielViewModel.recherche` : l'écran du
+  carnet quitte la composition quand une machine s'ouvre, et contrôler cinq
+  machines d'un site obligeait à refaire cinq fois recherche et dépliage. Une
+  recherche qui désigne des machines (`parcTrouve`) déplie la carte **sur elles
+  seules** ; elle cherche aussi la zone. Une unité ouverte se referme sur son
+  groupe, le retour étant retenu à l'ouverture depuis son `parentId`. Une
+  machine, un article ou un fournisseur créés s'ouvrent aussitôt ; une unité
+  reste sur la fiche de son groupe, pour poser les unités d'un bi-split à la
+  suite. Les dates d'une machine — mise en service, dernier contrôle — se
+  choisissent **au calendrier**, avec « Effacer » : tapées en AAAA-MM-JJ, une
+  saisie mal formée devenait `null` sans un mot, et l'échéance F-Gas disparaissait.
 - **`ui`** — `FrigoProApp` est la coquille : cinq onglets, `Tournée`,
   `Factures`, `Carnets`, `Outils` et `Réglages`, et la barre qui en change.
   **Trois de ces onglets portent plusieurs vues sous une bascule** — la tournée
@@ -658,9 +691,11 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   **à racheter**, les **visites préventives dues**, les **échéances F-Gas**.
   Aucune n'est stockée — un impayé, un manque, une visite due et une échéance se
   déduisent tous d'un seuil et d'une date, et un booléen en base serait faux le
-  lendemain. Toutes sont **plafonnées à trois lignes** : l'accueil alerte, les
+  lendemain. Toutes sont **plafonnées à trois lignes** — « À relancer » ne l'était pas, et
+  l'est désormais — : l'accueil alerte, les
   onglets tiennent le détail, et une liste de trente lignes ne serait plus lue.
-  Celles du magasin et du préventif comptent le reste et y mènent — un manque qui
+  Celles des factures, du magasin et du préventif comptent le reste et y mènent ;
+  une échéance F-Gas ne mène encore nulle part — un manque qui
   ne mène nulle part n'est pas une réponse à « et maintenant ? ».
   Les **visites** y sont arrivées en dernier, et avec un argument que les trois
   autres n'ont pas : c'est le seul travail du métier que **personne ne vient
@@ -679,7 +714,7 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   trouver le chronomètre dans le volet des relevés, le lancer — dont le premier
   n'apprenait rien à personne, puisqu'on sait chez qui l'on est et qu'on vient de
   s'y garer. Il passe par `InterventionRepository.basculerChrono`, le même chemin
-  que le chronomètre du volet : **un seul endroit décide que le travail a
+  que le chronomètre de la barre du bas de l'intervention : **un seul endroit décide que le travail a
   commencé**, et le statut suit le chronomètre plutôt que d'être posé à part. Il
   disparaît dès que le temps tourne — un « Démarrer » sur une intervention en
   cours n'aurait su que la mettre en pause, ce que personne ne vient faire là —
@@ -691,6 +726,34 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   factures sans logo. Les échéances F-Gas qu'il annonce ne sont
   stockées nulle part — elles se recalculent (`EtatEtancheite`), une échéance en
   base étant fausse le lendemain d'un contrôle.
+  **Un seul chemin par transition** (`GesteStatut`). La pastille d'une ligne
+  faisait tourner le statut en boucle en écrivant le statut seul : « en cours »
+  sans chronomètre, « terminé » sans arrêt du temps ni numéro — alors que
+  « Facturer » paraît dès le statut terminé — et un appui de trop rouvrait une
+  intervention close. Elle **démarre** une intervention planifiée par
+  `basculerChrono`, comme « Démarrer », et **mène au volet Rapport** toutes les
+  autres, où l'on fait signer puis où l'on clôture ; « Terminer » sur la carte en
+  cours fait de même. La feuille ne propose plus « Terminé » et ne rouvre pas une
+  intervention close. La clôture est le seul chemin vers « terminé », et elle
+  **demande confirmation** en disant ce qu'elle fait : le temps s'arrête, la
+  référence est définitive. « Facturer » est sur le volet Rapport, où la clôture
+  mène, et passe par `facturerIntervention` et `onAllerAuxFactures` — et non plus
+  par le chemin du devis, qui laissait un devis vide et numéroté derrière chaque
+  facture. `chronoAuto` vaut pour le seul passage en cours qui reste sans
+  chronomètre — celui de la feuille — et y lance le temps quand il est activé ;
+  il n'était lu nulle part.
+  **Rien ne s'efface d'un frôlement** : un mouvement de fluide — donnée du
+  registre — et une pièce posée se retiraient au simple toucher de leur ligne.
+  Ils se retirent désormais par une corbeille visible puis une confirmation qui
+  nomme ce qui part ; pour une pièce, elle dit qu'elle n'est pas remise au
+  camion. La feuille porte l'**urgence**, qui s'affichait partout et ne se
+  saisissait nulle part, et l'**adresse** et le **téléphone** du client,
+  facultatifs, qui complètent sa fiche **là où elle est vide**
+  (`ClientRepository.completer`) : un client créé depuis la tournée n'avait
+  jamais ni Itinéraire ni Appeler, sans rien pour dire pourquoi. Le volet Fiche
+  dit ce qui manque et y mène, le bouton grisé dit ce qui manque
+  (`EtatFormulaire.manque`), et le chronomètre n'a plus qu'un bouton, celui de la
+  barre du bas.
   Le planning offre deux vues de la même journée, et c'est délibéré : la liste
   dit ce qui vient ensuite, `FriseHoraire` dit **où sont les trous** — la seule
   question qui compte quand un client demande à être dépanné aujourd'hui. Les
@@ -836,7 +899,7 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
   total pour deux, trois et quatre unités pendant la saisie, parce que les prix
   unitaires se lisent mal et que leur somme se lit tout de suite.
-  **`ReglageManquant` dit ce qui n'est pas réglé, sur l'accueil.** Quatre valeurs
+  **`ReglageManquant` dit ce qui n'est pas réglé, sur l'accueil.** Six valeurs
   arrivent vides ou à zéro sur une installation neuve, à dessein — une valeur
   inventée partirait chez un vrai client sans que personne ne l'ait relue — mais
   rien ne le disait : un devis sortait à 0 €, la marge se déclarait « non
@@ -849,6 +912,12 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   corrige, parce qu'une alerte qui ne mène nulle part n'est pas une réponse à
   « et maintenant ? ». Le bandeau disparaît de lui-même : rien à fermer, rien à
   faire taire.
+  L'**adresse** et le **SIRET** de l'entreprise en font partie : ce sont des
+  mentions obligatoires d'une facture. Le **régime de TVA** n'en fait pas partie,
+  et c'est assumé : sans colonne, rien ne distingue un « assujetti » choisi d'un
+  « assujetti » jamais regardé. Il a donc quitté « Mon entreprise » pour former
+  avec le taux un bloc « TVA » des tarifs, où il se choisit entre deux pastilles —
+  un franchisé qui ne passait que par les tarifs facturait 20 %.
   Le **coût horaire interne** en fait partie, et c'est ce qui l'a fait
   découvrir : la colonne existait depuis la migration 16, la sauvegarde
   l'emportait et `RentabiliteIntervention` la lisait, mais **aucun écran ne la
@@ -876,6 +945,14 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   graphe de navigation ; et la page ouverte est tenue par **la coquille** et non
   par la route, pour la même raison que le carnet : l'accueil doit pouvoir la
   désigner.
+  La **sauvegarde ouvre le sommaire** et dit sa date (`derniereSauvegardeLe`, que
+  rien n'écrivait jusqu'ici ; elle n'est posée que sur une archive réellement
+  écrite). Les pages s'ouvrent dépliées, sans intitulé répété sous la barre :
+  c'étaient les vestiges de l'ancien écran déroulé. À la racine d'un onglet autre
+  que la Tournée, le **retour système ramène à la Tournée** au lieu de fermer
+  l'application. Le `BackHandler` de la coquille est composé avant les routes :
+  le système donne la main au rappel ajouté en dernier, et celui-ci ne passe
+  donc jamais devant ceux des écrans.
   `ReglagesViewModel` tient cet onglet — la liste des types, et les prix du
   catalogue, qui ne se saisissent que là : le catalogue est livré sans tarifs, et
   un catalogue qu'on ne peut pas tarifer ne sert à rien — et n'expose qu'un seul
@@ -1004,6 +1081,7 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   sortir par un `return` avant de l'atteindre. Une heure mal saisie se corrige là
   où elle se voit : l'ouvrir depuis la seule liste du jour obligeait à en sortir
   d'abord, et depuis la fiche c'était impossible. La feuille elle-même est un
+  La Semaine porte maintenant un bouton visible en plus de l'appui long.
   composable à part, `FeuilleFormulaireIntervention` : l'accueil et le planning
   l'ouvrent tous deux, et la recopier dans chacun aurait fait diverger cinq flux
   au premier champ ajouté. Depuis la réunion des deux sous `TourneeRoute`, elle
@@ -1300,6 +1378,12 @@ passer.
   l'application n'existe qu'en français.
 - **Formatage** : style officiel Kotlin (`kotlin.code.style=official`),
   indentation 4 espaces, virgule finale sur les listes multi-lignes.
+- **Une promesse se vérifie en cherchant qui l'appelle.** Un audit a trouvé une
+  dizaine de gestes écrits, testés et décrits ici, et qu'aucun écran n'appelait :
+  la modification d'une ligne de devis, la dégression, l'ajout d'une ligne à un
+  brouillon de facture, l'urgence, `chronoAuto`, la date de dernière sauvegarde,
+  l'affectation de tout un parc. Chacun passait ses tests, et aucun n'existait
+  pour l'utilisateur. Une fonctionnalité n'est faite que lorsqu'un écran la mène.
 
 ## Tests
 
@@ -1311,41 +1395,42 @@ l'APK : un test rouge bloque la publication.
 | `DemarrageTest` | Le minutage du démarrage : pas de clignotement, pas d'attente ajoutée, et une chorégraphie qui tient dans le temps affiché |
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
-| `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature |
+| `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature, ce qui manque nommé, urgence posée et retirée, adresse qui ne touche pas l'intervention |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
-| `InterventionsViewModelTest` | Navigation entre les jours, cycle de statut, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide |
+| `InterventionsViewModelTest` | Navigation entre les jours, pastille qui démarre par le chrono et ne rouvre ni ne termine rien, chronoAuto qui lance le temps d'un passage en cours par la feuille et rien sans lui, urgence enregistrée, adresse et téléphone qui complètent la fiche sans écraser, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
-| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées, suppression qui emporte le plan du parc — et celui du parc de chaque site — en gardant les visites |
+| `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées, suppression qui emporte le plan du parc — et celui du parc de chaque site — en gardant les visites, fiche complétée là où elle est vide, jamais écrasée, rien d'écrit sans nouveauté |
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
-| `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée |
+| `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée, recherche et parcs dépliés tenus hors de l'écran, « voir tout le parc » oublié à la recherche suivante |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone, machine d'avant le format 16 relue sans détecteur, une facture et son avoir qui reviennent identiques, une facture d'avant le format 17 relue en facture, une nature inconnue qui fait refuser le fichier |
 | `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel — zone et détecteur de fuite compris — et jamais ce qui a été fait, le nom de copie qui prend le rang suivant, les zones dérivées du parc et triées sans les vides, une zone donnée à une sélection et à elle seule — ni au reste du parc ni au voisin —, vidée qui ramène « Sans zone », nettoyée, et un grand parc rangé entier malgré le découpage en paquets |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
-| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique, duplication qui ouvre la copie et non l'original, l'appui long qui ouvre la sélection sur la machine touchée, une sélection qui ne sort pas du parc d'un client, la zone donnée qui referme le mode, la sélection vide qui n'écrit rien |
+| `EquipementsViewModelTest` | Ouverture d'une fiche, renommage vu aussitôt, suppression qui referme, photos et historique, duplication qui ouvre la copie et non l'original, l'appui long qui ouvre la sélection sur la machine touchée, une sélection qui ne sort pas du parc d'un client, la zone donnée qui referme le mode, la sélection vide qui n'écrit rien, le retour d'une unité qui rouvre son groupe, l'unité supprimée qui ramène au groupe, la machine créée qui s'ouvre et l'unité créée qui laisse le groupe ouvert |
 | `ChronoTest` | Reprise après pause, heure d'arrivée jamais réécrite, horloge qui recule |
 | `FluideTest` | GWP, équivalent CO₂, périodicité 517/2014, détecteur de fuite qui double les intervalles, la machine qui en porte un et voit son échéance doublée, la non soumise qui le reste sans être dite doublée, classe de sécurité jamais devinée, silence quand la charge est inconnue |
 | `DepannageTest` | Le croisement surchauffe / sous-refroidissement, et le silence d'un relevé muet |
 | `NumerotationTest` | Le rang repart au mois, et une suppression ne réattribue pas un numéro |
 | `SuiviRepositoryTest` | Relevé vide effacé, masse ramenée au positif, suppression qui emporte tout |
-| `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, montant de chaque devis, ce qui compte comme « en attente », lignes emportées avec le devis |
+| `DevisRepositoryTest` | Numérotation, totaux arrondis ligne à ligne, montant de chaque devis, ce qui compte comme « en attente », lignes emportées avec le devis, un devis facturé figé — aucune écriture, aucune suppression —, un devis sans facture qui se modifie et se supprime |
 | `ParametresRepositoryTest` | Valeurs par défaut sans ligne en base, ligne unique, initiales |
-| `InterventionViewModelTest` | Chrono qui met « en cours », démarrage en un appui depuis l'accueil dont le second appui ne met pas en pause, clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite, pièce prise au camion qui emporte son prix d'achat et sort du stock, pièce saisie à la main qui ne touche rien |
+| `InterventionViewModelTest` | Chrono qui met « en cours », démarrage en un appui depuis l'accueil dont le second appui ne met pas en pause, clôture qui numérote une seule fois, relevé créé à la première valeur, checklist posée à l'ouverture et non reposée ensuite, pièce prise au camion qui emporte son prix d'achat et sort du stock, pièce saisie à la main qui ne touche rien, ouvrir sur le Rapport sans rien clôturer, le mouvement nommé par sa masse, son fluide, son sens et la date de l'intervention |
 | `InitialesTest` | « KB », « LÉ » : deux lettres au plus, apostrophe comprise |
 | `FriseHoraireTest` | L'arithmétique du planning : amplitude adaptée, créneau à son heure, chevauchement visible |
 | `ConversionsTest` | Les repères du métier (1 bar = 14,5 psi, 0 °C = 32 °F), la distinction température / écart, et l'aller-retour de toute paire d'unités |
 | `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
-| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne offerte puis reprise, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
+| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
 | `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, et l'abandon qui n'écrit rien |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
-| `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini |
-| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif |
-| `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture, l'avoir qui porte la référence d'origine et aucune mention de paiement, son total positif et nommé, son propre nom de fichier |
-| `FacturesViewModelTest` | La facture imprimée qui porte logo, en-tête et adresse ; l'émission qui fige les vrais réglages ; l'avoir qui s'ouvre une fois créé, et la facture d'origine qui se sait couverte |
+| `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
+| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée |
+| `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture, l'avoir qui porte la référence d'origine et aucune mention de paiement, son total positif et nommé, son propre nom de fichier, aucune note technique — SIRET, Réglages — sur le document du client |
+| `FacturesViewModelTest` | La facture imprimée qui porte logo, en-tête et adresse ; l'émission qui fige les vrais réglages ; l'avoir qui s'ouvre une fois créé, et la facture d'origine qui se sait couverte; un brouillon qui se complète et une facture émise non, une facture pointée payée à la date donnée |
+| `FacturerInterventionTest` | Facturer ouvre la facture et mène aux factures une fois, sans passer par les devis ; facturer deux fois rouvre la même |
 | `DocumentRapportTest` | Ce que le compte-rendu imprimé dit : le relevé non pris qui ne s'invente pas, le prix d'achat qui ne sort jamais, chaque mouvement de fluide détaillé, le point non fait qui se voit, l'export avant clôture qui dit ce qui lui manque |
 | `MiseEnPageRapportTest` | La page du compte-rendu : rien de perdu, un bloc coupé qui reprend son titre, aucun titre orphelin, la signature jamais séparée de ce qu'elle signe, le texte libre enveloppé sur les mots |
 | `RegistreFluidesTest` | Le registre : la date du chantier et non celle de la saisie, un mouvement orphelin qui ne disparaît pas, le net négatif d'un démantèlement, l'équivalent CO₂ calculé sur l'ajouté et jamais deviné |
@@ -1354,6 +1439,7 @@ l'APK : un test rouge bloque la publication.
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
 | `MaterielRepositoryTest` | Les trois façons de dire une marge et leur non-confusion, le manque jugé endroit par endroit, le seuil à zéro qui n'alerte pas, un mouvement qui additionne, un transfert qui ne prend que le disponible, la saisie de prix en lot écrite en une fois et seulement sur ce qui a changé, reportée sur l'article du moment sans réécrire sa désignation, le prix négatif ramené à zéro, et la copie du fournisseur qui suit le lien |
+| `MaterielViewModelTest` | Article et fournisseur créés qui s'ouvrent, l'ordre français gardé sous le manquant, le filtre de ville qui replie les accents |
 | `DegressifTest` | Le prix par rang et non par tranche, le total qui ne décroît jamais quand on ajoute une unité, les rangs au même prix regroupés, la dégression devenue lignes de devis |
 | `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
@@ -1362,8 +1448,8 @@ l'APK : un test rouge bloque la publication.
 | `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui, l'affectation d'une sélection qui ne remet pas à zéro l'entrée au plan d'une machine déjà suivie, la date choisie qui ne vaut que pour les nouvelles, le compte annoncé égal au compte rendu, et le retrait d'une sélection qui laisse le reste du plan et le journal |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, le rangement par zone puis machine puis cadence, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
-| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste, un avoir trouvé par son numéro et par celui de sa facture |
-| `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne |
+| `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste, un avoir trouvé par son numéro et par celui de sa facture, le carnet trouvé par la zone, le parc filtré sur les seules machines désignées, l'unité qui ramène son groupe |
+| `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne, l'adresse et le SIRET réclamés malgré la raison sociale |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main, détecteur de fuite arrivé absent sur tout un parc, factures d'avant restées factures et index du lien d'origine posé |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
@@ -1415,6 +1501,9 @@ promesse, parce que c'est ce qui permet de juger, avant de changer de
 téléphone, s'il manque quelque chose. Elle dit aussi qu'une restauration
 fusionne et n'efface rien — c'est cette propriété qui la rend faisable sans
 hésiter, et la taire faisait renoncer.
+
+La liste nomme aussi les **avoirs**, le **plan de maintenance** et le **journal
+des visites**, sauvegardés depuis les formats 14 et 17 et qu'elle taisait.
 
 La sauvegarde est une **archive zip** (`ArchiveSauvegarde`) : `sauvegarde.json`
 à la racine, les images dans `photos/`. Depuis que les machines portent des
@@ -1681,6 +1770,13 @@ c'est là qu'elles se lisent et s'éprouvent :
    propose pas les gestes — les deux gardes valent mieux qu'une, celle du dépôt
    étant la seule qui survive à une refonte de l'écran.
 
+Une facture **éteinte** — annulée, ou entièrement couverte par ses avoirs émis —
+n'empêche plus d'en établir une nouvelle depuis le même devis ou la même
+intervention ; une facture vivante (brouillon, émise même en partie créditée,
+payée) est rouverte plutôt que doublée (`FactureRepository.vivante`). Un
+brouillon se complète comme un devis — catalogue, ligne libre, objet : ses gestes
+existaient dans le ViewModel, et aucun écran ne les appelait.
+
 La numérotation est **annuelle** (`FAC-2026-0042`) là où le devis et le
 compte-rendu sont mensuels : douze séquences par an feraient douze continuités à
 justifier là où une seule suffit.
@@ -1718,6 +1814,13 @@ pénalités de retard, indemnité forfaitaire de quarante euros (art. D. 441-5),
 absence d'escompte. Faute de taux de pénalités convenu, le document renvoie au
 taux légal plutôt que d'imprimer « 0 % », qui serait faux **et** vaudrait
 renonciation au recours.
+
+**Rien de technique n'est imprimé chez le client.** La facture portait en clair
+« (SIRET non renseigné dans les Réglages) » : ce qui manque à l'en-tête — raison
+sociale, adresse, SIRET (`manquesEmetteur`) — est désormais nommé par la
+confirmation d'émission, qui laisse émettre quand même, et par un encart sur le
+devis. Le compte-rendu et le registre portent encore une mention de ce genre sur
+l'attestation de capacité, à traiter de la même façon.
 
 ### Ce qu'un devis devient
 
@@ -1851,6 +1954,10 @@ démarrage remettrait le délai initial à zéro, et l'application ouverte tous 
 matins à 7 h 30 n'aurait **jamais** notifié : le rappel serait toujours reporté
 au lendemain. C'est un défaut qui ne se voit qu'en attendant plusieurs matins, et
 `RappelsFacturesTest` tient le calcul du délai.
+
+Sur une facture échue, « Envoyer » devient **« Relancer »**, et le message dit le
+reste dû et l'échéance — il était identique à l'envoi initial. « Payée » demande
+la date du règlement, aujourd'hui par défaut.
 
 ### Là où elles vivent
 
@@ -2103,6 +2210,13 @@ que **dupliquer une machine** ne recopie pas son plan : l'affectation en lot est
 la bonne réponse, là où une recopie machine par machine aurait fait dépendre le
 résultat de l'ordre des saisies.
 
+**Retirer une visite et ne plus suivre une gamme demandent confirmation**, et la
+boîte nomme ce qui part et ce qui reste : la visite du 12/03 et sa gamme ; ou
+l'entrée au plan et l'échéance, le journal restant. Les deux se faisaient d'une
+croix, sans rien demander — sur la preuve même qu'un contrat a été exécuté.
+Retirer une prestation du catalogue demande une seconde touche, comme le retrait
+en lot de la sélection.
+
 ### Le taux de réalisation
 
 `RealisationGamme` porte **les deux nombres** — attendues, faites — et le
@@ -2224,6 +2338,10 @@ s'est passé » ne valent pas la même chose devant un contrôle, et seul le sec
 est une réponse. Il **ne se signe pas** non plus — un registre n'est pas un
 engagement pris devant quelqu'un, et un cadre de signature aurait suggéré qu'il
 vaut attestation.
+
+L'année en cours est **toujours proposée** dans les Réglages, mouvement ou non :
+elle n'avait pas de bouton tant qu'aucun fluide n'avait bougé, si bien que la
+propriété existait dans le document et nulle part à l'écran.
 
 Il vit dans les **Réglages**, à côté de la sauvegarde : ni dans Outils, qui ne
 regarde aucune donnée de l'application, ni sur une fiche machine, qui n'en

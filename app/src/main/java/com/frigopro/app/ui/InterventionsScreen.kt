@@ -149,7 +149,10 @@ fun TourneeRoute(
         ouverte != null -> InterventionRoute(
             viewModel = detail,
             onCreerDevis = {
-                devis.onNouveau(detail.etat.value?.client)
+                // La machine de l'intervention suit dans le devis : c'est elle qui fait
+                // proposer le nombre d'unités d'une prestation comptée par unité.
+                val etat = detail.etat.value
+                devis.onNouveau(etat?.client, etat?.intervention?.equipementId)
                 onAllerAuxDevis()
             },
             onAllerAuxFactures = onAllerAuxFactures,
