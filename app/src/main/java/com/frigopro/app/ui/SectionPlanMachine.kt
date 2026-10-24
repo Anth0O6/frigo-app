@@ -5,16 +5,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +37,7 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.Section
+import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.LocalStatuts
 import java.time.LocalDate
 
@@ -94,6 +98,10 @@ fun SectionPlanMachine(
 
     val suivies = plan.echeances.map { it.gamme.id }.toSet()
     val disponibles = plan.gammes.filterNot { it.id in suivies }
+    // La gamme dont on a demandé le retrait, en attente de la seconde touche.
+    // Par identifiant : si la gamme cesse d'être suivie ailleurs entre-temps, la
+    // boîte se referme d'elle-même au lieu de confirmer un geste déjà fait.
+    var aNePlusSuivre by remember { mutableStateOf<String?>(null) }
 
     Section(intitule = "Maintenance préventive", modifier = modifier) {
         plan.echeances.forEach { echeance ->
@@ -102,7 +110,7 @@ fun SectionPlanMachine(
                 aujourdhui = aujourdhui,
                 onConsigner = { actions.onConsigner(echeance) },
                 onDepart = { actions.onDepart(echeance) },
-                onRetirer = { actions.onNePlusSuivre(echeance.gamme.id) },
+                onRetirer = { aNePlusSuivre = echeance.gamme.id },
             )
         }
         if (plan.echeances.isEmpty()) {
@@ -116,6 +124,76 @@ fun SectionPlanMachine(
             ChoixGamme(disponibles = disponibles, onSuivre = actions.onSuivre)
         }
     }
+
+    plan.echeances.firstOrNull { it.gamme.id == aNePlusSuivre }?.let { echeance ->
+        ConfirmationNePlusSuivre(
+            echeance = echeance,
+            visites = plan.visites.count { it.gammeId == echeance.gamme.id },
+            onConfirmer = {
+                aNePlusSuivre = null
+                actions.onNePlusSuivre(echeance.gamme.id)
+            },
+            onFermer = { aNePlusSuivre = null },
+        )
+    }
+}
+
+/**
+ * Ne plus suivre une gamme passe par une seconde touche, comme le retrait en lot
+ * de la sélection du carnet, et pour la même raison : ce qui part est **l'entrée
+ * au plan**, c'est-à-dire le dénominateur de l'attestation, et la remettre
+ * demanderait de la ressaisir — un nouveau rattachement repartirait d'aujourd'hui.
+ *
+ * La boîte nomme ce qui part **et ce qui reste**, le second comptant autant : la
+ * crainte qui retient le doigt est celle d'effacer le journal, et ce n'est pas ce
+ * qui se produit.
+ */
+@Composable
+private fun ConfirmationNePlusSuivre(
+    echeance: EcheanceMaintenance,
+    visites: Int,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Ne plus suivre « ${echeance.gamme.libelle} » ?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "L'entrée au plan du ${libelleDateAvecAnnee(echeance.depuisLe)} et " +
+                        "l'échéance de cette machine disparaissent. Suivre de nouveau la " +
+                        "gamme repartirait d'aujourd'hui.",
+                )
+                Text(
+                    text = when (visites) {
+                        0 -> "Le journal reste tel qu'il est."
+                        1 -> "Le journal reste : la visite déjà consignée est gardée."
+                        else -> "Le journal reste : les $visites visites déjà consignées sont gardées."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirmer,
+                modifier = Modifier.heightIn(min = LocalCibles.current.action),
+            ) {
+                Text(text = "Ne plus suivre", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onFermer,
+                modifier = Modifier.heightIn(min = LocalCibles.current.action),
+            ) {
+                Text(text = "Annuler")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
 }
 
 /**
@@ -184,7 +262,7 @@ private fun LigneGammeSuivie(
             // « Ne plus suivre » est une icône et non un bouton : le geste est
             // rare, et un second bouton de même poids que « Fait » se toucherait
             // par erreur avec un gant.
-            IconButton(onClick = onRetirer) {
+            IconButton(onClick = onRetirer, modifier = Modifier.size(LocalCibles.current.carre)) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "Ne plus suivre ${echeance.gamme.libelle}",
@@ -263,6 +341,7 @@ fun HistoriqueVisites(
 
     val montrees = visites.take(VISITES_MONTREES)
     val reste = visites.size - montrees.size
+    var aRetirer by remember { mutableStateOf<ReleveGamme?>(null) }
 
     Section(intitule = "Visites consignées", modifier = modifier) {
         Text(
@@ -294,7 +373,10 @@ fun HistoriqueVisites(
                             )
                         }
                     }
-                    IconButton(onClick = { onRetirer(visite) }) {
+                    IconButton(
+                        onClick = { aRetirer = visite },
+                        modifier = Modifier.size(LocalCibles.current.carre),
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "Retirer cette visite",
@@ -305,6 +387,74 @@ fun HistoriqueVisites(
             }
         }
     }
+
+    aRetirer?.let { visite ->
+        ConfirmationRetraitVisite(
+            visite = visite,
+            onConfirmer = {
+                aRetirer = null
+                onRetirer(visite)
+            },
+            onFermer = { aRetirer = null },
+        )
+    }
+}
+
+/**
+ * Retirer une visite passe par une confirmation qui **la nomme** — sa date, sa
+ * gamme, son auteur —, et ce n'est pas une politesse : le journal est la preuve
+ * qu'un contrat a été exécuté, la croix est à un pouce de « Fait », et une visite
+ * effacée par mégarde ne se retrouve nulle part. Le geste reste possible, parce
+ * qu'une visite consignée sur la mauvaise machine doit pouvoir se corriger.
+ *
+ * Elle dit aussi ce que le retrait **change** : l'échéance se recalcule depuis la
+ * visite précédente, si bien que la machine peut redevenir due sous les yeux.
+ */
+@Composable
+private fun ConfirmationRetraitVisite(
+    visite: ReleveGamme,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Retirer la visite du ${jourCourt(visite.faitLe)} ?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = buildString {
+                        append("La visite du ${libelleDateAvecAnnee(visite.faitLe)}")
+                        if (visite.gammeLibelle.isNotBlank()) append(", gamme « ${visite.gammeLibelle} »")
+                        if (visite.technicienNom.isNotBlank()) append(", faite par ${visite.technicienNom}")
+                        append(", sort du journal. C'est définitif.")
+                    },
+                )
+                Text(
+                    text = "L'échéance se recalcule depuis la visite précédente, et " +
+                        "l'attestation de l'année ne la comptera plus.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirmer,
+                modifier = Modifier.heightIn(min = LocalCibles.current.action),
+            ) {
+                Text(text = "Retirer", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onFermer,
+                modifier = Modifier.heightIn(min = LocalCibles.current.action),
+            ) {
+                Text(text = "Annuler")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
 }
 
 /**
