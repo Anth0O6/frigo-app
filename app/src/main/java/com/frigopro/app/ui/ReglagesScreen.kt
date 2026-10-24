@@ -68,15 +68,16 @@ import com.frigopro.app.ui.theme.FrigoProTheme
  * sommaire répond mieux à la question qu'on se pose en ouvrant cet onglet, qui
  * n'est jamais « que peut-on régler ? » mais « où se règle *ceci* ? ».
  *
- * L'ordre est celui de ce qu'on remplit d'abord : qui je suis, quelle entreprise
- * je suis, ce que je facture, comment je me déplace, ce que je vends. Viennent
- * ensuite ce qu'on règle une fois (l'affichage, les types), puis les deux pages
- * qui ne règlent rien mais **sortent** quelque chose — la sauvegarde et le
- * registre. Elles ferment la marche parce qu'on les ouvre rarement, et non parce
- * qu'elles compteraient moins : la sauvegarde est le seul filet contre un
- * téléphone perdu.
+ * **La sauvegarde vient en tête**, et c'est une correction : elle fermait la
+ * marche, au motif qu'on l'ouvre rarement, alors qu'elle est le seul filet contre
+ * un téléphone perdu — et que sa ligne dit maintenant depuis quand rien n'a été
+ * sauvé, ce qui ne sert qu'à condition d'être lu. Suit l'ordre de ce qu'on
+ * remplit d'abord : qui je suis, quelle entreprise je suis, ce que je facture,
+ * comment je me déplace, ce que je vends ; puis ce qu'on règle une fois
+ * (l'affichage, les types), et le registre, qui sort un document.
  */
 enum class PageReglages(val titre: String) {
+    SAUVEGARDE("Sauvegarde"),
     TECHNICIEN("Technicien"),
     ENTREPRISE("Mon entreprise"),
     TARIFS("Tarifs et paiement"),
@@ -85,7 +86,6 @@ enum class PageReglages(val titre: String) {
     GAMMES("Gammes de maintenance"),
     AFFICHAGE("Affichage"),
     TYPES("Types d'intervention"),
-    SAUVEGARDE("Sauvegarde"),
     REGISTRE("Registre des fluides"),
 }
 
@@ -425,7 +425,6 @@ fun ReglagesScreen(
                         onTelephone = onEntrepriseTelephone,
                         onEmail = onEntrepriseEmail,
                         onSiret = onEntrepriseSiret,
-                        onAssujettiTva = onAssujettiTva,
                         onChoisirLogo = onChoisirLogo,
                         onRetirerLogo = onRetirerLogo,
                     )
@@ -440,6 +439,7 @@ fun ReglagesScreen(
                         onDelaiPaiement = onDelaiPaiement,
                         onTauxPenalites = onTauxPenalites,
                         onCoefficientMateriel = onCoefficientMateriel,
+                        onAssujettiTva = onAssujettiTva,
                     )
                 }
 
@@ -542,13 +542,16 @@ private fun LazyListScope.sommaire(
         ).joinToString(" · "),
         PageReglages.ENTREPRISE to listOfNotNull(
             parametres.entreprise.ifBlank { "Raison sociale non renseignée" },
-            if (parametres.assujettiTva) null else "franchise en base",
+            if (parametres.entrepriseAdresse.isBlank()) "adresse manquante" else null,
+            if (parametres.entrepriseSiret.isBlank()) "SIRET manquant" else null,
             if (parametres.logoFichier == null) "sans logo" else null,
         ).joinToString(" · "),
+        // Le régime est dit ici, où il se règle désormais avec le taux : « TVA 20 % »
+        // et « franchise en base » se lisent d'un coup d'œil depuis le sommaire.
         PageReglages.TARIFS to listOfNotNull(
             "${Nombres.enEuros(parametres.tauxHoraire)} HT l'heure",
             if (parametres.coutHoraireInterne > 0.0) null else "coût interne non réglé",
-            "TVA ${Nombres.enTexte(parametres.tauxTva)} %",
+            if (parametres.assujettiTva) "TVA ${Nombres.enTexte(parametres.tauxTva)} %" else "franchise en base",
             "${parametres.delaiPaiementJours} j",
         ).joinToString(" · "),
         PageReglages.DEPLACEMENT to listOfNotNull(
@@ -589,7 +592,11 @@ private fun LazyListScope.sommaire(
             if (parametres.modeGants) "gants" else null,
             if (parametres.chronoAuto) "chrono automatique" else null,
         ).joinToString(" · "),
-        PageReglages.SAUVEGARDE to "Exporter ou restaurer une archive",
+        PageReglages.SAUVEGARDE to (
+            parametres.derniereSauvegardeLe
+                ?.let { "Dernière le ${libelleInstant(it)}" }
+                ?: "Jamais sauvegardé depuis ce téléphone"
+            ),
         PageReglages.REGISTRE to "Règlement (UE) 517/2014",
     )
 

@@ -17,11 +17,11 @@ import org.junit.Test
 class ReglagesManquantsTest {
 
     /**
-     * Une installation neuve les réclame tous les quatre. C'est le premier
-     * écran que voit un technicien, et c'est là que la liste compte le plus.
+     * Une installation neuve les réclame tous. C'est le premier écran que voit
+     * un technicien, et c'est là que la liste compte le plus.
      */
     @Test
-    fun `une installation neuve reclame les quatre reglages`() {
+    fun `une installation neuve reclame tous les reglages`() {
         val manquants = ReglageManquant.de(Parametres())
 
         assertEquals(ReglageManquant.entries.toList(), manquants)
@@ -29,13 +29,15 @@ class ReglagesManquantsTest {
 
     /**
      * Le bandeau doit pouvoir disparaître, sinon c'est une alerte qu'on cesse
-     * de lire : quatre réglages posés, plus rien à signaler.
+     * de lire : tout posé, plus rien à signaler.
      */
     @Test
     fun `tout regle ne reclame plus rien`() {
         val manquants = ReglageManquant.de(
             Parametres(
                 entreprise = "Froid Azur",
+                entrepriseAdresse = "4 rue des Docks, 76600 Le Havre",
+                entrepriseSiret = "123 456 789 00012",
                 tauxHoraire = 65.0,
                 coutHoraireInterne = 32.0,
                 coefficientMateriel = 1.4,
@@ -72,9 +74,31 @@ class ReglagesManquantsTest {
     }
 
     /**
+     * L'adresse et le SIRET sont des mentions obligatoires d'une facture : une
+     * raison sociale posée ne dispense pas de les réclamer, et chacun mène à la
+     * page de l'entreprise, où ils se saisissent.
+     */
+    @Test
+    fun `la raison sociale ne dispense ni de l'adresse ni du siret`() {
+        val manquants = ReglageManquant.de(Parametres(entreprise = "Froid Azur"))
+
+        assertTrue(ReglageManquant.ENTREPRISE !in manquants)
+        assertTrue(ReglageManquant.ADRESSE_ENTREPRISE in manquants)
+        assertTrue(ReglageManquant.SIRET in manquants)
+        assertEquals(PageReglages.ENTREPRISE, ReglageManquant.SIRET.page)
+        assertEquals(PageReglages.ENTREPRISE, ReglageManquant.ADRESSE_ENTREPRISE.page)
+
+        val complets = ReglageManquant.de(
+            Parametres(entreprise = "Froid Azur", entrepriseAdresse = "Le Havre", entrepriseSiret = "123"),
+        )
+        assertTrue(ReglageManquant.SIRET !in complets)
+        assertTrue(ReglageManquant.ADRESSE_ENTREPRISE !in complets)
+    }
+
+    /**
      * Chaque ligne doit mener quelque part : une alerte qui ne mène nulle part
      * n'est pas une réponse à « et maintenant ? ». Le test tient la propriété
-     * pour toute valeur à venir, et non pour les quatre d'aujourd'hui.
+     * pour toute valeur à venir, et non pour celles d'aujourd'hui.
      */
     @Test
     fun `chaque reglage reclame nomme sa page et ce qu'il empeche`() {

@@ -57,8 +57,9 @@ fun SectionTechnicien(
 ) {
     var ouverte by remember { mutableStateOf(false) }
 
+    // Pas d'intitulé : la barre du haut nomme déjà la page, et le répéter juste
+    // dessous ne disait rien de plus.
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IntituleSection(texte = "Technicien")
         Carte(relief = true, onClick = { ouverte = true }) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -203,6 +204,7 @@ fun SectionTarifs(
     onDelaiPaiement: (Int) -> Unit,
     onTauxPenalites: (Double) -> Unit,
     onCoefficientMateriel: (Double) -> Unit,
+    onAssujettiTva: (Boolean) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         IntituleSection(texte = "La main-d'œuvre")
@@ -223,17 +225,16 @@ fun SectionTarifs(
                 "sans lui la fiche d'une intervention ne peut pas la calculer.",
         )
 
+        // Le régime et le taux **dans un même bloc**, et c'est une correction : le
+        // régime était dans « Mon entreprise », le taux ici, si bien qu'un
+        // franchisé qui ne passait que par les tarifs facturait 20 % de TVA sans
+        // que rien le lui demande. Le régime vient en premier parce qu'il décide
+        // si le taux a seulement un sens.
         IntituleSection(texte = "La TVA")
-        ChampDecimal(
-            libelle = "TVA par défaut (%)",
-            valeur = parametres.tauxTva,
-            onValeur = onTauxTva,
-        )
-        NoteReglage(
-            texte = "Un devis garde le taux en vigueur au moment où il est créé : changer " +
-                "ce réglage ne recalcule aucun devis déjà établi. Le régime " +
-                "d'assujettissement, lui, est dans « Mon entreprise » : il change ce que le " +
-                "document dit, pas seulement ce qu'il calcule.",
+        BlocTva(
+            parametres = parametres,
+            onAssujettiTva = onAssujettiTva,
+            onTauxTva = onTauxTva,
         )
 
         IntituleSection(texte = "Le matériel")
@@ -337,12 +338,13 @@ private fun NoteReglage(texte: String) {
  * Elle est dans les Réglages et non sur chaque devis parce qu'elle ne change
  * pas : une raison sociale, une adresse, un SIRET se saisissent une fois. Le
  * document reste produisible sans — mieux vaut un devis sans en-tête que pas de
- * devis — mais l'écran du devis le signale, parce qu'un devis sans raison sociale
- * ni SIRET n'est pas un devis qu'on envoie.
+ * devis — mais l'accueil réclame ce qui manque, parce qu'une facture sans
+ * adresse ni SIRET manque à des mentions obligatoires.
  *
- * Le régime de TVA est ici, à côté, et pas dans la section des tarifs : il change
- * ce que le document **dit** — une TVA, ou la mention de l'article 293 B — et pas
- * seulement ce qu'il calcule.
+ * La page s'ouvre **dépliée**, sans titre répété : elle était une carte repliée
+ * sous un intitulé, qu'il fallait encore toucher après avoir choisi la page au
+ * sommaire — deux gestes pour une seule intention. Le régime de TVA n'est plus
+ * ici : il a rejoint le taux dans les tarifs, voir [BlocTva].
  */
 @Composable
 fun SectionEntreprise(
@@ -354,149 +356,160 @@ fun SectionEntreprise(
     onTelephone: (String) -> Unit,
     onEmail: (String) -> Unit,
     onSiret: (String) -> Unit,
-    onAssujettiTva: (Boolean) -> Unit,
     onChoisirLogo: () -> Unit,
     onRetirerLogo: () -> Unit,
 ) {
-    var dépliée by remember { mutableStateOf(false) }
+    // Ce qui manque est dit en tête, en clair : ce sont des mentions qui
+    // manqueront sur ce qui part chez un client.
+    val manques = listOfNotNull(
+        "la raison sociale".takeIf { parametres.entreprise.isBlank() },
+        "l'adresse".takeIf { parametres.entrepriseAdresse.isBlank() },
+        "le SIRET".takeIf { parametres.entrepriseSiret.isBlank() },
+    )
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IntituleSection(texte = "Entreprise et documents")
-        Carte(relief = true, onClick = { dépliée = !dépliée }) {
+        if (manques.isNotEmpty()) {
+            Text(
+                text = "Manque${if (manques.size > 1) "nt" else ""} ${manques.joinToString(", ")} : " +
+                    "ce sont des mentions obligatoires d'une facture.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Carte {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = parametres.entreprise.ifBlank { "Entreprise non renseignée" },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        // Ce qui manque est dit en clair : c'est la seule chose qui
-                        // doit faire ouvrir cette section.
-                        text = when {
-                            !parametres.entreprisePresentable -> "Les devis partiront sans en-tête"
-                            parametres.entrepriseSiret.isBlank() -> "SIRET à renseigner"
-                            else -> parametres.mentionTva.ifBlank { "TVA ${Nombres.enTexte(parametres.tauxTva)} %" }
-                        },
-                        style = StyleChiffrePetit,
-                        color = if (parametres.entreprisePresentable && parametres.entrepriseSiret.isNotBlank()) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                    )
-                }
-                Text(
-                    text = if (dépliée) "▾" else "›",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        if (dépliée) {
-            Carte {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Le logo est montré tel qu'il partira : une image trop sombre
-                    // ou de travers se voit ici, pas après l'envoi.
-                    val fichier = parametres.logoFichier
-                    if (fichier == null) {
-                        Box(
-                            modifier = Modifier.size(COTE_LOGO),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Aucun logo",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    } else {
-                        // `Fit` et non `Crop` : un logo rogné n'est plus le logo, et
-                        // c'est lui qui partira en haut du devis.
-                        PhotoChargee(
-                            fichier = fichier,
-                            coteMax = COTE_LOGO_PX,
-                            charger = chargerPhoto,
-                            modifier = Modifier.size(COTE_LOGO),
-                            contentDescription = "Logo de l'entreprise",
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                // Le logo est montré tel qu'il partira : une image trop sombre
+                // ou de travers se voit ici, pas après l'envoi.
+                val fichier = parametres.logoFichier
+                if (fichier == null) {
+                    Box(
+                        modifier = Modifier.size(COTE_LOGO),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        BoutonContour(
-                            texte = if (fichier == null) "Choisir un logo" else "Remplacer",
-                            onClick = onChoisirLogo,
-                            modifier = Modifier.fillMaxWidth(),
-                            couleur = MaterialTheme.colorScheme.primary,
+                        Text(
+                            text = "Aucun logo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (fichier != null) {
-                            BoutonContour(
-                                texte = "Retirer",
-                                onClick = onRetirerLogo,
-                                modifier = Modifier.fillMaxWidth(),
-                                couleur = MaterialTheme.colorScheme.error,
-                            )
-                        }
+                    }
+                } else {
+                    // `Fit` et non `Crop` : un logo rogné n'est plus le logo, et
+                    // c'est lui qui partira en haut du devis.
+                    PhotoChargee(
+                        fichier = fichier,
+                        coteMax = COTE_LOGO_PX,
+                        charger = chargerPhoto,
+                        modifier = Modifier.size(COTE_LOGO),
+                        contentDescription = "Logo de l'entreprise",
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    BoutonContour(
+                        texte = if (fichier == null) "Choisir un logo" else "Remplacer",
+                        onClick = onChoisirLogo,
+                        modifier = Modifier.fillMaxWidth(),
+                        couleur = MaterialTheme.colorScheme.primary,
+                    )
+                    if (fichier != null) {
+                        BoutonContour(
+                            texte = "Retirer",
+                            onClick = onRetirerLogo,
+                            modifier = Modifier.fillMaxWidth(),
+                            couleur = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }
+        }
 
+        ChampTexte(
+            libelle = "Raison sociale",
+            valeur = parametres.entreprise,
+            onValeur = onEntreprise,
+        )
+        ChampTexte(
+            libelle = "Adresse",
+            valeur = parametres.entrepriseAdresse,
+            onValeur = onAdresse,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ChampTexte(
-                libelle = "Raison sociale",
-                valeur = parametres.entreprise,
-                onValeur = onEntreprise,
+                libelle = "Téléphone",
+                valeur = parametres.entrepriseTelephone,
+                onValeur = onTelephone,
+                clavier = KeyboardType.Phone,
+                modifier = Modifier.weight(1f),
             )
             ChampTexte(
-                libelle = "Adresse",
-                valeur = parametres.entrepriseAdresse,
-                onValeur = onAdresse,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ChampTexte(
-                    libelle = "Téléphone",
-                    valeur = parametres.entrepriseTelephone,
-                    onValeur = onTelephone,
-                    clavier = KeyboardType.Phone,
-                    modifier = Modifier.weight(1f),
-                )
-                ChampTexte(
-                    libelle = "SIRET",
-                    valeur = parametres.entrepriseSiret,
-                    onValeur = onSiret,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            ChampTexte(
-                libelle = "Courriel",
-                valeur = parametres.entrepriseEmail,
-                onValeur = onEmail,
-                clavier = KeyboardType.Email,
-            )
-            LigneInterrupteur(
-                intitule = "Assujetti à la TVA",
-                actif = parametres.assujettiTva,
-                onChange = onAssujettiTva,
-                detail = if (parametres.assujettiTva) {
-                    "Les devis portent la TVA, et la TVA peut être offerte en remise."
-                } else {
-                    "Franchise en base : les devis portent « ${Parametres.MENTION_FRANCHISE} »."
-                },
-            )
-            Text(
-                text = "Le régime est recopié sur chaque devis à sa création : le changer " +
-                    "ici ne touche pas aux devis déjà établis.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                libelle = "SIRET",
+                valeur = parametres.entrepriseSiret,
+                onValeur = onSiret,
+                modifier = Modifier.weight(1f),
             )
         }
+        ChampTexte(
+            libelle = "Courriel",
+            valeur = parametres.entrepriseEmail,
+            onValeur = onEmail,
+            clavier = KeyboardType.Email,
+        )
+    }
+}
+
+/**
+ * Le régime de TVA et le taux, ensemble.
+ *
+ * Le régime se **choisit** entre deux pastilles plutôt que par un interrupteur
+ * déjà levé : un interrupteur sur « assujetti » se lit comme un réglage fait, et
+ * c'est ainsi qu'un franchisé facturait 20 % sans l'avoir décidé. Deux choix
+ * nommés côte à côte posent la question. Rien n'est stocké de plus — ni
+ * « régime confirmé » ni migration : la question est posée là où le taux se
+ * saisit, et c'est là qu'on la voit.
+ *
+ * En franchise, le taux disparaît : il ne s'applique à rien, et un champ « 20 % »
+ * resté visible laisserait croire le contraire. La mention de l'article 293 B est
+ * dite en toutes lettres, avec ce qu'elle veut dire — c'est elle qui part sur le
+ * document à la place de la TVA.
+ */
+@Composable
+private fun BlocTva(
+    parametres: Parametres,
+    onAssujettiTva: (Boolean) -> Unit,
+    onTauxTva: (Double) -> Unit,
+) {
+    RangeePastilles(
+        options = listOf(true, false),
+        retenue = parametres.assujettiTva,
+        libelle = { if (it) "Assujetti" else "Franchise en base" },
+        onChoisir = onAssujettiTva,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    if (parametres.assujettiTva) {
+        ChampDecimal(
+            libelle = "TVA par défaut (%)",
+            valeur = parametres.tauxTva,
+            onValeur = onTauxTva,
+        )
+        NoteReglage(
+            texte = "Les devis et les factures portent la TVA à ce taux, et elle peut être " +
+                "offerte en remise. Un devis garde le régime et le taux en vigueur à sa " +
+                "création : les changer ici ne recalcule aucun document déjà établi.",
+        )
+    } else {
+        NoteReglage(
+            texte = "Franchise en base (art. 293 B du CGI) : vous ne facturez pas de TVA, " +
+                "et chaque devis et facture porte la mention « ${Parametres.MENTION_FRANCHISE} ». " +
+                "Elle n'est juste que tant que votre chiffre d'affaires reste sous le seuil " +
+                "de la franchise ; au-delà, choisissez « Assujetti ». Un document déjà " +
+                "établi garde son régime.",
+        )
     }
 }
 
@@ -552,9 +565,9 @@ private fun LigneInterrupteur(
  * ne peut pas tarifer ne sert à rien, et la feuille des devis annonce
  * « prix à renseigner » en attendant.
  *
- * La section se replie, et part repliée. Vingt et une lignes ouvertes
- * écraseraient tout le reste des Réglages, alors qu'on y vient une fois — le
- * jour où l'on pose ses tarifs — puis presque jamais.
+ * Elle a sa page, et s'y ouvre **dépliée** : elle était une carte repliée sous un
+ * intitulé, du temps où toutes les sections se suivaient sur un seul écran, et ce
+ * repli ne protégeait plus rien une fois la page choisie au sommaire.
  */
 @Composable
 fun SectionCatalogue(
@@ -566,72 +579,51 @@ fun SectionCatalogue(
     onDefinirPalier: (String, Int, Double) -> Unit = { _, _, _ -> },
     onSupprimerPalier: (String) -> Unit = {},
 ) {
-    var dépliée by remember { mutableStateOf(false) }
     var enEdition by remember { mutableStateOf<Prestation?>(null) }
     var paliersOuverts by remember { mutableStateOf<Prestation?>(null) }
     var creationOuverte by remember { mutableStateOf(false) }
     val àTarifer = prestations.count { !it.tarifee }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IntituleSection(texte = "Catalogue de prestations")
-        Carte(relief = true, onClick = { dépliée = !dépliée }) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "${prestations.size} prestations",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        // Le compte de ce qui manque est dit en clair : c'est la
-                        // seule chose qui doit faire ouvrir cette section.
-                        text = when {
-                            prestations.isEmpty() -> "Catalogue vide"
-                            àTarifer == 0 -> "Toutes tarifées"
-                            àTarifer == 1 -> "1 prix à renseigner"
-                            else -> "$àTarifer prix à renseigner"
-                        },
-                        style = StyleChiffrePetit,
-                        color = if (àTarifer > 0) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-                Text(
-                    text = if (dépliée) "▾" else "›",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Le compte de ce qui manque est dit en tête, en clair : c'est ce qu'on
+        // vient faire sur cette page.
+        Text(
+            text = when {
+                prestations.isEmpty() -> "Catalogue vide"
+                àTarifer == 0 -> "${prestations.size} prestations, toutes tarifées"
+                àTarifer == 1 -> "${prestations.size} prestations · 1 prix à renseigner"
+                else -> "${prestations.size} prestations · $àTarifer prix à renseigner"
+            },
+            style = StyleChiffrePetit,
+            color = if (àTarifer > 0) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+
+        // Les non tarifées d'abord : c'est ce qu'on est venu faire, et les
+        // chercher parmi vingt autres serait la meilleure façon d'en oublier.
+        prestations
+            .sortedWith(compareBy({ it.tarifee }, { it.rang }))
+            .forEach { prestation ->
+                LignePrestationReglages(
+                    prestation = prestation,
+                    paliers = paliers[prestation.id].orEmpty(),
+                    onModifier = { enEdition = prestation },
+                    onPaliers = { paliersOuverts = prestation },
                 )
             }
-        }
-
-        if (dépliée) {
-            // Les non tarifées d'abord : c'est ce qu'on est venu faire, et les
-            // chercher parmi vingt autres serait la meilleure façon d'en oublier.
-            prestations
-                .sortedWith(compareBy({ it.tarifee }, { it.rang }))
-                .forEach { prestation ->
-                    LignePrestationReglages(
-                        prestation = prestation,
-                        paliers = paliers[prestation.id].orEmpty(),
-                        onModifier = { enEdition = prestation },
-                        onPaliers = { paliersOuverts = prestation },
-                    )
-                }
-            // Le catalogue livré couvre le métier, pas une entreprise : une pièce
-            // qu'on repose trois fois par mois et qui n'y figure pas finirait
-            // saisie en ligne libre à chaque devis, et le catalogue ne grossirait
-            // jamais. La même boîte s'ouvre depuis la feuille des devis.
-            BoutonContour(
-                texte = "+ Nouvelle prestation",
-                onClick = { creationOuverte = true },
-                modifier = Modifier.fillMaxWidth(),
-                couleur = MaterialTheme.colorScheme.secondary,
-            )
-        }
+        // Le catalogue livré couvre le métier, pas une entreprise : une pièce
+        // qu'on repose trois fois par mois et qui n'y figure pas finirait
+        // saisie en ligne libre à chaque devis, et le catalogue ne grossirait
+        // jamais. La même boîte s'ouvre depuis la feuille des devis.
+        BoutonContour(
+            texte = "+ Nouvelle prestation",
+            onClick = { creationOuverte = true },
+            modifier = Modifier.fillMaxWidth(),
+            couleur = MaterialTheme.colorScheme.secondary,
+        )
     }
 
     if (creationOuverte) {
@@ -740,8 +732,8 @@ private fun LignePrestationReglages(
  * tarif kilométrique inventé partirait chez un vrai client sans que personne ne
  * l'ait relu, alors qu'un zéro se voit.
  *
- * La section se replie et part repliée : on y vient le jour où l'on pose ses
- * tarifs, puis presque jamais.
+ * Elle s'ouvre **dépliée** sur sa page, sans titre répété : voir
+ * [SectionEntreprise].
  */
 data class ActionsTarifDeplacement(
     val onAdresseDepart: (String) -> Unit = {},
@@ -757,145 +749,112 @@ fun SectionDeplacementReglages(
     parametres: Parametres,
     actions: ActionsTarifDeplacement,
 ) {
-    var dépliée by remember { mutableStateOf(false) }
     val tarif = parametres.tarifDeplacement
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IntituleSection(texte = "Déplacement")
-        Carte(relief = true, onClick = { dépliée = !dépliée }) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = parametres.modeDeplacement.libelle,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        // Ce qui manque est dit en clair, comme pour l'entreprise :
-                        // c'est la seule chose qui doit faire ouvrir cette section.
-                        text = when {
-                            !tarif.renseigne -> "Tarif à renseigner"
-                            else -> listOfNotNull(
-                                "${Nombres.enEuros(parametres.prixKm)}/km"
-                                    .takeIf { parametres.modeDeplacement.compteLesKm },
-                                "${Nombres.enEuros(parametres.prixHeureTrajet)}/h"
-                                    .takeIf { parametres.modeDeplacement.compteLeTemps },
-                            ).joinToString(" + ")
-                        },
-                        style = StyleChiffrePetit,
-                        color = if (tarif.renseigne) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                    )
-                }
-                Text(
-                    text = if (dépliée) "▾" else "›",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        // Ce qui manque est dit en tête, comme pour l'entreprise.
+        if (!tarif.renseigne) {
+            Text(
+                text = "Tarif à renseigner : un déplacement se chiffre à 0 € tant qu'il ne l'est pas.",
+                style = StyleChiffrePetit,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
+        Carte {
+            ChampTexte(
+                libelle = "Adresse de départ",
+                valeur = parametres.adresseDepart,
+                onValeur = actions.onAdresseDepart,
+            )
+            Text(
+                text = "Le dépôt, l'atelier ou le domicile : c'est le départ " +
+                    "proposé sur un nouveau devis. Il reste modifiable trajet " +
+                    "par trajet — le deuxième client de la journée se rejoint " +
+                    "depuis le premier.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-        if (dépliée) {
-            Carte {
-                ChampTexte(
-                    libelle = "Adresse de départ",
-                    valeur = parametres.adresseDepart,
-                    onValeur = actions.onAdresseDepart,
-                )
-                Text(
-                    text = "Le dépôt, l'atelier ou le domicile : c'est le départ " +
-                        "proposé sur un nouveau devis. Il reste modifiable trajet " +
-                        "par trajet — le deuxième client de la journée se rejoint " +
-                        "depuis le premier.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            EspaceVertical(4)
+            RangeePastilles(
+                options = ModeDeplacement.entries,
+                retenue = parametres.modeDeplacement,
+                libelle = { it.libelle },
+                onChoisir = actions.onMode,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = "Le kilomètre paie le véhicule, l'heure paie le chauffeur. " +
+                    "Trente kilomètres d'autoroute et trente dans une ville ne " +
+                    "coûtent pas le même temps : les deux ensemble est le cas le " +
+                    "plus juste.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-                EspaceVertical(4)
-                RangeePastilles(
-                    options = ModeDeplacement.entries,
-                    retenue = parametres.modeDeplacement,
-                    libelle = { it.libelle },
-                    onChoisir = actions.onMode,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = "Le kilomètre paie le véhicule, l'heure paie le chauffeur. " +
-                        "Trente kilomètres d'autoroute et trente dans une ville ne " +
-                        "coûtent pas le même temps : les deux ensemble est le cas le " +
-                        "plus juste.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                EspaceVertical(4)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (parametres.modeDeplacement.compteLesKm) {
-                        ChampChiffre(
-                            libelle = "Prix au km",
-                            valeur = parametres.prixKm.takeIf { it > 0.0 },
-                            unite = "€",
-                            onValeur = actions.onPrixKm,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (parametres.modeDeplacement.compteLeTemps) {
-                        ChampChiffre(
-                            libelle = "Heure de trajet",
-                            valeur = parametres.prixHeureTrajet.takeIf { it > 0.0 },
-                            unite = "€",
-                            onValeur = actions.onPrixHeure,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+            EspaceVertical(4)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (parametres.modeDeplacement.compteLesKm) {
                     ChampChiffre(
-                        libelle = "Minimum",
-                        valeur = parametres.minimumDeplacement.takeIf { it > 0.0 },
+                        libelle = "Prix au km",
+                        valeur = parametres.prixKm.takeIf { it > 0.0 },
                         unite = "€",
-                        onValeur = actions.onMinimum,
+                        onValeur = actions.onPrixKm,
                         modifier = Modifier.weight(1f),
                     )
                 }
-                Text(
-                    text = "Le minimum s'applique au trajet seul : un très petit " +
-                        "déplacement est facturé à ce prix. Les péages s'ajoutent " +
-                        "par-dessus — ce sont des débours, et les fondre dans un " +
-                        "plancher les ferait disparaître sur les courtes distances.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                LigneInterrupteur(
-                    intitule = "Refacturer les péages",
-                    actif = parametres.refacturerPeages,
-                    onChange = actions.onRefacturerPeages,
-                    detail = "Ajoutés au devis sur une ligne à part, doublés en aller-retour.",
-                )
-
-                EspaceVertical(4)
-                Text(
-                    // Il n'y a **rien à configurer** ici, et le dire vaut mieux que
-                    // de laisser chercher : la version précédente demandait une clé
-                    // d'API, ce qu'aucun technicien n'allait faire.
-                    text = if (parametres.itineraireDisponible) {
-                        "Le temps de trajet et les kilomètres se calculent tout seuls " +
-                            "depuis les deux adresses d'un devis : il n'y a rien à " +
-                            "installer ni à renseigner. Sans réseau, ils se saisissent " +
-                            "à la main, et le devis se chiffre quand même. Les péages, " +
-                            "eux, restent à saisir."
-                    } else {
-                        "Le calcul automatique n'est pas disponible dans cette version : " +
-                            "les kilomètres, la durée et les péages se saisissent à la " +
-                            "main sur chaque devis."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                if (parametres.modeDeplacement.compteLeTemps) {
+                    ChampChiffre(
+                        libelle = "Heure de trajet",
+                        valeur = parametres.prixHeureTrajet.takeIf { it > 0.0 },
+                        unite = "€",
+                        onValeur = actions.onPrixHeure,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                ChampChiffre(
+                    libelle = "Minimum",
+                    valeur = parametres.minimumDeplacement.takeIf { it > 0.0 },
+                    unite = "€",
+                    onValeur = actions.onMinimum,
+                    modifier = Modifier.weight(1f),
                 )
             }
+            Text(
+                text = "Le minimum s'applique au trajet seul : un très petit " +
+                    "déplacement est facturé à ce prix. Les péages s'ajoutent " +
+                    "par-dessus — ce sont des débours, et les fondre dans un " +
+                    "plancher les ferait disparaître sur les courtes distances.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            LigneInterrupteur(
+                intitule = "Refacturer les péages",
+                actif = parametres.refacturerPeages,
+                onChange = actions.onRefacturerPeages,
+                detail = "Ajoutés au devis sur une ligne à part, doublés en aller-retour.",
+            )
+
+            EspaceVertical(4)
+            Text(
+                // Il n'y a **rien à configurer** ici, et le dire vaut mieux que
+                // de laisser chercher : la version précédente demandait une clé
+                // d'API, ce qu'aucun technicien n'allait faire.
+                text = if (parametres.itineraireDisponible) {
+                    "Le temps de trajet et les kilomètres se calculent tout seuls " +
+                        "depuis les deux adresses d'un devis : il n'y a rien à " +
+                        "installer ni à renseigner. Sans réseau, ils se saisissent " +
+                        "à la main, et le devis se chiffre quand même. Les péages, " +
+                        "eux, restent à saisir."
+                } else {
+                    "Le calcul automatique n'est pas disponible dans cette version : " +
+                        "les kilomètres, la durée et les péages se saisissent à la " +
+                        "main sur chaque devis."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -910,6 +869,8 @@ data class ActionsRegistre(
     /** Les années où du fluide a bougé, la plus récente d'abord. */
     val annees: List<Int> = emptyList(),
     val onExporter: (Int) -> Unit = {},
+    /** L'année en cours, toujours proposée : voir [SectionRegistre]. */
+    val anneeCourante: Int = java.time.LocalDate.now().year,
 )
 
 /**
@@ -921,15 +882,19 @@ data class ActionsRegistre(
  * sauvegarde : c'est la pièce qu'on sort quand un contrôle la demande, et c'est
  * là qu'on va la chercher.
  *
- * Les années sont **dérivées des mouvements** et non listées d'avance : proposer
- * trois années dont deux sont vides ferait ouvrir deux registres pour rien. Une
- * application qui n'a encore rien consigné le dit, plutôt que d'offrir un bouton
- * qui produirait une page blanche.
+ * Les années passées sont **dérivées des mouvements** : proposer trois années
+ * dont deux sont vides ferait ouvrir deux registres pour rien. **L'année en cours
+ * est toujours proposée**, en revanche, mouvement ou non : le registre ne se tait
+ * jamais — une année sans mouvement produit un document qui le dit, et c'est
+ * celui qu'on pose sur la table quand un contrôle arrive en mars. Il n'avait
+ * jusque-là pas de bouton, si bien que la propriété existait dans le document et
+ * nulle part à l'écran.
  */
 @Composable
 fun SectionRegistre(actions: ActionsRegistre) {
+    val annees = (listOf(actions.anneeCourante) + actions.annees).distinct().sortedDescending()
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IntituleSection(texte = "Registre des fluides")
         Carte(contour = true) {
             Text(
                 text = "La traçabilité des fluides frigorigènes est exigible lors d'un " +
@@ -940,17 +905,17 @@ fun SectionRegistre(actions: ActionsRegistre) {
             )
             if (actions.annees.isEmpty()) {
                 Text(
-                    text = "Aucun mouvement consigné pour l'instant.",
+                    text = "Aucun mouvement consigné pour l'instant : le registre de " +
+                        "l'année le dit, et c'est une réponse à un contrôle.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-            } else {
-                actions.annees.forEach { annee ->
-                    BoutonContour(
-                        texte = "Registre $annee",
-                        onClick = { actions.onExporter(annee) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+            }
+            annees.forEach { annee ->
+                BoutonContour(
+                    texte = "Registre $annee",
+                    onClick = { actions.onExporter(annee) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

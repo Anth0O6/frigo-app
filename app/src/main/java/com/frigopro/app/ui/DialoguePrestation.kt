@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,7 @@ import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.RangeePastilles
+import com.frigopro.app.ui.theme.LocalCibles
 
 /**
  * Une prestation du catalogue : la créer, la retarifer, la retirer.
@@ -63,6 +65,11 @@ fun DialoguePrestation(
     }
     var unite by remember { mutableStateOf(prestation?.unite.orEmpty()) }
     var parUnite by remember { mutableStateOf(prestation?.parUnite ?: false) }
+    // Retirer passe par une seconde touche, comme le retrait d'une gamme en lot
+    // dans la sélection du carnet : le bouton est sous le doigt qui vient de
+    // corriger un prix, et une prestation retirée emporte son tarif et ses
+    // paliers, qu'il faudrait ressaisir.
+    var retraitDemande by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onFermer,
@@ -134,9 +141,21 @@ fun DialoguePrestation(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (onSupprimer != null) {
-                    TextButton(onClick = onSupprimer) {
+                    if (retraitDemande) {
                         Text(
-                            text = "Retirer du catalogue",
+                            text = "Retirer « ${prestation?.designation.orEmpty()} » du catalogue ? " +
+                                "Son tarif et ses paliers dégressifs partent avec elle. Les devis " +
+                                "et factures qui la portent gardent leurs lignes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    TextButton(
+                        onClick = { if (retraitDemande) onSupprimer() else retraitDemande = true },
+                        modifier = Modifier.heightIn(min = LocalCibles.current.action),
+                    ) {
+                        Text(
+                            text = if (retraitDemande) "Confirmer le retrait" else "Retirer du catalogue",
                             color = MaterialTheme.colorScheme.error,
                         )
                     }

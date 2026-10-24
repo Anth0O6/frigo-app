@@ -49,7 +49,7 @@ data class EcheanceFgas(
 /**
  * Un réglage que l'application attend, et ce qu'il empêche tant qu'il manque.
  *
- * Sept valeurs des Réglages arrivent à zéro ou vides sur une installation neuve,
+ * Plusieurs valeurs des Réglages arrivent à zéro ou vides sur une installation neuve,
  * **à dessein** : un tarif horaire inventé partirait chez un vrai client sans que
  * personne ne l'ait relu, et le projet préfère partout une valeur absente à une
  * valeur devinée. Mais rien ne le disait. Un devis sortait donc à 0 €, la marge
@@ -78,6 +78,23 @@ enum class ReglageManquant(
         consequence = "Vos devis et factures partent sans raison sociale.",
         page = PageReglages.ENTREPRISE,
     ),
+
+    /**
+     * L'adresse et le SIRET sont des **mentions obligatoires** d'une facture, au
+     * même titre que la raison sociale : une facture qui part sans eux est un
+     * manquement dont l'entreprise répond, et rien ne le disait — la page
+     * « Mon entreprise » l'annonçait seulement à qui l'ouvrait.
+     */
+    ADRESSE_ENTREPRISE(
+        intitule = "Adresse de l'entreprise",
+        consequence = "Vos factures partent sans l'adresse du vendeur, une mention obligatoire.",
+        page = PageReglages.ENTREPRISE,
+    ),
+    SIRET(
+        intitule = "SIRET",
+        consequence = "Vos factures partent sans numéro SIRET, une mention obligatoire.",
+        page = PageReglages.ENTREPRISE,
+    ),
     TAUX_HORAIRE(
         intitule = "Taux horaire facturé",
         consequence = "Une ligne de main-d'œuvre se chiffre à 0 €.",
@@ -100,14 +117,23 @@ enum class ReglageManquant(
         /**
          * Ce qui manque, dans l'ordre où cela se règle.
          *
-         * L'ordre n'est pas celui de l'enum par hasard : la raison sociale d'abord
-         * parce qu'elle paraît sur tout ce qui sort, les deux taux ensuite parce
-         * qu'ils chiffrent, le coefficient en dernier parce que son absence a un
+         * L'ordre n'est pas celui de l'enum par hasard : l'identité de
+         * l'entreprise d'abord — raison sociale, adresse, SIRET — parce qu'elle
+         * paraît sur tout ce qui sort, les deux taux ensuite parce qu'ils
+         * chiffrent, le coefficient en dernier parce que son absence a un
          * comportement défendable — proposer au coûtant — là où les autres
          * produisent un document incomplet ou un calcul muet.
+         *
+         * Le **régime de TVA** n'y est pas, et ce n'est pas un oubli : ses deux
+         * valeurs sont légitimes, si bien que rien en base ne distingue « assujetti
+         * » choisi de « assujetti » jamais regardé, et une colonne pour le dire
+         * aurait demandé une migration. Il est donc mis sous les yeux là où le taux
+         * se saisit, dans un même bloc « TVA » des tarifs.
          */
         fun de(parametres: Parametres): List<ReglageManquant> = buildList {
             if (parametres.entreprise.isBlank()) add(ENTREPRISE)
+            if (parametres.entrepriseAdresse.isBlank()) add(ADRESSE_ENTREPRISE)
+            if (parametres.entrepriseSiret.isBlank()) add(SIRET)
             if (parametres.tauxHoraire <= 0.0) add(TAUX_HORAIRE)
             if (parametres.coutHoraireInterne <= 0.0) add(COUT_HORAIRE)
             if (parametres.coefficientMateriel <= 0.0) add(COEFFICIENT_MATERIEL)

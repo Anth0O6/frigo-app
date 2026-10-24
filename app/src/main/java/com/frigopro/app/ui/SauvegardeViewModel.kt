@@ -8,17 +8,22 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.FichiersExternes
+import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.ResultatRestauration
 import com.frigopro.app.data.SauvegardeRepository
 import com.frigopro.app.data.StockagePhotos
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 
 /**
- * Sauvegarde et restauration, déclenchées depuis la barre de la tournée.
+ * Sauvegarde et restauration, déclenchées depuis la page des Réglages.
  *
  * L'issue est rendue en clair dans [message] : une sauvegarde dont on ne sait
  * pas si elle a réussi ne rassure personne.
@@ -30,7 +35,21 @@ class SauvegardeViewModel(
     private val sauvegardes: SauvegardeRepository,
     private val fichiers: FichiersExternes,
     private val photos: StockagePhotos,
+    private val parametres: ParametresRepository,
 ) : ViewModel() {
+
+    /**
+     * Quand ce téléphone a écrit sa dernière archive, `null` s'il ne l'a jamais
+     * fait.
+     *
+     * La colonne existait depuis `MIGRATION_6_7` et **rien ne l'écrivait** : la page
+     * ne pouvait donc pas dire depuis quand on n'a rien sauvé, ce qui est pourtant
+     * la seule question qu'on se pose avant de changer de téléphone. En flux, et
+     * non relue par `.value` : la page la collecte, et c'est ce qui la tient juste.
+     */
+    val derniereSauvegardeLe: StateFlow<Instant?> = parametres.parametres
+        .map { it.derniereSauvegardeLe }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
     private val _message = MutableStateFlow<String?>(null)
 
@@ -47,7 +66,11 @@ class SauvegardeViewModel(
         viewModelScope.launch {
             val export = sauvegardes.exporter()
             val images = export.fichiersPhotos.map { photos.fichier(it) }
-            _message.value = if (fichiers.ecrireArchive(destination, export.contenu, images)) {
+            val ecrite = fichiers.ecrireArchive(destination, export.contenu, images)
+            // Datée **seulement si l'archive est écrite** : une date posée sur un
+            // échec ferait croire à un filet qui n'existe pas.
+            if (ecrite) parametres.modifier { it.copy(derniereSauvegardeLe = Instant.now()) }
+            _message.value = if (ecrite) {
                 "Sauvegarde enregistrée : " + inventaire(
                     interventions = export.interventions,
                     clients = export.clients,
@@ -129,7 +152,12 @@ class SauvegardeViewModel(
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                SauvegardeViewModel(conteneur.sauvegardes, conteneur.fichiers, conteneur.photos)
+                SauvegardeViewModel(
+                    conteneur.sauvegardes,
+                    conteneur.fichiers,
+                    conteneur.photos,
+                    conteneur.parametres,
+                )
             }
         }
     }

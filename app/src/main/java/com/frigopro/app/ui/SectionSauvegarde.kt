@@ -20,6 +20,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Encart
+import java.time.Instant
+import java.time.ZoneId
 
 /**
  * La sauvegarde, dans les Réglages.
@@ -45,6 +47,7 @@ fun SectionSauvegarde(
     viewModel: SauvegardeViewModel = viewModel(factory = SauvegardeViewModel.Factory),
 ) {
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val derniere by viewModel.derniereSauvegardeLe.collectAsStateWithLifecycle()
 
     val enregistrer = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -60,11 +63,27 @@ fun SectionSauvegarde(
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Encart(
+            // La liste suit le format : le plan de maintenance et le journal des
+            // visites partent dans l'archive depuis le format 14, et la page ne
+            // le disait pas — c'est pourtant la preuve qu'un contrat a été tenu.
             texte = "Vos données ne vivent que sur ce téléphone. Une archive emporte tout : " +
                 "les tournées, les clients et leurs machines, les photos et les signatures, " +
-                "les devis, les factures et leurs numéros, le magasin, le catalogue et les " +
+                "les devis, les factures et les avoirs avec leurs numéros, le plan de " +
+                "maintenance et le journal des visites, le magasin, le catalogue et les " +
                 "réglages. Rangez-la ailleurs que sur l'appareil.",
             icone = Icons.Filled.Save,
+        )
+        // Depuis quand rien n'a été sauvé : c'est la question qu'on se pose avant
+        // de changer de téléphone, et la seule à laquelle la page ne répondait pas.
+        Text(
+            text = derniere?.let { "Dernière sauvegarde depuis ce téléphone : ${libelleInstant(it)}." }
+                ?: "Aucune sauvegarde faite depuis ce téléphone.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (derniere == null) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
         )
         BoutonPlein(
             texte = "Sauvegarder mes données",
@@ -98,3 +117,10 @@ fun SectionSauvegarde(
         )
     }
 }
+
+/**
+ * « 12 mars 2026 à 18:40 », dans le fuseau du téléphone : c'est l'heure à
+ * laquelle on a fait la sauvegarde qui compte, pas celle de Greenwich.
+ */
+internal fun libelleInstant(instant: Instant): String =
+    libelleDateAvecAnnee(instant.atZone(ZoneId.systemDefault()).toLocalDate()) + " à " + heureLocale(instant)
