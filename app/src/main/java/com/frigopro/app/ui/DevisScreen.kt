@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -55,11 +56,15 @@ import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
 import com.frigopro.app.data.DevisFacture
 import com.frigopro.app.data.DevisComplet
+import com.frigopro.app.data.Equipement
+import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.LigneDevis
+import com.frigopro.app.data.PalierPrestation
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.data.StatutFacture
+import com.frigopro.app.data.TarifDegressif
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.BoutonContour
@@ -107,6 +112,9 @@ fun DevisRoute(
     val trajet by viewModel.trajet.collectAsStateWithLifecycle()
     val calculEnCours by viewModel.calculEnCours.collectAsStateWithLifecycle()
     val echecItineraire by viewModel.echecItineraire.collectAsStateWithLifecycle()
+    val parc by viewModel.parc.collectAsStateWithLifecycle()
+    val paliers by viewModel.paliers.collectAsStateWithLifecycle()
+    val factureDuDevis by viewModel.facture.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // Le devis dont on vient de demander la suppression, en attente de
@@ -153,18 +161,26 @@ fun DevisRoute(
         EcranDevis(
             devis = ouvert,
             clients = carnet,
+            // La facture n'est retenue que si elle est bien celle du devis
+            // affiché : les deux flux ne répondent pas au même instant.
+            facture = factureDuDevis?.takeIf { it.devisId == ouvert.devis.id },
             onObjet = viewModel::onObjet,
             onClient = viewModel::onClient,
+            parc = parc,
+            onMachine = viewModel::onMachine,
             onStatut = viewModel::onStatut,
-            onAjouterLigne = viewModel::onAjouterLigne,
+            onAjouterLigne = { designation, quantite, unite, prix ->
+                viewModel.onAjouterLigne(designation, quantite, unite, prix)
+            },
             onAjouterPrestation = viewModel::onAjouterPrestation,
+            paliers = paliers,
             magasin = magasin,
             onAjouterArticle = viewModel::onAjouterArticle,
             coefficientMateriel = reglages.coefficientMateriel,
             onCreerPrestation = viewModel::onCreerPrestation,
             catalogue = catalogue,
             unitesVisees = unitesVisees,
-            onOffrirLigne = viewModel::onOffrirLigne,
+            onModifierLigne = viewModel::onModifierLigne,
             onOffrirTva = viewModel::onOffrirTva,
             onExporterPdf = viewModel::onExporterPdf,
             // Facturer bascule l'onglet tout seul : le ViewModel des factures
@@ -179,7 +195,7 @@ fun DevisRoute(
                 )
                 onAllerALaTournee()
             },
-            enTete = reglages.entreprisePresentable,
+            manques = manquesEmetteur(reglages),
             onSupprimerLigne = viewModel::onSupprimerLigne,
             deplacement = EtatDeplacement(
                 trajet = trajet,
@@ -592,11 +608,25 @@ private fun PuceStatut(statut: StatutDevis) {
 fun EcranDevis(
     devis: DevisComplet,
     clients: List<com.frigopro.app.data.Client>,
+    /**
+     * La facture que le devis a produite, s'il en a produit une : elle le **fige**.
+     * Ses lignes, son en-tête, son statut et sa suppression ne se proposent plus —
+     * la facture a repris ses lignes, et c'est la pièce qui dit ce que le client a
+     * accepté. Le dépôt le refuse de toute façon ; l'écran ne propose pas un geste
+     * qui ne ferait rien.
+     */
+    facture: DevisFacture? = null,
     onObjet: (String) -> Unit,
     onClient: (com.frigopro.app.data.Client) -> Unit,
+    /** Le parc du client du devis, d'où se choisit la machine visée. */
+    parc: List<GroupeMachines> = emptyList(),
+    onMachine: (Equipement?) -> Unit = {},
     onStatut: (StatutDevis) -> Unit,
     onAjouterLigne: (String, Double, String, Double) -> Unit,
-    onAjouterPrestation: (Prestation) -> Unit,
+    /** Une prestation, et la quantité confirmée — `null` pour la proposition. */
+    onAjouterPrestation: (Prestation, Int?) -> Unit,
+    /** Les paliers dégressifs du catalogue, par prestation. */
+    paliers: Map<String, List<PalierPrestation>> = emptyMap(),
     /** Le magasin, d'où se chiffre le matériel. Tout le magasin, stock ou non. */
     magasin: List<ArticleEnStock> = emptyList(),
     onAjouterArticle: (Article, Double, Double) -> Unit = { _, _, _ -> },
@@ -606,7 +636,8 @@ fun EcranDevis(
     catalogue: Map<CategoriePrestation, List<Prestation>>,
     /** Le nombre d'unités intérieures de la machine visée : 1 pour un monosplit. */
     unitesVisees: Int,
-    onOffrirLigne: (LigneDevis) -> Unit,
+    /** Une ligne retouchée dans sa boîte : le seul chemin qui modifie une ligne. */
+    onModifierLigne: (LigneDevis) -> Unit,
     onOffrirTva: () -> Unit,
     onExporterPdf: () -> Unit,
     /**
@@ -623,9 +654,13 @@ fun EcranDevis(
      * aurait fait planifier du travail que le client n'a pas commandé.
      */
     onPlanifier: () -> Unit,
-    /** L'entreprise est renseignée : le PDF portera un en-tête. */
-    enTete: Boolean,
-    onSupprimerLigne: (String) -> Unit,
+    /**
+     * Ce qui manque à l'en-tête de l'entreprise — voir [manquesEmetteur]. Dit ici,
+     * avant l'export, et plus jamais imprimé sur le document du client.
+     */
+    manques: List<String> = emptyList(),
+    /** Retire une ligne, après la confirmation de sa boîte. */
+    onSupprimerLigne: (LigneDevis) -> Unit,
     /** Le déplacement facturé, et ce qu'on peut en faire. */
     deplacement: EtatDeplacement,
     actionsDeplacement: ActionsDeplacement,
@@ -633,9 +668,14 @@ fun EcranDevis(
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val fige = facture != null
     var saisieOuverte by remember { mutableStateOf(false) }
     var clientOuvert by remember { mutableStateOf(false) }
+    var machineOuverte by remember { mutableStateOf(false) }
     var catalogueOuvert by remember { mutableStateOf(false) }
+    var ligneOuverte by remember { mutableStateOf<LigneDevis?>(null) }
+    // La prestation dégressive dont on fait confirmer le nombre d'unités.
+    var degressiveOuverte by remember { mutableStateOf<Prestation?>(null) }
 
     var magasinOuvert by remember { mutableStateOf(false) }
 
@@ -674,9 +714,23 @@ fun EcranDevis(
                 .padding(horizontal = MargeEcran),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ChampTexte(libelle = "Objet", valeur = devis.devis.objet, onValeur = onObjet)
+            if (facture != null) {
+                Encart(
+                    texte = "Ce devis a produit la facture " +
+                        facture.numero.ifBlank { "en brouillon" } +
+                        " : il ne se modifie plus et ne se supprime plus. C'est la pièce " +
+                        "qui dit ce que le client a accepté ; une correction se fait sur " +
+                        "la facture, ou par un avoir.",
+                )
+            }
 
-            Carte(onClick = { clientOuvert = true }) {
+            if (fige) {
+                LigneLecture(intitule = "OBJET", valeur = devis.devis.objet.ifBlank { "Sans objet" })
+            } else {
+                ChampTexte(libelle = "Objet", valeur = devis.devis.objet, onValeur = onObjet)
+            }
+
+            Carte(onClick = if (fige) null else ({ clientOuvert = true })) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -692,62 +746,111 @@ fun EcranDevis(
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }
-                    Text(text = "›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!fige) Text(text = "›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            // La machine, sous le client et seulement une fois le client choisi :
+            // on chiffre le parc de quelqu'un. C'est ce qui fait proposer le
+            // nombre d'unités d'un bi-split — sans machine, tout compte pour une.
+            if (devis.devis.clientId != null || devis.devis.equipementNom.isNotBlank()) {
+                val peutChoisir = !fige && (parc.isNotEmpty() || devis.devis.equipementId != null)
+                Carte(onClick = if (peutChoisir) ({ machineOuverte = true }) else null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "MACHINE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = devis.devis.equipementNom.ifBlank {
+                                    if (parc.isEmpty()) "Aucune machine au parc de ce client" else "Aucune machine visée"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            if (unitesVisees > 1) {
+                                Text(
+                                    text = "$unitesVisees unités intérieures",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (peutChoisir) Text(text = "›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
 
             devis.lignes.forEach { ligne ->
                 LigneDuDevis(
                     ligne = ligne,
-                    onOffrir = { onOffrirLigne(ligne) },
-                    onSupprimer = { onSupprimerLigne(ligne.id) },
+                    onClick = if (fige) null else ({ ligneOuverte = ligne }),
                 )
             }
-            if (devis.lignes.isNotEmpty()) {
+            if (devis.lignes.isNotEmpty() && !fige) {
                 Text(
-                    text = "Appui sur une ligne : l'offrir ou reprendre le geste. " +
-                        "Appui long : la supprimer.",
+                    text = "Toucher une ligne pour la modifier, l'offrir ou la retirer.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            // Le catalogue d'abord, la saisie libre ensuite : c'est l'ordre des
-            // fréquences. Un devis se construit à 90 % de prestations connues,
-            // et taper un intitulé gants aux mains sur un capot de camionnette
-            // est ce qu'on veut avoir à faire le moins souvent possible.
-            BoutonPlein(
-                texte = "Ajouter depuis le catalogue",
-                onClick = { catalogueOuvert = true },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            // Le matériel entre les deux : moins fréquent que la main-d'œuvre,
-            // beaucoup plus que la ligne tapée à la main. C'était le chemin
-            // manquant — le magasin tenait les références et les deux prix, et
-            // aucun devis ne pouvait y puiser.
-            BoutonContour(
-                texte = "Ajouter du matériel",
-                onClick = { magasinOuvert = true },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            BoutonContour(
-                texte = "+ Ligne libre",
-                onClick = { saisieOuverte = true },
-                modifier = Modifier.fillMaxWidth(),
-                couleur = MaterialTheme.colorScheme.secondary,
-            )
+            if (!fige) {
+                // Le catalogue d'abord, la saisie libre ensuite : c'est l'ordre des
+                // fréquences. Un devis se construit à 90 % de prestations connues,
+                // et taper un intitulé gants aux mains sur un capot de camionnette
+                // est ce qu'on veut avoir à faire le moins souvent possible.
+                BoutonPlein(
+                    texte = "Ajouter depuis le catalogue",
+                    onClick = { catalogueOuvert = true },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                // Le matériel entre les deux : moins fréquent que la main-d'œuvre,
+                // beaucoup plus que la ligne tapée à la main. C'était le chemin
+                // manquant — le magasin tenait les références et les deux prix, et
+                // aucun devis ne pouvait y puiser.
+                BoutonContour(
+                    texte = "Ajouter du matériel",
+                    onClick = { magasinOuvert = true },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                BoutonContour(
+                    texte = "+ Ligne libre",
+                    onClick = { saisieOuverte = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    couleur = MaterialTheme.colorScheme.secondary,
+                )
 
-            SectionDeplacement(etat = deplacement, actions = actionsDeplacement)
+                // Le déplacement refait des lignes : sur un devis figé, ses lignes
+                // restent lisibles au-dessus, mais sa saisie n'a plus d'objet.
+                SectionDeplacement(etat = deplacement, actions = actionsDeplacement)
+            }
 
-            CarteTotaux(devis = devis, onOffrirTva = onOffrirTva)
+            CarteTotaux(devis = devis, onOffrirTva = if (fige) null else onOffrirTva)
 
-            RangeePastilles(
-                options = StatutDevis.entries,
-                retenue = devis.devis.statut,
-                libelle = { it.libelle },
-                onChoisir = onStatut,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (!fige) {
+                RangeePastilles(
+                    options = StatutDevis.entries,
+                    retenue = devis.devis.statut,
+                    libelle = { it.libelle },
+                    onChoisir = onStatut,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            if (manques.isNotEmpty()) {
+                // Dit ici, avant l'export, et plus sur le document : une note
+                // adressée à soi-même n'a pas à partir chez le client.
+                Encart(
+                    texte = "Le document partira sans " + manques.joinToString(", ") +
+                        ". L'en-tête de l'entreprise — raison sociale, adresse, SIRET, " +
+                        "logo — se renseigne dans les Réglages.",
+                )
+            }
 
             // Exporter, et non « envoyer » : le devis part par le sélecteur du
             // système, et le statut reste celui que l'utilisateur posera lui-même
@@ -768,26 +871,28 @@ fun EcranDevis(
                     onClick = onPlanifier,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // Sur un devis déjà facturé, le même geste rouvre la facture
+                // vivante, ou en établit une nouvelle si la précédente a été
+                // annulée ou entièrement créditée : c'est le dépôt qui tranche.
                 BoutonContour(
-                    texte = "Établir la facture",
+                    texte = when {
+                        facture == null -> "Établir la facture"
+                        facture.statut == StatutFacture.ANNULEE -> "Établir une nouvelle facture"
+                        else -> "Ouvrir la facture"
+                    },
                     onClick = onFacturer,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (!enTete) {
-                Encart(
-                    texte = "Le document partira sans en-tête : la raison sociale, " +
-                        "les coordonnées, le SIRET et le logo se renseignent dans " +
-                        "les Réglages.",
+
+            if (!fige) {
+                BoutonContour(
+                    texte = "Supprimer ce devis",
+                    onClick = onSupprimer,
+                    modifier = Modifier.fillMaxWidth(),
+                    couleur = MaterialTheme.colorScheme.error,
                 )
             }
-
-            BoutonContour(
-                texte = "Supprimer ce devis",
-                onClick = onSupprimer,
-                modifier = Modifier.fillMaxWidth(),
-                couleur = MaterialTheme.colorScheme.error,
-            )
             EspaceVertical(24)
         }
     }
@@ -799,6 +904,21 @@ fun EcranDevis(
                 saisieOuverte = false
             },
             onFermer = { saisieOuverte = false },
+        )
+    }
+
+    ligneOuverte?.let { ligne ->
+        DialogueModifierLigne(
+            ligne = ligne,
+            onEnregistrer = {
+                onModifierLigne(it)
+                ligneOuverte = null
+            },
+            onSupprimer = {
+                onSupprimerLigne(ligne)
+                ligneOuverte = null
+            },
+            onFermer = { ligneOuverte = null },
         )
     }
 
@@ -815,10 +935,33 @@ fun EcranDevis(
         FeuilleCatalogue(
             catalogue = catalogue,
             dejaAuDevis = devis.lignes.map { it.designation }.toSet(),
-            onChoisir = onAjouterPrestation,
+            onChoisir = { prestation ->
+                // Une prestation dégressive fait confirmer son nombre d'unités :
+                // c'est lui qui découpe les tranches, et une ligne posée ne se
+                // redécoupe pas. Les autres arrivent à la quantité proposée.
+                val tarif = TarifDegressif(prestation.prixUnitaire, paliers[prestation.id].orEmpty())
+                if (prestation.parUnite && tarif.degressif) {
+                    degressiveOuverte = prestation
+                } else {
+                    onAjouterPrestation(prestation, null)
+                }
+            },
             onCreer = onCreerPrestation,
             unitesVisees = unitesVisees,
             onFermer = { catalogueOuvert = false },
+        )
+    }
+
+    degressiveOuverte?.let { prestation ->
+        DialogueQuantiteDegressive(
+            prestation = prestation,
+            tarif = TarifDegressif(prestation.prixUnitaire, paliers[prestation.id].orEmpty()),
+            proposee = unitesVisees,
+            onValider = { quantite ->
+                onAjouterPrestation(prestation, quantite)
+                degressiveOuverte = null
+            },
+            onFermer = { degressiveOuverte = null },
         )
     }
 
@@ -832,16 +975,42 @@ fun EcranDevis(
             onFermer = { clientOuvert = false },
         )
     }
+
+    if (machineOuverte) {
+        DialogueChoixMachine(
+            parc = parc,
+            retenue = devis.devis.equipementId,
+            onChoisir = {
+                onMachine(it)
+                machineOuverte = false
+            },
+            onFermer = { machineOuverte = false },
+        )
+    }
+}
+
+/** Une valeur qu'on lit sans pouvoir la changer : l'objet d'un devis figé. */
+@Composable
+private fun LigneLecture(intitule: String, valeur: String) {
+    Column {
+        Text(
+            text = intitule,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(text = valeur, style = MaterialTheme.typography.titleMedium)
+    }
 }
 
 /**
  * Une ligne du devis.
  *
- * **Appui simple : offrir ou reprendre. Appui long : supprimer.** C'était
- * l'inverse — l'appui simple supprimait — et un contact involontaire faisait
- * disparaître une ligne sans un mot. Gants aux mains, sur un capot, c'est le
- * geste le plus facile à faire par erreur ; il porte donc l'action fréquente, et
- * la destruction demande une intention.
+ * **Le toucher ouvre la ligne**, et c'est tout ce qu'il fait. Il l'offrait, et
+ * l'appui long la supprimait sans rien demander : deux gestes cachés, dont l'un
+ * accordait un geste commercial d'un contact involontaire — gants aux mains, sur
+ * un capot, c'est le geste le plus facile à faire par erreur. Offrir et retirer
+ * se font désormais dans la boîte de la ligne, où ils se voient et où le retrait
+ * se confirme.
  *
  * Une ligne offerte garde son prix, barré, et annonce « offert ». Le client doit
  * lire ce qu'on lui a donné : une remise invisible n'est pas un argument.
@@ -849,11 +1018,11 @@ fun EcranDevis(
 @Composable
 private fun LigneDuDevis(
     ligne: LigneDevis,
-    onOffrir: () -> Unit,
-    onSupprimer: () -> Unit,
+    /** `null` sur un devis figé : la ligne se lit, elle ne s'ouvre plus. */
+    onClick: (() -> Unit)?,
 ) {
     val vert = LocalStatuts.current.termine
-    Carte(contour = true, onClick = onOffrir, onLongClick = onSupprimer) {
+    Carte(contour = true, onClick = onClick) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -884,8 +1053,270 @@ private fun LigneDuDevis(
     }
 }
 
+/**
+ * La boîte d'une ligne : la modifier, l'offrir, la retirer.
+ *
+ * La saisie vit en état local et n'est écrite qu'à « Enregistrer » : une ligne
+ * de devis réécrite à chaque frappe ferait passer le total par des montants que
+ * personne n'a voulus. Ce que la boîte ne montre pas — le prix d'achat, le
+ * marqueur du déplacement — traverse par `copy` : le perdre fausserait la marge,
+ * ou le recalcul du trajet.
+ *
+ * **Retirer se confirme**, et la confirmation nomme la ligne : c'était un appui
+ * long sans question, et une ligne chiffrée disparue se ressaisit de mémoire.
+ */
 @Composable
-private fun CarteTotaux(devis: DevisComplet, onOffrirTva: () -> Unit) {
+private fun DialogueModifierLigne(
+    ligne: LigneDevis,
+    onEnregistrer: (LigneDevis) -> Unit,
+    onSupprimer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    var designation by remember(ligne.id) { mutableStateOf(ligne.designation) }
+    var quantite by remember(ligne.id) { mutableStateOf(Nombres.enTexte(ligne.quantite)) }
+    var unite by remember(ligne.id) { mutableStateOf(ligne.unite) }
+    var prix by remember(ligne.id) { mutableStateOf(Nombres.enTexte(ligne.prixUnitaire)) }
+    var offerte by remember(ligne.id) { mutableStateOf(ligne.offerte) }
+    var confirmerRetrait by remember(ligne.id) { mutableStateOf(false) }
+
+    val quantiteLue = Nombres.versDecimal(quantite)
+    val prixLu = Nombres.versDecimal(prix)
+    val valide = designation.isNotBlank() &&
+        quantiteLue != null && quantiteLue > 0.0 &&
+        prixLu != null && prixLu >= 0.0
+
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Modifier la ligne") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ChampTexte(libelle = "Désignation", valeur = designation, onValeur = { designation = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ChampTexte(
+                        libelle = "Quantité",
+                        valeur = quantite,
+                        onValeur = { quantite = it },
+                        clavier = KeyboardType.Decimal,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ChampTexte(
+                        libelle = "Unité",
+                        valeur = unite,
+                        onValeur = { unite = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                ChampTexte(
+                    libelle = "Prix unitaire HT",
+                    valeur = prix,
+                    onValeur = { prix = it },
+                    clavier = KeyboardType.Decimal,
+                )
+                // Offrir est un geste commercial : il se coche, en toutes lettres,
+                // et se lit sur le devis en prix barré.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = offerte, onCheckedChange = { offerte = it })
+                    Text(
+                        text = "Ligne offerte — le prix reste affiché, barré",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (ligne.deplacement) {
+                    Text(
+                        text = "Ligne produite par le déplacement : elle sera refaite au " +
+                            "prochain enregistrement du trajet, et cette retouche perdue.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { confirmerRetrait = true }) {
+                    Text(text = "Retirer cette ligne", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onEnregistrer(
+                        ligne.copy(
+                            designation = designation,
+                            quantite = quantiteLue ?: ligne.quantite,
+                            unite = unite,
+                            prixUnitaire = prixLu ?: ligne.prixUnitaire,
+                            offerte = offerte,
+                        ),
+                    )
+                },
+                enabled = valide,
+            ) { Text(text = "Enregistrer") }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+
+    if (confirmerRetrait) {
+        AlertDialog(
+            onDismissRequest = { confirmerRetrait = false },
+            title = { Text(text = "Retirer la ligne ?") },
+            text = {
+                Text(
+                    text = "« ${ligne.designation} » " +
+                        "(${Nombres.enEuros(ligne.montantAvantGeste)} HT) disparaît du devis.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onSupprimer) {
+                    Text(text = "Retirer", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmerRetrait = false }) { Text(text = "Garder") }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
+}
+
+/**
+ * Combien d'unités, pour une prestation dégressive.
+ *
+ * Le nombre est **proposé** — celui des unités intérieures de la machine du
+ * devis — et se change ici, avant que les lignes soient posées : c'est lui qui
+ * découpe les tranches (« 1 u à 100 € », « 2e unité à 80 € »), et une ligne
+ * posée ne se redécoupe pas. Les tranches et le total se lisent pendant la
+ * saisie, comme dans [DialoguePaliers] : des prix unitaires se lisent mal, leur
+ * somme se lit tout de suite.
+ */
+@Composable
+private fun DialogueQuantiteDegressive(
+    prestation: Prestation,
+    tarif: TarifDegressif,
+    proposee: Int,
+    onValider: (Int) -> Unit,
+    onFermer: () -> Unit,
+) {
+    var saisie by remember(prestation.id) { mutableStateOf(proposee.coerceAtLeast(1).toString()) }
+    val nombre = saisie.trim().toIntOrNull()?.takeIf { it in 1..MAXIMUM_UNITES }
+
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = prestation.designation) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Prix dégressif par unité. Le nombre proposé est celui des unités " +
+                        "de la machine du devis ; il se change ici, avant de poser les lignes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ChampTexte(
+                    libelle = "Nombre d'unités",
+                    valeur = saisie,
+                    onValeur = { saisie = it },
+                    clavier = KeyboardType.Number,
+                )
+                if (nombre != null) {
+                    tarif.tranches(nombre).forEach { tranche ->
+                        Text(
+                            text = listOfNotNull(
+                                tranche.mention() ?: "1re unité",
+                                "${tranche.nombre} × ${Nombres.enEuros(tranche.prixUnitaire)}",
+                            ).joinToString(" — ") + " = " + Nombres.enEuros(tranche.montant),
+                            style = StyleChiffrePetit,
+                        )
+                    }
+                    Text(
+                        text = "Total ${Nombres.enEuros(tarif.total(nombre))} HT",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { nombre?.let(onValider) }, enabled = nombre != null) {
+                Text(text = "Ajouter")
+            }
+        },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+/** Au-delà, ce n'est plus un multi-split mais une faute de frappe. */
+private const val MAXIMUM_UNITES = 99
+
+/**
+ * La machine que vise le devis, dans le parc de son client.
+ *
+ * Les groupes, et leurs unités en retrait : viser le groupe compte toutes ses
+ * unités, viser une unité n'en compte qu'une — on chiffre alors ce qu'on fait sur
+ * celle-là. « Aucune » rend le devis à une unité, ce qui est juste pour un devis
+ * qui ne porte sur aucune machine en particulier.
+ */
+@Composable
+private fun DialogueChoixMachine(
+    parc: List<GroupeMachines>,
+    retenue: String?,
+    onChoisir: (Equipement?) -> Unit,
+    onFermer: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Machine du devis") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item(key = "aucune") {
+                    Carte(onClick = { onChoisir(null) }, relief = retenue == null) {
+                        Text(text = "Aucune machine", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+                parc.forEach { groupe ->
+                    item(key = groupe.groupe.id) {
+                        Carte(
+                            onClick = { onChoisir(groupe.groupe) },
+                            relief = retenue == groupe.groupe.id,
+                        ) {
+                            Text(text = groupe.groupe.nom, style = MaterialTheme.typography.titleSmall)
+                            if (groupe.unites.isNotEmpty()) {
+                                Text(
+                                    text = "${groupe.unites.size} unités intérieures",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    groupe.unites.forEach { unite ->
+                        item(key = unite.id) {
+                            Carte(
+                                onClick = { onChoisir(unite) },
+                                relief = retenue == unite.id,
+                                modifier = Modifier.padding(start = 20.dp),
+                            ) {
+                                Text(text = unite.nom, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onFermer) { Text(text = "Fermer") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+@Composable
+private fun CarteTotaux(
+    devis: DevisComplet,
+    /** `null` sur un devis figé : le geste ne se propose plus. */
+    onOffrirTva: (() -> Unit)?,
+) {
     val statuts = LocalStatuts.current
     Carte(relief = true) {
         LigneTotal("Total HT", Nombres.enEuros(devis.totalHt))
@@ -959,7 +1390,7 @@ private fun CarteTotaux(devis: DevisComplet, onOffrirTva: () -> Unit) {
         // Le geste n'est proposé qu'à une entreprise assujettie : en franchise en
         // base il n'y a pas de TVA à offrir, et un bouton qui n'agirait sur rien
         // ferait croire à une remise accordée.
-        if (devis.devis.assujettiTva) {
+        if (devis.devis.assujettiTva && onOffrirTva != null) {
             BoutonContour(
                 texte = if (devis.devis.tvaOfferte) "Reprendre la TVA offerte" else "Offrir la TVA",
                 onClick = onOffrirTva,
@@ -993,10 +1424,16 @@ private fun LigneTotal(
     }
 }
 
+/**
+ * Une ligne saisie à la main. Partagée par le devis et le brouillon de facture :
+ * les deux documents se complètent de la même façon, et deux boîtes jumelles
+ * auraient fini par ne plus valider la même chose.
+ */
 @Composable
-private fun DialogueLigneDevis(
+internal fun DialogueLigneDevis(
     onValider: (String, Double, String, Double) -> Unit,
     onFermer: () -> Unit,
+    titre: String = "Ligne de devis",
 ) {
     var designation by remember { mutableStateOf("") }
     var quantite by remember { mutableStateOf("1") }
@@ -1005,7 +1442,7 @@ private fun DialogueLigneDevis(
 
     AlertDialog(
         onDismissRequest = onFermer,
-        title = { Text(text = "Ligne de devis") },
+        title = { Text(text = titre) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ChampTexte(libelle = "Désignation", valeur = designation, onValeur = { designation = it })
@@ -1095,11 +1532,16 @@ private fun DialogueChoixClient(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FeuilleCatalogue(
+internal fun FeuilleCatalogue(
     catalogue: Map<CategoriePrestation, List<Prestation>>,
     dejaAuDevis: Set<String>,
     onChoisir: (Prestation) -> Unit,
-    onCreer: (Prestation) -> Unit,
+    /**
+     * Inscrire une prestation au catalogue depuis la feuille. `null` là où le
+     * document n'a pas ce chemin — le brouillon de facture, qui puise dans le
+     * catalogue sans l'enrichir : le bouton n'y paraît pas.
+     */
+    onCreer: ((Prestation) -> Unit)?,
     unitesVisees: Int,
     onFermer: () -> Unit,
 ) {
@@ -1181,17 +1623,19 @@ private fun FeuilleCatalogue(
             // qu'il faudrait aller déclarer dans les Réglages finit saisie en ligne
             // libre, et le catalogue ne grossit jamais. Elle y entre et rejoint le
             // devis du même geste, puisque c'est bien pour lui qu'on la saisit.
-            BoutonContour(
-                texte = "+ Nouvelle prestation au catalogue",
-                onClick = { creationOuverte = true },
-                modifier = Modifier.fillMaxWidth(),
-                couleur = MaterialTheme.colorScheme.secondary,
-            )
+            if (onCreer != null) {
+                BoutonContour(
+                    texte = "+ Nouvelle prestation au catalogue",
+                    onClick = { creationOuverte = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    couleur = MaterialTheme.colorScheme.secondary,
+                )
+            }
             EspaceVertical(16)
         }
     }
 
-    if (creationOuverte) {
+    if (creationOuverte && onCreer != null) {
         DialoguePrestation(
             prestation = null,
             onValider = {

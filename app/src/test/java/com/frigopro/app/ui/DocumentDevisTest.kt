@@ -96,9 +96,11 @@ class DocumentDevisTest {
         )
 
         assertEquals("Karim Benali", document.emetteur.first())
-        assertTrue(
-            "et le SIRET manquant est signalé, à nous et non au client",
-            document.mentions.any { it.contains("SIRET non renseigné") },
+        // Le SIRET manquant se dit à l'écran, avant l'export : une note adressée
+        // à soi-même n'a pas à partir chez le client.
+        assertFalse(
+            "aucune note technique sur le document du client",
+            (document.mentions + document.emetteur).any { it.contains("SIRET") || it.contains("Réglages") },
         )
     }
 

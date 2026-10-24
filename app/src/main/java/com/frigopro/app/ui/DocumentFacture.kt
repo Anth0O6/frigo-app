@@ -86,9 +86,9 @@ object DocumentFacture {
             },
             totaux = totaux(facture),
             mentions = if (avoir) {
-                mentionsAvoir(document, parametres)
+                mentionsAvoir(document)
             } else {
-                mentions(document, parametres)
+                mentions(document)
             },
             logoFichier = parametres.logoFichier,
             // Une facture n'est exportable qu'émise, donc numérotée : ce nom de
@@ -119,12 +119,9 @@ object DocumentFacture {
      * Les mentions d'un avoir : la référence de la facture, le régime de TVA, et
      * rien de ce qui décrit un paiement attendu.
      */
-    private fun mentionsAvoir(avoir: Facture, parametres: Parametres): List<String> = buildList {
+    private fun mentionsAvoir(avoir: Facture): List<String> = buildList {
         add("Avoir établi sur la ${referenceOrigine(avoir)}, en déduction de son montant.")
         if (!avoir.assujettiTva) add(Parametres.MENTION_FRANCHISE)
-        if (parametres.entrepriseSiret.isBlank()) {
-            add("(SIRET non renseigné dans les Réglages)")
-        }
     }
 
     /**
@@ -177,7 +174,7 @@ object DocumentFacture {
         )
     }
 
-    private fun mentions(facture: Facture, parametres: Parametres): List<String> = buildList {
+    private fun mentions(facture: Facture): List<String> = buildList {
         if (!facture.assujettiTva) add(Parametres.MENTION_FRANCHISE)
 
         facture.echeanceLe?.let {
@@ -202,12 +199,25 @@ object DocumentFacture {
                 "(art. D. 441-5 du code de commerce).",
         )
         add("Pas d'escompte pour paiement anticipé.")
-
-        if (parametres.entrepriseSiret.isBlank()) {
-            // Dit à l'utilisateur, pas au client : une facture sans SIRET n'est
-            // pas conforme, et l'export est le dernier moment où l'on peut
-            // encore s'en apercevoir.
-            add("(SIRET non renseigné dans les Réglages)")
-        }
     }
+}
+
+/**
+ * Ce qui manque à l'en-tête de l'entreprise pour qu'un document parte complet.
+ *
+ * **Dit à l'utilisateur, jamais imprimé.** La mention « (SIRET non renseigné dans
+ * les Réglages) » partait sur le PDF, c'est-à-dire chez le client : une note
+ * adressée à soi-même, imprimée sur une facture, qui apprenait au client que le
+ * document était irrégulier et ne réparait rien. L'avertissement vit désormais
+ * avant le geste — la confirmation d'**émission**, qui est irréversible, et le
+ * devis ouvert —, au moment où l'on peut encore aller le renseigner, et laisse le
+ * choix : un premier devis se fait parfois avant d'avoir son numéro.
+ *
+ * Rien n'est inventé à la place, et rien n'est bloqué : c'est l'entreprise qui
+ * répond de ses mentions, l'application les rappelle.
+ */
+internal fun manquesEmetteur(parametres: Parametres): List<String> = buildList {
+    if (parametres.entreprise.isBlank()) add("la raison sociale")
+    if (parametres.entrepriseAdresse.isBlank()) add("l'adresse de l'entreprise")
+    if (parametres.entrepriseSiret.isBlank()) add("le SIRET")
 }

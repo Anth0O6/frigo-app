@@ -44,7 +44,7 @@ data class EtatDeplacement(
     val tarif: TarifDeplacement = TarifDeplacement(),
     val calculEnCours: Boolean = false,
     val echec: RaisonEchec? = null,
-    /** Le calcul automatique est possible : une clé est saisie dans les Réglages. */
+    /** Le calcul automatique est possible : un relais d'itinéraire est déployé. */
     val itineraireDisponible: Boolean = false,
 )
 
@@ -131,10 +131,13 @@ fun SectionDeplacement(
                 }
             }
         } else {
+            // Rien qui renvoie à une configuration : il n'y a plus de clé à
+            // saisir nulle part, le calcul passe par le relais quand il est
+            // déployé. La saisie à la main est le chemin normal, pas un secours.
             Encart(
-                texte = "Le calcul automatique demande une clé d'itinéraire, à saisir " +
-                    "dans les Réglages. Sans elle, les kilomètres et le temps se " +
-                    "saisissent à la main — ce qui marche aussi sans réseau.",
+                texte = "Le calcul automatique de l'itinéraire n'est pas disponible dans " +
+                    "cette version. Les kilomètres et le temps se saisissent à la main, " +
+                    "ce qui marche aussi sans réseau.",
             )
         }
 

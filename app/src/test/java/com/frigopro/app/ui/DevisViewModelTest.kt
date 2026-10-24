@@ -2,6 +2,7 @@ package com.frigopro.app.ui
 
 import com.frigopro.app.data.Article
 import com.frigopro.app.data.CategoriePrestation
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisComplet
@@ -44,6 +45,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -56,8 +58,8 @@ import java.time.LocalDate
 @OptIn(ExperimentalCoroutinesApi::class)
 class DevisViewModelTest {
 
-    private val daoDevis = FauxDevisDao()
     private val daoFactures = FauxFactureDao()
+    private val daoDevis = FauxDevisDao(daoFactures)
     private val daoClients = FauxClientDao()
     private val daoParametres = FauxParametresDao()
     private val daoPrestations = FauxPrestationDao()
@@ -224,14 +226,31 @@ class DevisViewModelTest {
     fun `un devis cree en franchise en base le reste`() = runTest {
         daoParametres.enregistrer(Parametres(assujettiTva = false))
         val viewModel = creerViewModel()
-        // Le régime est lu dans `reglages`, alimenté par un flux : sans cette
-        // attente, `onNouveau` verrait encore la valeur de départ.
         advanceUntilIdle()
 
         viewModel.onNouveau(null)
         advanceUntilIdle()
 
         assertTrue(!daoDevis.contenu.single().assujettiTva)
+    }
+
+    /**
+     * Le cas qui partait faux : un devis créé **depuis une intervention**, l'onglet
+     * des devis jamais ouvert. Rien ne collecte alors `reglages`, et son `.value`
+     * restait aux défauts — 20 %, assujetti —, recopiés sur le devis puis sur la
+     * facture. Le test ne collecte aucun flux, comme l'écran qu'on n'a pas ouvert.
+     */
+    @Test
+    fun `un devis cree sans ecran ouvert prend les vrais reglages`() = runTest {
+        daoParametres.enregistrer(Parametres(assujettiTva = false, tauxTva = 10.0))
+        val viewModel = creerViewModel(collecter = false)
+
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+
+        val cree = daoDevis.contenu.single()
+        assertTrue("le régime réglé, pas le défaut", !cree.assujettiTva)
+        assertEquals(10.0, cree.tauxTva, 0.001)
     }
 
     /**
@@ -261,28 +280,203 @@ class DevisViewModelTest {
         assertEquals(112.5, ligne.prixUnitaire, 0.001)
     }
 
-    /** Offrir une ligne, puis reprendre le geste, par le même appui. */
+    /**
+     * Une ligne se modifie par sa boîte — quantité, prix, et le geste « offerte » —
+     * et ce que la boîte ne montre pas traverse : le prix d'achat, sans lequel la
+     * marge se tairait.
+     */
     @Test
-    fun `l'appui simple offre la ligne puis la reprend`() = runTest {
+    fun `une ligne modifiee garde son cout et s'offre sans perdre son prix`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+        viewModel.onAjouterArticle(split, quantite = 1.0, prixVente = 890.0)
+        advanceUntilIdle()
+
+        val posee = daoDevis.contenuLignes.single()
+        viewModel.onModifierLigne(posee.copy(quantite = 2.0, offerte = true))
+        advanceUntilIdle()
+
+        val modifiee = daoDevis.contenuLignes.single()
+        assertEquals(2.0, modifiee.quantite, 0.001)
+        assertTrue(modifiee.offerte)
+        assertEquals("le prix reste, pour s'afficher barré", 890.0, modifiee.prixUnitaire, 0.001)
+        assertEquals("le coût traverse la retouche", 640.0, modifiee.prixAchat, 0.001)
+
+        viewModel.onSupprimerLigne(modifiee)
+        advanceUntilIdle()
+        assertTrue(daoDevis.contenuLignes.isEmpty())
+    }
+
+    // — Le prix dégressif ————————————————————————————————————————————————
+
+    private val entretien = Prestation(
+        id = "p-entretien",
+        designation = "Entretien split",
+        categorie = CategoriePrestation.MAINTENANCE,
+        prixUnitaire = 100.0,
+        unite = "u",
+        parUnite = true,
+    )
+
+    private suspend fun poserPaliers() {
+        val catalogue = PrestationRepository(daoPrestations)
+        catalogue.definirPalier(entretien.id, 2, 80.0)
+        catalogue.definirPalier(entretien.id, 3, 70.0)
+    }
+
+    /** Un tri-split : un groupe et trois unités. */
+    private suspend fun triSplit(): Equipement {
+        val groupe = Equipement(id = "g-3", clientId = "cl-1", nom = "Groupe tri-split")
+        daoEquipements.enregistrer(groupe)
+        listOf("Salon", "Chambre", "Bureau").forEachIndexed { rang, nom ->
+            daoEquipements.enregistrer(
+                Equipement(id = "u-3-$rang", clientId = "cl-1", parentId = "g-3", nom = nom),
+            )
+        }
+        return groupe
+    }
+
+    /**
+     * Les paliers réglés dans les Réglages s'appliquent enfin : une prestation
+     * comptée par unité devient une ligne par rang de prix, 100 + 80 + 70, et non
+     * trois unités au prix plein. Ils étaient ignorés sans que rien ne le dise.
+     *
+     * Le test ne collecte **aucun** flux : le nombre d'unités et les paliers sont
+     * relus en base au moment d'écrire, pas pris dans un `StateFlow` que l'écran
+     * collecterait peut-être.
+     */
+    @Test
+    fun `une prestation degressive devient ses lignes par rang`() = runTest {
+        poserPaliers()
+        val groupe = triSplit()
+        val viewModel = creerViewModel(collecter = false)
+        val devis = DevisRepository(daoDevis).creer(client = null, equipement = groupe, aujourdhui = mai)
+        viewModel.onOuvrir(devis)
+
+        viewModel.onAjouterPrestation(entretien)
+        advanceUntilIdle()
+
+        val lignes = daoDevis.contenuLignes.sortedBy { it.rang }
+        assertEquals(
+            listOf("Entretien split", "Entretien split — 2e unité", "Entretien split — 3e unité"),
+            lignes.map { it.designation },
+        )
+        assertEquals(listOf(100.0, 80.0, 70.0), lignes.map { it.prixUnitaire })
+        assertEquals("100 + 80 + 70, et non 3 × 100", 250.0, lignes.sumOf { it.montant }, 0.001)
+    }
+
+    /**
+     * Le nombre confirmé à l'écran l'emporte sur la proposition, et les tranches
+     * suivent : quatre unités font 100 + 80 + 2 × 70 = 320. Les lignes se posent
+     * **après** celles qui sont déjà là.
+     */
+    @Test
+    fun `le nombre confirme decoupe les tranches a la suite du devis`() = runTest {
+        poserPaliers()
         val viewModel = creerViewModel()
         viewModel.onNouveau(null)
         advanceUntilIdle()
         viewModel.onAjouterLigne("Déplacement", 1.0, "forfait", 45.0)
         advanceUntilIdle()
 
-        viewModel.onOffrirLigne(daoDevis.contenuLignes.single())
+        viewModel.onAjouterPrestation(entretien, 4)
         advanceUntilIdle()
-        assertTrue(daoDevis.contenuLignes.single().offerte)
+
+        val lignes = daoDevis.contenuLignes.sortedBy { it.rang }
+        assertEquals(listOf(0, 1, 2, 3), lignes.map { it.rang })
+        assertEquals("Déplacement", lignes.first().designation)
+        val degressives = lignes.drop(1)
+        assertEquals("Entretien split — unités 3 à 4", degressives.last().designation)
+        assertEquals(2.0, degressives.last().quantite, 0.001)
+        assertEquals(320.0, degressives.sumOf { it.montant }, 0.001)
+    }
+
+    /** Sans palier, rien ne change : une ligne, au prix de la prestation. */
+    @Test
+    fun `sans palier une prestation par unite reste une ligne`() = runTest {
+        val groupe = triSplit()
+        val viewModel = creerViewModel(collecter = false)
+        val devis = DevisRepository(daoDevis).creer(client = null, equipement = groupe, aujourdhui = mai)
+        viewModel.onOuvrir(devis)
+
+        viewModel.onAjouterPrestation(entretien)
+        advanceUntilIdle()
+
+        val ligne = daoDevis.contenuLignes.single()
+        assertEquals(3.0, ligne.quantite, 0.001)
+        assertEquals(100.0, ligne.prixUnitaire, 0.001)
+    }
+
+    // — La machine du devis ——————————————————————————————————————————————
+
+    /**
+     * Choisir la machine du devis est ce qui fait proposer le nombre d'unités : sans
+     * ce geste, aucun devis n'en désignait jamais une et la quantité valait un.
+     */
+    @Test
+    fun `la machine choisie fait proposer ses unites`() = runTest {
+        val groupe = triSplit()
+        daoEquipements.enregistrer(Equipement(id = "autre", clientId = "cl-2", nom = "Chez le voisin"))
+        val client = Client(id = "cl-1", nom = "Boucherie Martel", ville = "Vitry")
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(client)
+        advanceUntilIdle()
+
         assertEquals(
-            "le prix reste, pour s'afficher barré",
-            45.0,
-            daoDevis.contenuLignes.single().prixUnitaire,
-            0.001,
+            "le parc proposé est celui du client, et lui seul",
+            listOf("g-3"),
+            viewModel.parc.value.map { it.groupe.id },
         )
 
-        viewModel.onOffrirLigne(daoDevis.contenuLignes.single())
+        viewModel.onMachine(groupe)
         advanceUntilIdle()
-        assertTrue(!daoDevis.contenuLignes.single().offerte)
+        assertEquals("Groupe tri-split", daoDevis.contenu.single().equipementNom)
+        assertEquals(3, viewModel.unitesVisees.value)
+
+        viewModel.onAjouterPrestation(entretien)
+        advanceUntilIdle()
+        assertEquals("proposée, et modifiable ensuite", 3.0, daoDevis.contenuLignes.single().quantite, 0.001)
+    }
+
+    /** Depuis une intervention, la machine vient avec le devis. */
+    @Test
+    fun `un devis ne d'une intervention vise sa machine`() = runTest {
+        triSplit()
+        val viewModel = creerViewModel(collecter = false)
+
+        viewModel.onNouveau(null, equipementId = "g-3")
+        advanceUntilIdle()
+
+        assertEquals("g-3", daoDevis.contenu.single().equipementId)
+        assertEquals("Groupe tri-split", daoDevis.contenu.single().equipementNom)
+    }
+
+    // — Le devis facturé ———————————————————————————————————————————————
+
+    /**
+     * Un devis facturé ne s'efface pas et reste ouvert : le refermer aurait fait
+     * croire qu'il était parti. Ses lignes ne bougent pas non plus.
+     */
+    @Test
+    fun `un devis facture ne se supprime ni ne se retouche`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+        viewModel.onAjouterLigne("Compresseur", 1.0, "u", 980.0)
+        advanceUntilIdle()
+        val devisId = daoDevis.contenu.single().id
+        daoFactures.enregistrer(Facture(id = "f-1", devisId = devisId))
+        advanceUntilIdle()
+
+        assertNotNull("l'écran sait le devis facturé", viewModel.facture.value)
+        viewModel.onModifierLigne(daoDevis.contenuLignes.single().copy(prixUnitaire = 1.0))
+        viewModel.onSupprimer(devisId)
+        advanceUntilIdle()
+
+        assertEquals(980.0, daoDevis.contenuLignes.single().prixUnitaire, 0.001)
+        assertEquals(1, daoDevis.contenu.size)
+        assertEquals("il reste ouvert", devisId, viewModel.ouvert.value)
     }
 
     // — Le déplacement facturé —
@@ -585,7 +779,13 @@ class DevisViewModelTest {
     )
 
     /** Même raison que dans [InterventionsViewModelTest] pour `Dispatchers.Main`. */
-    private fun TestScope.creerViewModel(): DevisViewModel {
+    /**
+     * @param collecter `false` pour un ViewModel dont **aucun** flux n'est
+     *   collecté — l'état d'un écran qu'on n'a pas ouvert. C'est ce qui prouve
+     *   qu'une écriture relit la base au lieu d'un `.value` resté à sa valeur
+     *   initiale.
+     */
+    private fun TestScope.creerViewModel(collecter: Boolean = true): DevisViewModel {
         val ordonnanceur = UnconfinedTestDispatcher(testScheduler)
         Dispatchers.setMain(ordonnanceur)
         val viewModel = DevisViewModel(
@@ -616,7 +816,10 @@ class DevisViewModelTest {
             // resterait à `null`, et les actions qui le lisent — offrir, retirer —
             // ne verraient jamais le trajet enregistré.
             viewModel.trajet,
-        ).forEach { flux -> backgroundScope.launch(ordonnanceur) { flux.collect { } } }
+            viewModel.parc,
+            viewModel.facture,
+        ).takeIf { collecter }
+            ?.forEach { flux -> backgroundScope.launch(ordonnanceur) { flux.collect { } } }
         return viewModel
     }
 }

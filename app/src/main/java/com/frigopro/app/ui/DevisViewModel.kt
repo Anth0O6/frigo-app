@@ -16,10 +16,14 @@ import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
 import com.frigopro.app.data.DevisComplet
 import com.frigopro.app.data.DevisRepository
+import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
+import com.frigopro.app.data.GroupeMachines
 import com.frigopro.app.data.LigneDevis
+import com.frigopro.app.data.LignesDegressives
 import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.OrigineTrajet
+import com.frigopro.app.data.PalierPrestation
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.DevisFacture
@@ -30,6 +34,7 @@ import com.frigopro.app.data.RaisonEchec
 import com.frigopro.app.data.ResultatItineraire
 import com.frigopro.app.data.ServiceItineraire
 import com.frigopro.app.data.StatutDevis
+import com.frigopro.app.data.TarifDegressif
 import com.frigopro.app.data.Trajet
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +42,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -194,10 +200,43 @@ class DevisViewModel(
      * alors ce qu'on fait sur cette unité-là.
      */
     val unitesVisees: StateFlow<Int> = combine(complet, equipements.parGroupe) { ouvert, parc ->
-        val machine = ouvert?.devis?.equipementId ?: return@combine 1
-        parc.firstOrNull { it.groupe.id == machine }?.nombreUnites ?: 1
+        unitesDe(ouvert?.devis?.equipementId, parc)
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), 1)
+
+    /**
+     * Le parc du client du devis ouvert : les machines parmi lesquelles choisir
+     * celle que le devis vise.
+     *
+     * C'est le chemin qui manquait au multi-split : [unitesVisees] savait compter
+     * les unités de la machine du devis, mais aucun devis n'en désignait jamais
+     * une, si bien que la quantité pré-remplie valait toujours un. Le parc d'un
+     * seul client, parce qu'un devis chiffre ce qu'on fait chez lui.
+     */
+    val parc: StateFlow<List<GroupeMachines>> = combine(complet, equipements.parGroupe) { ouvert, groupes ->
+        val client = ouvert?.devis?.clientId ?: return@combine emptyList()
+        groupes.filter { it.groupe.clientId == client }
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    /**
+     * Les paliers dégressifs du catalogue, pour que la boîte de quantité montre
+     * ce que les tranches donneront. Pour l'affichage seulement : les lignes, elles,
+     * se calculent sur les paliers relus en base au moment d'écrire.
+     */
+    val paliers: StateFlow<Map<String, List<PalierPrestation>>> = prestations.paliers
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyMap())
+
+    /**
+     * La facture qu'a produite le devis ouvert, s'il en a produit une.
+     *
+     * C'est ce qui fige le devis à l'écran (voir [DevisRepository.estFige]) : ses
+     * lignes, son en-tête, son statut et sa suppression ne se proposent plus.
+     */
+    val facture: StateFlow<DevisFacture?> = combine(_ouvert, factures.devisFactures) { id, liens ->
+        id?.let { liens[it] }
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), null)
 
     /**
      * Ajoute une prestation du catalogue au devis ouvert.
@@ -207,18 +246,48 @@ class DevisViewModel(
      * en changer le tarif, ne doit rien changer à un devis déjà envoyé.
      *
      * Une prestation comptée par unité arrive avec la quantité **pré-remplie** du
-     * nombre d'unités du groupe, et pas davantage : la ligne reste modifiable,
-     * parce qu'une deuxième unité au même étage ne coûte pas le même temps qu'une
-     * deuxième unité trois étages plus haut. Proposer est utile, imposer serait
-     * faux.
+     * nombre d'unités de la machine du devis, et pas davantage : la ligne reste
+     * modifiable, parce qu'une deuxième unité au même étage ne coûte pas le même
+     * temps qu'une deuxième unité trois étages plus haut. Proposer est utile,
+     * imposer serait faux. [quantite] est ce que l'écran a fait confirmer ; `null`
+     * prend la proposition.
+     *
+     * Si elle porte des **paliers**, elle devient les lignes de [LignesDegressives]
+     * — une par tranche de prix, « 1 u à 100 € » puis « 2e unité à 80 € » —, et non
+     * une ligne au prix plein : les paliers réglés dans les Réglages étaient
+     * jusqu'ici ignorés sans que rien ne le dise. Un forfait n'a pas de rang, et
+     * ses éventuels paliers restent sans effet.
+     *
+     * Tout est **relu en base** dans la coroutine — le devis, le parc et les
+     * paliers — plutôt que pris dans des `StateFlow` : `.value` sur un flux que
+     * personne ne collecte reste à sa valeur initiale, et c'est le défaut qui a
+     * déjà fait partir des factures sans logo.
      */
-    fun onAjouterPrestation(prestation: Prestation) {
-        onAjouterLigne(
-            designation = prestation.designation,
-            quantite = if (prestation.parUnite) unitesVisees.value.toDouble() else 1.0,
-            unite = prestation.unite,
-            prixUnitaire = prestation.prixUnitaire,
-        )
+    fun onAjouterPrestation(prestation: Prestation, quantite: Int? = null) {
+        val id = _ouvert.value ?: return
+        viewModelScope.launch {
+            val nombre = quantite ?: if (prestation.parUnite) {
+                unitesDe(devis.lire(id)?.equipementId, equipements.parGroupe.first())
+            } else {
+                1
+            }
+            if (nombre <= 0) return@launch
+            val tarif = TarifDegressif(
+                base = prestation.prixUnitaire,
+                paliers = prestations.paliers.first()[prestation.id].orEmpty(),
+            )
+            if (prestation.parUnite && tarif.degressif) {
+                devis.ajouterLignes(id, LignesDegressives.pour(id, prestation, tarif, nombre))
+            } else {
+                devis.ajouterLigne(
+                    devisId = id,
+                    designation = prestation.designation,
+                    quantite = nombre.toDouble(),
+                    unite = prestation.unite,
+                    prixUnitaire = prestation.prixUnitaire,
+                )
+            }
+        }
     }
 
     /** Le trajet du devis ouvert, s'il en porte un. */
@@ -237,9 +306,8 @@ class DevisViewModel(
      * Pourquoi le dernier calcul n'a rien rendu.
      *
      * Porté par l'état plutôt que jeté : l'écran doit dire *ce qui* a échoué,
-     * parce que la suite n'est pas la même — une clé se corrige dans les
-     * Réglages, une adresse se réécrit, une absence de réseau se contourne en
-     * saisissant les kilomètres à la main.
+     * parce que la suite n'est pas la même — une adresse se réécrit, une absence
+     * de réseau se contourne en saisissant les kilomètres à la main.
      */
     val echecItineraire: StateFlow<RaisonEchec?> = _echecItineraire.asStateFlow()
 
@@ -257,13 +325,28 @@ class DevisViewModel(
      * Le taux de TVA vient des réglages au moment de la création, puis le
      * devis en garde sa copie : un devis déjà envoyé ne doit pas se recalculer
      * parce qu'un réglage a bougé depuis.
+     *
+     * Les réglages sont **lus en base**, et non dans [reglages] : ce flux n'est
+     * collecté que par l'écran des devis, et un devis créé depuis une
+     * intervention — l'onglet Factures jamais ouvert — recevait sinon les défauts,
+     * 20 % et assujetti, qui traversaient ensuite jusqu'à la facture. C'est le
+     * défaut des factures sans logo, sous une autre forme.
+     *
+     * @param equipementId la machine que le devis vise, quand on la connaît
+     *   déjà — celle de l'intervention d'où il naît. C'est ce qui fait proposer
+     *   le nombre d'unités d'un bi-split sans avoir à la choisir.
      */
-    fun onNouveau(client: Client?) {
+    fun onNouveau(client: Client?, equipementId: String? = null) {
         viewModelScope.launch {
+            val reglesEnBase = parametres.lire()
+            val machine = equipementId?.let { id ->
+                equipements.equipements.first().firstOrNull { it.id == id }
+            }
             val cree = devis.creer(
                 client = client,
-                tauxTva = reglages.value.tauxTva,
-                assujettiTva = reglages.value.assujettiTva,
+                equipement = machine,
+                tauxTva = reglesEnBase.tauxTva,
+                assujettiTva = reglesEnBase.assujettiTva,
             )
             _ouvert.value = cree.id
         }
@@ -274,10 +357,43 @@ class DevisViewModel(
         viewModelScope.launch { devis.enregistrer(courant.copy(objet = texte)) }
     }
 
+    /**
+     * Change le client du devis. La machine visée est oubliée si elle n'est pas
+     * chez lui : un devis ne chiffre pas le parc d'un autre, et garder son nombre
+     * d'unités ferait proposer des quantités qui ne le concernent pas.
+     */
     fun onClient(client: Client) {
         val courant = complet.value?.devis ?: return
         viewModelScope.launch {
-            devis.enregistrer(courant.copy(clientId = client.id, clientNom = client.nom))
+            val machine = courant.equipementId?.let { id ->
+                equipements.equipements.first().firstOrNull { it.id == id }
+            }
+            val garder = machine != null && machine.clientId == client.id
+            devis.enregistrer(
+                courant.copy(
+                    clientId = client.id,
+                    clientNom = client.nom,
+                    equipementId = if (garder) courant.equipementId else null,
+                    equipementNom = if (garder) courant.equipementNom else "",
+                ),
+            )
+        }
+    }
+
+    /**
+     * La machine que le devis vise, ou aucune.
+     *
+     * Le nom est **recopié**, comme sur l'intervention et pour la même raison : un
+     * devis de mars doit continuer de dire sur quoi il portait, même si la machine
+     * a été renommée ou retirée depuis. Les lignes déjà posées ne bougent pas — la
+     * quantité n'est qu'une proposition faite à l'ajout.
+     */
+    fun onMachine(machine: Equipement?) {
+        val courant = complet.value?.devis ?: return
+        viewModelScope.launch {
+            devis.enregistrer(
+                courant.copy(equipementId = machine?.id, equipementNom = machine?.nom.orEmpty()),
+            )
         }
     }
 
@@ -336,21 +452,21 @@ class DevisViewModel(
         )
     }
 
+    /**
+     * Enregistre une ligne retouchée dans sa boîte : désignation, quantité, unité,
+     * prix, et le geste « offerte ».
+     *
+     * C'est le seul chemin qui modifie une ligne, et il passe par une boîte qui
+     * montre ce qui change. Avant, un **simple toucher offrait la ligne** — un
+     * geste commercial accordé d'un contact involontaire, gants aux mains — et
+     * l'appui long la supprimait sans rien demander, tandis que l'écran promettait
+     * une quantité « modifiable ensuite » que rien ne permettait de modifier. Le
+     * prix d'achat et le marqueur du déplacement traversent par `copy` : la boîte
+     * ne les montre pas, et les perdre fausserait la marge ou le recalcul du
+     * trajet.
+     */
     fun onModifierLigne(ligne: LigneDevis) {
         viewModelScope.launch { devis.enregistrerLigne(ligne) }
-    }
-
-    /**
-     * Offre une ligne, ou reprend le geste.
-     *
-     * C'est l'appui **simple** sur une ligne, là où l'appui long supprime. Avant,
-     * l'appui simple supprimait : un contact involontaire faisait disparaître une
-     * ligne sans un mot, et c'est exactement le genre de geste qu'on fait gants
-     * aux mains. L'action fréquente prend l'appui simple, la destructrice l'appui
-     * long — la convention du projet (voir `Carte`).
-     */
-    fun onOffrirLigne(ligne: LigneDevis) {
-        viewModelScope.launch { devis.offrirLigne(ligne, !ligne.offerte) }
     }
 
     /** Offre la TVA, ou reprend le geste. Sans objet en franchise en base. */
@@ -406,10 +522,12 @@ class DevisViewModel(
     fun onExporterPdf() {
         val ouvert = complet.value ?: return
         viewModelScope.launch {
+            // Lus en base au moment d'écrire, comme pour la facture : un document
+            // ne se construit pas sur des `StateFlow` qu'un autre écran collecte.
             val document = DocumentDevis.de(
                 devis = ouvert,
-                parametres = reglages.value,
-                client = carnet.value.firstOrNull { it.id == ouvert.devis.clientId },
+                parametres = parametres.lire(),
+                client = clients.clients.first().firstOrNull { it.id == ouvert.devis.clientId },
             )
             val produit = pdf.produire(document)
             if (produit != null) _documentPret.value = produit else _echecExport.value = true
@@ -425,8 +543,9 @@ class DevisViewModel(
         _echecExport.value = false
     }
 
-    fun onSupprimerLigne(id: String) {
-        viewModelScope.launch { devis.supprimerLigne(id) }
+    /** Retire une ligne : appelé depuis sa boîte, après confirmation. */
+    fun onSupprimerLigne(ligne: LigneDevis) {
+        viewModelScope.launch { devis.supprimerLigne(ligne) }
     }
 
     /**
@@ -439,11 +558,14 @@ class DevisViewModel(
      *
      * La feuille se referme quand c'est elle qu'on efface, et seulement alors :
      * remettre `_ouvert` à `null` sans regarder aurait fermé le devis en cours
-     * de saisie parce qu'on en a supprimé un autre.
+     * de saisie parce qu'on en a supprimé un autre. Et seulement si le dépôt a
+     * bien supprimé : un devis facturé ne s'efface pas, et le refermer aurait
+     * fait croire le contraire.
      */
     fun onSupprimer(id: String) {
-        if (_ouvert.value == id) _ouvert.value = null
-        viewModelScope.launch { devis.supprimer(id) }
+        viewModelScope.launch {
+            if (devis.supprimer(id) && _ouvert.value == id) _ouvert.value = null
+        }
     }
 
     // — Le déplacement facturé —
@@ -484,7 +606,7 @@ class DevisViewModel(
         viewModelScope.launch {
             devis.enregistrerDeplacement(
                 saisi.copy(origine = OrigineTrajet.SAISI, calculeLe = null),
-                reglages.value.tarifDeplacement,
+                parametres.lire().tarifDeplacement,
             )
         }
     }
@@ -513,7 +635,7 @@ class DevisViewModel(
                             origine = OrigineTrajet.CALCULE,
                             calculeLe = Instant.now(),
                         ),
-                        reglages.value.tarifDeplacement,
+                        parametres.lire().tarifDeplacement,
                     )
 
                     is ResultatItineraire.Echec -> _echecItineraire.value = resultat.raison
@@ -530,7 +652,7 @@ class DevisViewModel(
     fun onOffrirDeplacement(offert: Boolean) {
         val courant = trajet.value ?: return
         viewModelScope.launch {
-            devis.offrirDeplacement(courant, reglages.value.tarifDeplacement, offert)
+            devis.offrirDeplacement(courant, parametres.lire().tarifDeplacement, offert)
         }
     }
 
@@ -543,6 +665,16 @@ class DevisViewModel(
     companion object {
 
         private const val TEMPS_ARRET_COLLECTE_MS = 5_000L
+
+        /**
+         * Le nombre d'unités intérieures de [machine] dans [parc] : 1 sans machine,
+         * pour un monosplit, et pour une unité visée seule. Une seule règle pour le
+         * flux que l'écran affiche et pour la lecture faite au moment d'écrire.
+         */
+        private fun unitesDe(machine: String?, parc: List<GroupeMachines>): Int {
+            if (machine == null) return 1
+            return parc.firstOrNull { it.groupe.id == machine }?.nombreUnites ?: 1
+        }
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

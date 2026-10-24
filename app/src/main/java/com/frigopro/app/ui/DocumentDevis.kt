@@ -59,7 +59,7 @@ object DocumentDevis {
                 )
             },
             totaux = totaux(devis),
-            mentions = mentions(devis, parametres),
+            mentions = mentions(devis),
             logoFichier = parametres.logoFichier,
             nomSansNumero = "devis",
         )
@@ -119,14 +119,11 @@ object DocumentDevis {
      * tranche et non celui des réglages du jour : un devis établi il y a six
      * mois doit rester ce qu'il était.
      */
-    private fun mentions(devis: DevisComplet, parametres: Parametres): List<String> = buildList {
+    private fun mentions(devis: DevisComplet): List<String> = buildList {
         if (!devis.devis.assujettiTva) add(Parametres.MENTION_FRANCHISE)
         add("Devis gratuit et sans engagement. Bon pour accord, date et signature :")
-        if (parametres.entrepriseSiret.isBlank()) {
-            // Dit à l'utilisateur, pas au client : un devis sans SIRET
-            // n'est pas conforme, et l'export est le dernier moment où on
-            // peut encore s'en apercevoir.
-            add("(SIRET non renseigné dans les Réglages)")
-        }
+        // Rien sur le SIRET manquant : une note adressée à soi-même n'a pas à
+        // partir chez le client. C'est l'écran du devis qui le dit, avant
+        // l'export — voir [manquesEmetteur].
     }
 }

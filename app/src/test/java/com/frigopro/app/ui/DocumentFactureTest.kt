@@ -158,13 +158,31 @@ class DocumentFactureTest {
         )
     }
 
+    /**
+     * Un SIRET manquant se dit à qui émet, **jamais au client** : la mention
+     * « (SIRET non renseigné dans les Réglages) » partait sur le PDF. C'est la
+     * confirmation d'émission qui le rappelle désormais, par [manquesEmetteur].
+     */
     @Test
-    fun `un SIRET manquant est signale a qui envoie, pas au client`() {
-        val document = DocumentFacture.de(
-            facture(), entreprise.copy(entrepriseSiret = ""), client, LE_12_MARS,
+    fun `un SIRET manquant est signale a qui emet, pas au client`() {
+        val sansSiret = entreprise.copy(entrepriseSiret = "")
+        val facture = DocumentFacture.de(facture(), sansSiret, client, LE_12_MARS)
+        val avoir = DocumentFacture.de(
+            facture().let { it.copy(facture = it.facture.copy(nature = NatureFacture.AVOIR)) },
+            sansSiret,
+            client,
+            LE_12_MARS,
         )
 
-        assertTrue(document.mentions.any { it.contains("SIRET non renseigné") })
+        listOf(facture, avoir).forEach { document ->
+            val imprime = document.mentions + document.emetteur + document.dates
+            assertFalse(
+                "aucune note technique sur le document du client : $imprime",
+                imprime.any { it.contains("SIRET") || it.contains("Réglages") },
+            )
+        }
+        assertEquals(listOf("le SIRET"), manquesEmetteur(sansSiret))
+        assertTrue("rien ne manque à une entreprise complète", manquesEmetteur(entreprise).isEmpty())
     }
 
     @Test
