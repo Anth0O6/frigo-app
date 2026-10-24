@@ -147,7 +147,11 @@ fun EcranEquipement(
                     IconButton(onClick = onFermer) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Revenir au carnet",
+                            // Une unité revient à son groupe : voir
+                            // [EquipementsViewModel.onOuvrir].
+                            contentDescription = groupe
+                                ?.let { "Revenir à ${it.nom}" }
+                                ?: "Revenir au carnet",
                         )
                     }
                 },

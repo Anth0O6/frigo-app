@@ -209,12 +209,43 @@ class EquipementsViewModel(
     /** Photo affichée en plein écran, ou `null`. */
     val agrandie: StateFlow<Photo?> = _agrandie.asStateFlow()
 
+    /**
+     * Le groupe auquel revenir quand on ferme la fiche ouverte, `null` pour revenir
+     * au carnet.
+     *
+     * Retenu **au moment d'ouvrir**, depuis la machine qu'on ouvre, plutôt que lu
+     * dans [parc] au moment de fermer : `parc.value` n'est juste que tant qu'un
+     * écran le collecte, et un retour qui dépendrait de cela ramènerait au carnet
+     * le jour où l'écran ne l'observe plus. Le `parentId` d'une machine ne change
+     * jamais — une unité ne change pas de groupe —, si bien que la copie ne peut
+     * pas vieillir.
+     */
+    private var retour: String? = null
+
+    /**
+     * Ouvre la fiche d'une machine — groupe, monosplit ou unité.
+     *
+     * Une unité se referme **sur son groupe** et non sur le carnet : on l'ouvre
+     * depuis la fiche du groupe, pour photographier « Salon » puis « Chambre », et
+     * un retour qui ramenait au carnet obligeait à retrouver le groupe dans une
+     * liste de trois cents machines entre chaque unité. Le pas est le même quel
+     * que soit le chemin par lequel on est arrivé à l'unité : c'est son groupe
+     * qui la situe.
+     */
     fun onOuvrir(equipement: Equipement) {
-        _ouverte.value = equipement.id
+        ouvrir(equipement)
     }
 
+    /** Referme la fiche : sur son groupe pour une unité, sur le carnet sinon. */
     fun onFermer() {
-        _ouverte.value = null
+        val groupe = retour
+        retour = null
+        _ouverte.value = groupe
+    }
+
+    private fun ouvrir(equipement: Equipement) {
+        retour = equipement.parentId
+        _ouverte.value = equipement.id
     }
 
     fun onAjouterMachine(clientId: String) {
@@ -264,10 +295,17 @@ class EquipementsViewModel(
         _dialogue.value = null
         viewModelScope.launch {
             when (ouvert) {
+                // Une machine créée depuis le carnet **s'ouvre aussitôt**, comme la
+                // copie : on la crée pour la photographier et lui donner sa
+                // plaque, et la laisser dans un parc de trois cents lignes
+                // obligeait à la chercher. Une unité, elle, reste sur la fiche du
+                // groupe d'où on l'a créée, où elle paraît dans la liste des
+                // unités : un bi-split se pose en deux saisies coup sur coup, et
+                // ouvrir chacune aurait demandé un retour entre les deux.
                 is DialogueEquipement.Creation -> {
                     val parent = ouvert.parent
                     if (parent == null) {
-                        equipements.trouverOuCreer(ouvert.clientId, nom)
+                        ouvrir(equipements.trouverOuCreer(ouvert.clientId, nom))
                     } else {
                         equipements.ajouterUnite(parent, nom)
                     }
@@ -282,7 +320,7 @@ class EquipementsViewModel(
                 // carnet aurait obligé à la retrouver dans une liste de trois
                 // cents machines.
                 is DialogueEquipement.Duplication ->
-                    _ouverte.value = equipements.dupliquer(ouvert.equipement, nom).id
+                    ouvrir(equipements.dupliquer(ouvert.equipement, nom))
 
                 is DialogueEquipement.Suppression -> Unit
             }
@@ -290,14 +328,16 @@ class EquipementsViewModel(
     }
 
     /**
-     * Supprime la machine et referme sa fiche. Les interventions passées gardent
-     * son nom : c'est le dépôt qui s'en charge.
+     * Supprime la machine et referme sa fiche — sur son groupe pour une unité.
+     * Les interventions passées gardent son nom : c'est le dépôt qui s'en charge.
      */
     fun onConfirmerSuppression() {
         val ouvert = _dialogue.value as? DialogueEquipement.Suppression ?: return
 
         _dialogue.value = null
-        if (_ouverte.value == ouvert.equipement.id) _ouverte.value = null
+        // Une unité supprimée referme sur son groupe, comme un retour : c'est de
+        // là qu'on l'avait ouverte, et c'est là qu'on vérifie qu'elle est partie.
+        if (_ouverte.value == ouvert.equipement.id) onFermer()
         viewModelScope.launch { equipements.supprimer(ouvert.equipement.id) }
     }
 

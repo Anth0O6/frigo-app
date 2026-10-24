@@ -427,6 +427,112 @@ class EquipementsViewModelTest {
         assertEquals(SelectionParc("cl-1"), viewModel.selection.value)
     }
 
+    /**
+     * Une unité se referme **sur son groupe** : on l'ouvre depuis la fiche du
+     * groupe pour photographier « Salon » puis « Chambre », et revenir au carnet
+     * entre les deux obligeait à retrouver le groupe dans tout le parc. Le groupe,
+     * lui, se referme sur le carnet.
+     */
+    @Test
+    fun `le retour d'une unite rouvre son groupe, celui du groupe le carnet`() = runTest {
+        val viewModel = creerViewModel()
+        val groupe = Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin")
+        val unite = Equipement(id = "u-1", clientId = "cl-1", parentId = "g-1", nom = "Salon")
+        daoEquipements.enregistrer(groupe)
+        daoEquipements.enregistrer(unite)
+        viewModel.onOuvrir(groupe)
+        viewModel.onOuvrir(unite)
+        advanceUntilIdle()
+
+        viewModel.onFermer()
+        advanceUntilIdle()
+        assertEquals("g-1", viewModel.ouverte.value?.id)
+
+        viewModel.onFermer()
+        advanceUntilIdle()
+        assertNull("le groupe revient au carnet", viewModel.ouverte.value)
+    }
+
+    /**
+     * Le pas de retour vient de l'unité et non du chemin : une unité ouverte sans
+     * être passé par son groupe se referme quand même sur lui.
+     */
+    @Test
+    fun `une unite ouverte directement se referme aussi sur son groupe`() = runTest {
+        val viewModel = creerViewModel()
+        daoEquipements.enregistrer(Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin"))
+        val unite = Equipement(id = "u-1", clientId = "cl-1", parentId = "g-1", nom = "Salon")
+        daoEquipements.enregistrer(unite)
+        viewModel.onOuvrir(unite)
+        advanceUntilIdle()
+
+        viewModel.onFermer()
+        advanceUntilIdle()
+
+        assertEquals("g-1", viewModel.ouverte.value?.id)
+    }
+
+    /** Une unité supprimée referme sur son groupe, comme un retour. */
+    @Test
+    fun `supprimer l'unite ouverte ramene a son groupe`() = runTest {
+        val viewModel = creerViewModel()
+        val groupe = Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin")
+        val unite = Equipement(id = "u-1", clientId = "cl-1", parentId = "g-1", nom = "Salon")
+        daoEquipements.enregistrer(groupe)
+        daoEquipements.enregistrer(unite)
+        viewModel.onOuvrir(groupe)
+        viewModel.onOuvrir(unite)
+        advanceUntilIdle()
+
+        viewModel.onSupprimerMachine(unite)
+        viewModel.onConfirmerSuppression()
+        advanceUntilIdle()
+
+        assertEquals("g-1", viewModel.ouverte.value?.id)
+        assertEquals(listOf("g-1"), daoEquipements.contenu.map { it.id })
+    }
+
+    /**
+     * **Une machine créée s'ouvre**, comme une copie : on la crée pour lui donner
+     * sa plaque et ses photos, et la laisser dans un parc de trois cents lignes
+     * obligeait à la chercher.
+     */
+    @Test
+    fun `une machine creee depuis le carnet s'ouvre aussitot`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onAjouterMachine("cl-1")
+        viewModel.onValiderNom("Vitrine salle 2")
+        advanceUntilIdle()
+
+        assertEquals("Vitrine salle 2", viewModel.ouverte.value?.nom)
+
+        viewModel.onFermer()
+        advanceUntilIdle()
+        assertNull("une machine créée se referme sur le carnet", viewModel.ouverte.value)
+    }
+
+    /**
+     * Une unité, elle, laisse ouverte la fiche du groupe d'où on l'a créée : elle
+     * y paraît dans la liste des unités, et un bi-split se pose en deux saisies
+     * coup sur coup.
+     */
+    @Test
+    fun `une unite creee laisse ouverte la fiche du groupe`() = runTest {
+        val viewModel = creerViewModel()
+        val groupe = Equipement(id = "g-1", clientId = "cl-1", nom = "Groupe Daikin")
+        daoEquipements.enregistrer(groupe)
+        viewModel.onOuvrir(groupe)
+        advanceUntilIdle()
+
+        viewModel.onAjouterUnite(groupe)
+        viewModel.onValiderNom("Salon")
+        advanceUntilIdle()
+
+        assertEquals("g-1", viewModel.ouverte.value?.id)
+        assertEquals(listOf("Salon"), viewModel.unitesOuvertes.value.map { it.nom })
+    }
+
     private fun intervention(machine: Equipement): Intervention = Intervention(
         id = "id-1",
         date = LocalDate.of(2026, 3, 9),

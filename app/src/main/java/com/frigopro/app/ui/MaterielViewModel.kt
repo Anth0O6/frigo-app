@@ -48,11 +48,10 @@ data class FiltresFournisseurs(
     fun retient(fournisseur: Fournisseur): Boolean {
         if (categorie != null && fournisseur.categorie != categorie) return false
         if (preferesSeulement && !fournisseur.prefere) return false
-        val cherchee = ville.trim()
-        if (cherchee.isNotBlank() && !fournisseur.ville.contains(cherchee, ignoreCase = true)) {
-            return false
-        }
-        return true
+        // La ville passe par la recherche commune, accents repliés : « evreux »
+        // doit trouver « Évreux », et un filtre qui ne le fait pas ici alors que
+        // le carnet le fait apprend que la recherche « marche ici mais pas là ».
+        return Recherche.correspond(ville, fournisseur.ville)
     }
 }
 
@@ -77,6 +76,11 @@ class MaterielViewModel(private val materiel: MaterielRepository) : ViewModel() 
      * Un inventaire se consulte, un manque se traite : c'est la seule liste de
      * cet écran qui appelle une action, et elle passe donc devant. Le reste suit
      * dans l'ordre alphabétique que le dépôt lui donne.
+     *
+     * Le tri ne porte **que sur l'alerte**, et c'est voulu : `sortedWith` est
+     * stable, si bien qu'à l'intérieur de chaque moitié l'ordre reste celui du
+     * collateur français du dépôt. Un second critère sur la désignation l'écrasait
+     * par un ordre de codes Unicode, qui rangeait « Écrou » après « Z ».
      */
     val magasin: StateFlow<List<ArticleEnStock>> =
         combine(materiel.magasin, _recherche) { liste, saisie ->
@@ -93,7 +97,7 @@ class MaterielViewModel(private val materiel: MaterielRepository) : ViewModel() 
                     it.article.reference,
                     it.article.fournisseurNom,
                 )
-            }.sortedWith(compareByDescending<ArticleEnStock> { it.enAlerte }.thenBy { it.article.designation })
+            }.sortedWith(compareByDescending<ArticleEnStock> { it.enAlerte })
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
 
     /** Ce qu'il faut racheter : le chiffre de l'en-tête, et celui de l'accueil. */
@@ -194,13 +198,21 @@ class MaterielViewModel(private val materiel: MaterielRepository) : ViewModel() 
         _brouillonArticle.value = null
     }
 
-    /** Une saisie sans désignation laisse le formulaire ouvert plutôt que d'écrire à moitié. */
+    /**
+     * Inscrit l'article créé, **et ouvre sa fiche**.
+     *
+     * On crée un article pour lui donner un stock, un seuil et un prix, qui se
+     * saisissent sur sa fiche : refermer sur le magasin obligeait à le retrouver
+     * dans la liste pour faire la seule chose qu'on était venu faire. Même règle
+     * que la copie d'une machine. Une saisie sans désignation laisse le formulaire
+     * ouvert plutôt que d'écrire à moitié.
+     */
     fun onEnregistrerArticle() {
         val article = _brouillonArticle.value ?: return
         if (article.designation.isBlank()) return
 
         _brouillonArticle.value = null
-        viewModelScope.launch { materiel.enregistrerArticle(article) }
+        viewModelScope.launch { _articleOuvert.value = materiel.enregistrerArticle(article).id }
     }
 
     fun onSupprimerArticle(id: String) {
@@ -243,12 +255,19 @@ class MaterielViewModel(private val materiel: MaterielRepository) : ViewModel() 
         _brouillonFournisseur.value = null
     }
 
+    /**
+     * Inscrit le fournisseur créé, **et ouvre sa fiche** : la boîte de création
+     * annonce que l'adresse et le catalogue s'ajoutent ensuite, sur la fiche, et
+     * c'était une promesse que rien ne tenait — on retombait sur le carnet.
+     */
     fun onEnregistrerFournisseur() {
         val fournisseur = _brouillonFournisseur.value ?: return
         if (fournisseur.nom.isBlank()) return
 
         _brouillonFournisseur.value = null
-        viewModelScope.launch { materiel.enregistrerFournisseur(fournisseur) }
+        viewModelScope.launch {
+            _fournisseurOuvert.value = materiel.enregistrerFournisseur(fournisseur).id
+        }
     }
 
     fun onSupprimerFournisseur(id: String) {
