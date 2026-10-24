@@ -41,9 +41,18 @@ abstract class FactureDao {
     @Query("SELECT * FROM factures WHERE interventionId = :interventionId LIMIT 1")
     abstract fun observerDeLIntervention(interventionId: String): Flow<Facture?>
 
-    /** Idem pour un devis : c'est ce qui empêche de facturer deux fois. */
-    @Query("SELECT * FROM factures WHERE devisId = :devisId LIMIT 1")
-    abstract suspend fun pourDevis(devisId: String): Facture?
+    /**
+     * Toutes les factures établies depuis ce devis, la plus récente d'abord.
+     *
+     * **Toutes**, et non la première : une facture annulée ou entièrement
+     * créditée garde son lien, et un `LIMIT 1` la rendait à la place de celle
+     * qu'on venait d'établir pour la remplacer — si bien que « Facturer »
+     * rouvrait pour toujours la facture annulée. Le tri entre celle qui compte et
+     * celles qui ne réclament plus rien se fait dans le dépôt, où il se lit et
+     * s'éprouve (voir [FactureRepository.creerDepuisDevis]).
+     */
+    @Query("SELECT * FROM factures WHERE devisId = :devisId ORDER BY modifieLe DESC")
+    abstract suspend fun facturesDuDevis(devisId: String): List<Facture>
 
     /**
      * Quel devis a produit quelle facture.
@@ -56,8 +65,9 @@ abstract class FactureDao {
     @Query("SELECT devisId, numero, statut FROM factures WHERE devisId IS NOT NULL")
     abstract fun observerDevisFactures(): Flow<List<DevisFacture>>
 
-    @Query("SELECT * FROM factures WHERE interventionId = :interventionId LIMIT 1")
-    abstract suspend fun pourIntervention(interventionId: String): Facture?
+    /** Idem pour une intervention : voir [facturesDuDevis]. */
+    @Query("SELECT * FROM factures WHERE interventionId = :interventionId ORDER BY modifieLe DESC")
+    abstract suspend fun facturesDeLIntervention(interventionId: String): List<Facture>
 
     @Query("SELECT * FROM factures")
     abstract suspend fun toutes(): List<Facture>

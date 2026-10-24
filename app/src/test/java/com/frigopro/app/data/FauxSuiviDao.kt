@@ -168,7 +168,14 @@ class FauxSuiviDao(
 }
 
 /** Devis et lignes en mémoire. */
-class FauxDevisDao : DevisDao() {
+class FauxDevisDao(
+    /**
+     * Les factures, que le vrai DAO lit dans la même base pour savoir si un devis
+     * est figé. Facultatives : un test qui ne facture rien n'a pas à les fournir,
+     * et un devis y est alors toujours modifiable — ce qui est exact sans facture.
+     */
+    private val factures: FauxFactureDao? = null,
+) : DevisDao() {
 
     private val documents = MutableStateFlow<List<Devis>>(emptyList())
 
@@ -195,6 +202,10 @@ class FauxDevisDao : DevisDao() {
         documents.map { liste -> liste.firstOrNull { it.id == id } }
 
     override suspend fun tous(): List<Devis> = documents.value
+
+    /** Le `EXISTS` du vrai DAO : une facture, quel qu'en soit le statut. */
+    override suspend fun estFacture(devisId: String): Boolean =
+        factures?.contenu?.any { it.devisId == devisId } ?: false
 
     override suspend fun enregistrer(devis: Devis) {
         documents.update { liste -> liste.filterNot { it.id == devis.id } + devis }

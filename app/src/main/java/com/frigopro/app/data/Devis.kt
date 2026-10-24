@@ -8,16 +8,20 @@ import java.time.LocalDate
 import java.util.UUID
 import kotlin.math.roundToLong
 
-/** Où en est un devis. */
+/**
+ * Où en est un devis.
+ *
+ * Aucun statut ne fige le devis, et c'est délibéré : une pastille se touche d'un
+ * doigt, et « Accepté » posé par erreur doit pouvoir se reprendre. Ce qui fige un
+ * devis, c'est la **facture** qui en sort — voir [DevisRepository.estFige]. Un
+ * `figé` porté par le statut a longtemps existé ici sans que rien ne le lise, ce
+ * qui revenait à annoncer une règle que personne n'appliquait.
+ */
 enum class StatutDevis(val libelle: String) {
     BROUILLON("Brouillon"),
     ENVOYE("Envoyé"),
     ACCEPTE("Accepté"),
     REFUSE("Refusé"),
-    ;
-
-    /** Un devis accepté ou refusé ne se modifie plus : il fait foi. */
-    val figé: Boolean get() = this == ACCEPTE || this == REFUSE
 }
 
 /**

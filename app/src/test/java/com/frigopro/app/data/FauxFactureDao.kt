@@ -45,11 +45,12 @@ class FauxFactureDao : FactureDao() {
     override fun observerDeLIntervention(interventionId: String): Flow<Facture?> =
         documents.map { liste -> liste.firstOrNull { it.interventionId == interventionId } }
 
-    override suspend fun pourDevis(devisId: String): Facture? =
-        documents.value.firstOrNull { it.devisId == devisId }
+    override suspend fun facturesDuDevis(devisId: String): List<Facture> =
+        documents.value.filter { it.devisId == devisId }.sortedByDescending { it.modifieLe }
 
-    override suspend fun pourIntervention(interventionId: String): Facture? =
-        documents.value.firstOrNull { it.interventionId == interventionId }
+    override suspend fun facturesDeLIntervention(interventionId: String): List<Facture> =
+        documents.value.filter { it.interventionId == interventionId }
+            .sortedByDescending { it.modifieLe }
 
     override fun observerDevisFactures(): Flow<List<DevisFacture>> = documents.map { liste ->
         liste.mapNotNull { facture ->

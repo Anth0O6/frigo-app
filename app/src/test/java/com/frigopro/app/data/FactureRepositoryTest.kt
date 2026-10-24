@@ -313,6 +313,123 @@ class FactureRepositoryTest {
         assertEquals(1, dao.contenu.size)
     }
 
+    // — Refacturer après une annulation ou un avoir ————————————————————
+
+    /**
+     * Une facture annulée ne réclame plus rien, et ne doit plus empêcher d'en
+     * établir une autre. C'est le chemin normal pour corriger une facture partie
+     * fausse : l'annuler, puis refacturer. Le `LIMIT 1` d'avant rouvrait pour
+     * toujours la facture annulée.
+     */
+    @Test
+    fun `une facture annulee ne bloque plus la refacturation du devis`() = runTest {
+        val complet = DevisComplet(
+            Devis(id = "dev-1", clientNom = "Morel"),
+            listOf(LigneDevis(devisId = "dev-1", designation = "Compresseur", prixUnitaire = 890.0)),
+        )
+        val annulee = depot.annuler(
+            depot.emettre(depot.creerDepuisDevis(complet, reglages), reglages, LE_12_MARS),
+        )
+
+        val nouvelle = depot.creerDepuisDevis(complet, reglages)
+
+        assertTrue("une nouvelle facture, pas l'annulée", nouvelle.id != annulee.id)
+        assertEquals(StatutFacture.BROUILLON, nouvelle.statut)
+        assertEquals("dev-1", nouvelle.devisId)
+        assertEquals(
+            "et la nouvelle, vivante, se rouvre au lieu d'être doublée",
+            nouvelle.id,
+            depot.creerDepuisDevis(complet, reglages).id,
+        )
+        assertEquals(2, dao.contenu.size)
+        assertEquals(
+            "la liste des devis lit la vivante, pas l'annulée",
+            StatutFacture.BROUILLON,
+            depot.devisFactures.first().getValue("dev-1").statut,
+        )
+    }
+
+    /** Même règle pour une intervention : l'annulée laisse refacturer. */
+    @Test
+    fun `une facture annulee ne bloque plus la refacturation de l'intervention`() = runTest {
+        val emise = depot.emettre(
+            depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages),
+            reglages,
+            LE_12_MARS,
+        )
+        depot.annuler(emise)
+
+        val nouvelle = depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages)
+
+        assertTrue(nouvelle.id != emise.id)
+        assertEquals("int-1", nouvelle.interventionId)
+    }
+
+    /**
+     * Une facture que son avoir **total** couvre ne réclame plus rien non plus :
+     * l'avoir émis l'a éteinte, et refacturer est la suite normale.
+     */
+    @Test
+    fun `une facture entierement creditee ne bloque plus la refacturation`() = runTest {
+        val emise = depot.emettre(
+            depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages),
+            reglages,
+            LE_12_MARS,
+        )
+        depot.emettre(depot.creerAvoir(emise)!!, reglages, LE_12_MARS)
+
+        val nouvelle = depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages)
+
+        assertTrue("l'avoir total a éteint la première", nouvelle.id != emise.id)
+        assertEquals(StatutFacture.BROUILLON, nouvelle.statut)
+    }
+
+    /**
+     * Ce qui réclame encore quelque chose est rouvert, jamais doublé : une
+     * facture créditée **en partie** — on en réclame le reste —, un avoir
+     * seulement en brouillon — il n'a encore rien crédité —, une facture payée.
+     */
+    @Test
+    fun `une facture vivante est rouverte et non doublee`() = runTest {
+        val emise = depot.emettre(
+            depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages),
+            reglages,
+            LE_12_MARS,
+        )
+        val detendeur = dao.lignesDe(emise.id).first { it.prixUnitaire == 78.5 }
+        depot.emettre(depot.creerAvoir(emise, mapOf(detendeur.id to 1.0))!!, reglages, LE_12_MARS)
+        assertEquals(
+            "créditée en partie : c'est elle, pour son reste",
+            emise.id,
+            depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages).id,
+        )
+
+        val autre = depot.emettre(
+            depot.creerDepuisIntervention(intervention(id = "int-2"), pieces(), emptyList(), reglages),
+            reglages,
+            LE_12_MARS,
+        )
+        depot.creerAvoir(autre)
+        assertEquals(
+            "un avoir en brouillon n'a rien crédité",
+            autre.id,
+            depot.creerDepuisIntervention(intervention(id = "int-2"), pieces(), emptyList(), reglages).id,
+        )
+
+        val payee = depot.marquerPayee(
+            depot.emettre(
+                depot.creerDepuisIntervention(intervention(id = "int-3"), pieces(), emptyList(), reglages),
+                reglages,
+                LE_12_MARS,
+            ),
+        )
+        assertEquals(
+            "une facture payée est la facture de l'intervention",
+            payee.id,
+            depot.creerDepuisIntervention(intervention(id = "int-3"), pieces(), emptyList(), reglages).id,
+        )
+    }
+
     /** Le régime vient du devis, pas des réglages du jour : c'est celui accepté. */
     @Test
     fun `le regime de TVA du devis traverse jusqu'a la facture`() = runTest {
@@ -507,7 +624,7 @@ class FactureRepositoryTest {
 
         assertNull(avoir.interventionId)
         assertNull(avoir.devisId)
-        assertEquals(emise.id, dao.pourIntervention("int-1")?.id)
+        assertEquals(listOf(emise.id), dao.facturesDeLIntervention("int-1").map { it.id })
     }
 
     /** Même règle que la facture : le rang ne se consomme qu'à l'émission. */

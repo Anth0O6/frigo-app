@@ -29,6 +29,20 @@ abstract class DevisDao {
     @Query("SELECT * FROM devis")
     abstract suspend fun tous(): List<Devis>
 
+    /**
+     * Le devis a produit une facture, quel qu'en soit le sort.
+     *
+     * Lu dans la table des factures par le DAO des devis, et c'est délibéré :
+     * c'est la seule question que le dépôt des devis ait à leur poser — « ce
+     * devis est-il figé ? » — et lui donner tout le dépôt des factures pour cela
+     * aurait fait dépendre l'un de l'autre. Une facture **annulée** compte aussi :
+     * elle garde son numéro et son lien, et le devis reste la pièce qu'elle
+     * reprenait. Seul un brouillon de facture **supprimé** rend le devis à la
+     * saisie, puisqu'il ne laisse rien derrière lui.
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM factures WHERE devisId = :devisId)")
+    abstract suspend fun estFacture(devisId: String): Boolean
+
     @Upsert
     abstract suspend fun enregistrer(devis: Devis)
 

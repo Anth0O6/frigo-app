@@ -55,7 +55,15 @@ class FactureRepository(private val dao: FactureDao) {
      * seule question à laquelle cet écran doit répondre d'un coup d'œil.
      */
     val devisFactures: Flow<Map<String, DevisFacture>> =
-        dao.observerDevisFactures().map { liens -> liens.associateBy { it.devisId } }
+        dao.observerDevisFactures().map { liens ->
+            // Un devis peut avoir produit plusieurs factures, depuis qu'une
+            // facture annulée ne bloque plus d'en établir une autre : c'est la
+            // vivante qui doit se lire sur la ligne du devis, pas celle qu'on a
+            // annulée pour la remplacer.
+            liens.groupBy { it.devisId }.mapValues { (_, factures) ->
+                factures.firstOrNull { it.statut != StatutFacture.ANNULEE } ?: factures.first()
+            }
+        }
 
     /** Une facture et ses lignes, réunies pour que les totaux soient calculables. */
     fun observerComplete(id: String): Flow<FactureComplete?> =
@@ -91,11 +99,52 @@ class FactureRepository(private val dao: FactureDao) {
         }
 
     /**
+     * La facture qui compte encore parmi celles d'un même devis ou d'une même
+     * intervention, s'il y en a une.
+     *
+     * Une facture **éteinte** ne réclame plus rien et n'empêche donc plus d'en
+     * établir une autre : annulée, ou entièrement couverte par ses avoirs émis.
+     * C'est le chemin normal pour corriger une facture partie fausse — l'annuler
+     * ou la créditer, puis refacturer —, et un `LIMIT 1` qui rendait la première
+     * venue le fermait : « Facturer » rouvrait pour toujours la facture annulée.
+     *
+     * Toute autre facture est **vivante** et doit être rouverte plutôt que
+     * doublée : un brouillon, une facture émise non couverte — même en partie
+     * créditée, c'est son reste qu'on réclame —, une facture payée. Facturer deux
+     * fois le même travail est l'erreur que ce garde-fou existe pour éviter.
+     *
+     * « Couverte » se juge exactement comme sur la liste ([FactureChiffree.couverte]
+     * et [Avoirs.imputer]) : une facture dite couverte à l'écran ne doit pas
+     * bloquer ici pour un centime d'arrondi.
+     */
+    private suspend fun vivante(factures: List<Facture>): Facture? =
+        factures.firstOrNull { !eteinte(it) }
+
+    private suspend fun eteinte(facture: Facture): Boolean {
+        if (facture.statut == StatutFacture.ANNULEE) return true
+        if (!facture.numerotee) return false
+        val credits = dao.avoirsDe(facture.id).filter { it.deduit }
+        if (credits.isEmpty()) return false
+        val chiffree = FactureChiffree(
+            facture = facture,
+            totalHt = FactureComplete(facture, dao.lignesDe(facture.id)).totalHt,
+        )
+        val avoirs = credits.map { avoir ->
+            FactureChiffree(avoir, FactureComplete(avoir, dao.lignesDe(avoir.id)).totalHt)
+        }
+        return chiffree.copy(
+            avoirsHt = avoirs.sumOf { it.totalHt }.auCentime(),
+            avoirsTtc = avoirs.sumOf { it.totalTtc }.auCentime(),
+        ).couverte
+    }
+
+    /**
      * La facture d'une intervention terminée.
      *
      * Rend celle qui existe déjà plutôt que d'en créer une seconde : facturer
      * deux fois la même intervention est l'erreur que ce garde-fou évite, et elle
-     * ne se voit qu'au moment où le client la reçoit.
+     * ne se voit qu'au moment où le client la reçoit. Une facture annulée ou
+     * entièrement créditée ne compte plus (voir [vivante]) : on refacture alors.
      */
     suspend fun creerDepuisIntervention(
         intervention: Intervention,
@@ -105,7 +154,7 @@ class FactureRepository(private val dao: FactureDao) {
         /** La fiche de **celui qui paie** : le donneur d'ordre s'il y en a un. */
         client: Client? = null,
     ): Facture {
-        dao.pourIntervention(intervention.id)?.let { return it }
+        vivante(dao.facturesDeLIntervention(intervention.id))?.let { return it }
 
         // Le **donneur d'ordre** quand il y en a un : en sous-traitance, on
         // travaille chez Y et c'est X qui reçoit la facture. L'appelant passe
@@ -133,13 +182,16 @@ class FactureRepository(private val dao: FactureDao) {
         return horodatee
     }
 
-    /** La facture d'un devis accepté : ses lignes, à l'identique. */
+    /**
+     * La facture d'un devis accepté : ses lignes, à l'identique. Même garde que
+     * pour une intervention — la vivante est rouverte, une éteinte ne bloque rien.
+     */
     suspend fun creerDepuisDevis(
         devis: DevisComplet,
         parametres: Parametres,
         client: Client? = null,
     ): Facture {
-        dao.pourDevis(devis.devis.id)?.let { return it }
+        vivante(dao.facturesDuDevis(devis.devis.id))?.let { return it }
 
         val facture = Facture(
             clientId = devis.devis.clientId,

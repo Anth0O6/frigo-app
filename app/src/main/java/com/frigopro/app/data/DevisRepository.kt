@@ -3,6 +3,7 @@ package com.frigopro.app.data
 import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
@@ -14,6 +15,19 @@ import java.time.LocalDate
  * remplacer — et c'est pour cela qu'il vit dans l'application de terrain. Le
  * dépôt fait trois choses : il numérote, il horodate, et il empêche de
  * modifier ce qui ne doit plus l'être.
+ *
+ * **Ce qui ne doit plus l'être, c'est un devis facturé** ([estFige]). La facture
+ * a repris ses lignes à l'identique, et c'est la pièce qui dit ce que le client a
+ * accepté — celle qu'on ressort quand il conteste. Retoucher une ligne après coup
+ * ferait dire au devis autre chose que ce qu'il disait quand la facture en est
+ * sortie, et l'effacer laisserait une facture sans son devis. Toutes les
+ * écritures le vérifient ici, et l'écran ne propose pas les gestes : les deux
+ * gardes valent mieux qu'une, celle du dépôt étant la seule qui survive à une
+ * refonte de l'écran — même règle que pour une facture émise.
+ *
+ * Le statut, lui, ne fige rien : « Accepté » se pose d'un doigt, et une pastille
+ * touchée par erreur doit pouvoir se reprendre. C'est la facture qui rend le
+ * geste irréversible, pas le statut qui la précède.
  */
 class DevisRepository(private val dao: DevisDao) {
 
@@ -27,6 +41,15 @@ class DevisRepository(private val dao: DevisDao) {
         combine(dao.observer(id), dao.observerLignes(id)) { devis, lignes ->
             devis?.let { DevisComplet(it, lignes) }
         }
+
+    /** Le devis tel qu'il est en base, au moment de la lecture. */
+    suspend fun lire(id: String): Devis? = dao.observer(id).first()
+
+    /**
+     * Le devis a produit une facture : il ne se modifie plus et ne se supprime
+     * plus. Voir la présentation de la classe.
+     */
+    suspend fun estFige(devisId: String): Boolean = dao.estFacture(devisId)
 
     /**
      * Les devis avec leur montant, et les compteurs qui s'en déduisent.
@@ -89,21 +112,23 @@ class DevisRepository(private val dao: DevisDao) {
         return devis
     }
 
-    suspend fun enregistrer(devis: Devis): Devis {
+    /** Modifie l'en-tête d'un devis. Rend `null`, sans rien écrire, s'il est facturé. */
+    suspend fun enregistrer(devis: Devis): Devis? {
+        if (estFige(devis.id)) return null
         val nettoye = devis.copy(objet = devis.objet.trim(), modifieLe = Instant.now())
         dao.enregistrer(nettoye)
         return nettoye
     }
 
     /** Fait passer le devis à un autre état : envoyé, accepté, refusé. */
-    suspend fun changerStatut(devis: Devis, statut: StatutDevis): Devis =
+    suspend fun changerStatut(devis: Devis, statut: StatutDevis): Devis? =
         enregistrer(devis.copy(statut = statut))
 
     /**
      * Ajoute une ligne à la fin du devis.
      *
      * Une désignation vide est refusée : une ligne de devis sans intitulé est
-     * un montant que le client ne peut pas vérifier.
+     * un montant que le client ne peut pas vérifier. Un devis facturé aussi.
      */
     suspend fun ajouterLigne(
         devisId: String,
@@ -120,6 +145,7 @@ class DevisRepository(private val dao: DevisDao) {
     ): LigneDevis? {
         val intitule = designation.trim()
         if (intitule.isEmpty()) return null
+        if (estFige(devisId)) return null
         val ligne = LigneDevis(
             devisId = devisId,
             designation = intitule,
@@ -133,15 +159,52 @@ class DevisRepository(private val dao: DevisDao) {
         return ligne
     }
 
+    /**
+     * Pose plusieurs lignes à la fin du devis, dans l'ordre reçu.
+     *
+     * C'est le chemin de la dégression (voir [LignesDegressives]) : une prestation
+     * comptée par unité devient une ligne par tranche de prix, et les tranches se
+     * lisent à la suite. Les rangs reçus sont remplacés par ceux de la fin du
+     * devis — [LignesDegressives] numérote à partir de zéro, sans savoir ce que le
+     * devis porte déjà. Une ligne sans désignation est écartée, comme à l'unité.
+     */
+    suspend fun ajouterLignes(devisId: String, lignes: List<LigneDevis>): List<LigneDevis> {
+        if (estFige(devisId)) return emptyList()
+        val retenues = lignes.filter { it.designation.isNotBlank() }
+        if (retenues.isEmpty()) return emptyList()
+        val rang = dao.prochainRang(devisId)
+        val posees = retenues.mapIndexed { index, ligne ->
+            ligne.copy(
+                devisId = devisId,
+                designation = ligne.designation.trim(),
+                unite = ligne.unite.trim(),
+                rang = rang + index,
+            )
+        }
+        dao.enregistrerLignes(posees)
+        return posees
+    }
+
+    /** Réécrit une ligne retouchée. Rend `null` sur un intitulé vide ou un devis facturé. */
     suspend fun enregistrerLigne(ligne: LigneDevis): LigneDevis? {
         val intitule = ligne.designation.trim()
         if (intitule.isEmpty()) return null
+        if (estFige(ligne.devisId)) return null
         val nettoyee = ligne.copy(designation = intitule, unite = ligne.unite.trim())
         dao.enregistrerLigne(nettoyee)
         return nettoyee
     }
 
-    suspend fun supprimerLigne(id: String) = dao.effacerLigne(id)
+    /**
+     * Retire une ligne. La ligne entière est passée, et non son seul identifiant :
+     * c'est par elle que le dépôt sait de quel devis il s'agit, et donc s'il est
+     * encore permis d'y toucher.
+     */
+    suspend fun supprimerLigne(ligne: LigneDevis): Boolean {
+        if (estFige(ligne.devisId)) return false
+        dao.effacerLigne(ligne.id)
+        return true
+    }
 
     /**
      * Offre une ligne, ou reprend le geste.
@@ -150,8 +213,11 @@ class DevisRepository(private val dao: DevisDao) {
      * et « offert ». Remettre le prix à zéro aurait été plus court et aurait
      * effacé l'argument de vente — un geste commercial qu'on ne voit pas n'en est
      * pas un. C'est aussi ce qui permet de reprendre le geste sans ressaisir.
+     *
+     * Sans effet sur un devis facturé : la ligne est rendue telle quelle.
      */
     suspend fun offrirLigne(ligne: LigneDevis, offerte: Boolean): LigneDevis {
+        if (estFige(ligne.devisId)) return ligne
         val basculee = ligne.copy(offerte = offerte)
         dao.enregistrerLigne(basculee)
         return basculee
@@ -163,10 +229,12 @@ class DevisRepository(private val dao: DevisDao) {
      * Sans effet en franchise en base : il n'y a alors pas de TVA à offrir, et
      * laisser le geste disponible ferait croire à une remise qui ne s'appliquerait
      * à rien. L'écran masque d'ailleurs le bouton, mais le dépôt ne s'en remet pas
-     * à l'écran pour garantir une règle de ce genre.
+     * à l'écran pour garantir une règle de ce genre. Sans effet non plus sur un
+     * devis facturé.
      */
     suspend fun offrirTva(devis: Devis, offerte: Boolean): Devis {
         if (!devis.assujettiTva) return devis
+        if (estFige(devis.id)) return devis
         val basculee = devis.copy(tvaOfferte = offerte, modifieLe = Instant.now())
         dao.enregistrer(basculee)
         return basculee
@@ -188,15 +256,23 @@ class DevisRepository(private val dao: DevisDao) {
      * [Trajet.calculeLe], lui, n'est pas touché : il dit quand le *service* a
      * répondu, pas quand on a coché une case, et les confondre ferait passer un
      * trajet vieux de six mois pour un calcul du jour.
+     *
+     * Rend `null` sur un devis facturé : refaire ses lignes de déplacement
+     * changerait ce que la facture a repris.
      */
-    suspend fun enregistrerDeplacement(trajet: Trajet, tarif: TarifDeplacement): Trajet {
+    suspend fun enregistrerDeplacement(trajet: Trajet, tarif: TarifDeplacement): Trajet? {
+        if (estFige(trajet.devisId)) return null
         val horodate = trajet.copy(modifieLe = Instant.now())
         dao.enregistrerDeplacement(horodate, LignesDeplacement.pour(horodate, tarif))
         return horodate
     }
 
     /** Retire le déplacement d'un devis, et les lignes qu'il avait posées. */
-    suspend fun supprimerDeplacement(devisId: String) = dao.supprimerDeplacement(devisId)
+    suspend fun supprimerDeplacement(devisId: String): Boolean {
+        if (estFige(devisId)) return false
+        dao.supprimerDeplacement(devisId)
+        return true
+    }
 
     /**
      * Offre le déplacement, ou reprend le geste.
@@ -210,9 +286,20 @@ class DevisRepository(private val dao: DevisDao) {
         trajet: Trajet,
         tarif: TarifDeplacement,
         offert: Boolean,
-    ): Trajet = enregistrerDeplacement(trajet.copy(offert = offert), tarif)
+    ): Trajet? = enregistrerDeplacement(trajet.copy(offert = offert), tarif)
 
-    suspend fun supprimer(id: String) = dao.supprimer(id)
+    /**
+     * Supprime un devis et ce qu'il porte.
+     *
+     * Rend `false` sur un devis facturé, et c'est la règle que la liste suivait
+     * déjà sans que rien ne la garantisse : l'effacer laisserait une facture sans
+     * la pièce qui dit ce que le client avait accepté.
+     */
+    suspend fun supprimer(id: String): Boolean {
+        if (estFige(id)) return false
+        dao.supprimer(id)
+        return true
+    }
 }
 
 /**

@@ -185,7 +185,8 @@ class SuiviRepositoryTest {
 /** Les devis : la numérotation, les totaux, et ce qui se fige. */
 class DevisRepositoryTest {
 
-    private val dao = FauxDevisDao()
+    private val factures = FauxFactureDao()
+    private val dao = FauxDevisDao(factures)
     private val repository = DevisRepository(dao)
 
     private val mai = LocalDate.of(2026, 5, 14)
@@ -276,12 +277,46 @@ class DevisRepositoryTest {
         assertEquals(0.99, devis.totalHt, 0.0001)
     }
 
+    /**
+     * Un devis facturé ne se modifie plus et ne se supprime plus : la facture a
+     * repris ses lignes, et c'est la pièce qui dit ce que le client a accepté.
+     * Le dépôt refuse chaque écriture, quoi que propose l'écran.
+     */
     @Test
-    fun `un devis accepte ou refuse est fige`() {
-        assertTrue(StatutDevis.ACCEPTE.figé)
-        assertTrue(StatutDevis.REFUSE.figé)
-        assertTrue(!StatutDevis.BROUILLON.figé)
-        assertTrue(!StatutDevis.ENVOYE.figé)
+    fun `un devis facture est fige`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai)
+        val ligne = repository.ajouterLigne(devis.id, "Compresseur", 1.0, "", 1240.0)!!
+        factures.enregistrer(Facture(id = "f-1", devisId = devis.id))
+
+        assertTrue(repository.estFige(devis.id))
+        assertNull(repository.ajouterLigne(devis.id, "Ajout tardif", 1.0, "", 10.0))
+        assertNull(repository.enregistrerLigne(ligne.copy(prixUnitaire = 1.0)))
+        assertTrue(repository.offrirLigne(ligne, offerte = true) == ligne)
+        assertTrue(!repository.supprimerLigne(ligne))
+        assertNull(repository.changerStatut(devis, StatutDevis.BROUILLON))
+        assertNull(repository.enregistrer(devis.copy(objet = "Autre")))
+        assertTrue(repository.ajouterLignes(devis.id, listOf(ligne.copy(id = "x"))).isEmpty())
+        assertNull(
+            repository.enregistrerDeplacement(
+                Trajet(devisId = devis.id, depart = "Lyon", arrivee = "Vienne", distanceKm = 12.0),
+                TarifDeplacement(),
+            ),
+        )
+        assertTrue("un devis facturé ne se supprime pas", !repository.supprimer(devis.id))
+
+        assertEquals(1, dao.contenu.size)
+        assertEquals(listOf(ligne), dao.contenuLignes)
+    }
+
+    /** Sans facture, tout reste permis — y compris de reprendre un « Accepté » posé par erreur. */
+    @Test
+    fun `un devis sans facture se modifie et se supprime`() = runTest {
+        val devis = repository.creer(client = null, aujourdhui = mai)
+        val accepte = repository.changerStatut(devis, StatutDevis.ACCEPTE)!!
+
+        assertEquals(StatutDevis.BROUILLON, repository.changerStatut(accepte, StatutDevis.BROUILLON)?.statut)
+        assertTrue(repository.supprimer(devis.id))
+        assertTrue(dao.contenu.isEmpty())
     }
 
     /**
