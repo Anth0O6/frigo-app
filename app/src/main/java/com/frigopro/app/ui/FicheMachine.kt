@@ -12,9 +12,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -42,6 +47,7 @@ import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -179,8 +185,8 @@ fun DialogueFicheMachine(
     var numeroSerie by remember { mutableStateOf(equipement.numeroSerie) }
     var fluide by remember { mutableStateOf(equipement.fluide) }
     var charge by remember { mutableStateOf(Nombres.enTexte(equipement.chargeKg)) }
-    var miseEnService by remember { mutableStateOf(equipement.misEnServiceLe?.toString().orEmpty()) }
-    var controle by remember { mutableStateOf(equipement.dernierControleLe?.toString().orEmpty()) }
+    var miseEnService by remember { mutableStateOf(equipement.misEnServiceLe) }
+    var controle by remember { mutableStateOf(equipement.dernierControleLe) }
     var detecteur by remember { mutableStateOf(equipement.detecteurFuite) }
 
     AlertDialog(
@@ -247,15 +253,15 @@ fun DialogueFicheMachine(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 CaseDetecteurFuite(detecteur = detecteur, onDetecteur = { detecteur = it })
-                ChampTexte(
-                    libelle = "Mise en service (AAAA-MM-JJ)",
-                    valeur = miseEnService,
-                    onValeur = { miseEnService = it },
+                ChampDateFacultative(
+                    libelle = "Mise en service",
+                    date = miseEnService,
+                    onDate = { miseEnService = it },
                 )
-                ChampTexte(
-                    libelle = "Dernier contrôle d'étanchéité (AAAA-MM-JJ)",
-                    valeur = controle,
-                    onValeur = { controle = it },
+                ChampDateFacultative(
+                    libelle = "Dernier contrôle d'étanchéité",
+                    date = controle,
+                    onDate = { controle = it },
                 )
             }
         },
@@ -270,8 +276,8 @@ fun DialogueFicheMachine(
                             numeroSerie = numeroSerie.trim(),
                             fluide = Fluides.normaliser(fluide),
                             chargeKg = Nombres.versDecimal(charge),
-                            misEnServiceLe = dateOuNull(miseEnService),
-                            dernierControleLe = dateOuNull(controle),
+                            misEnServiceLe = miseEnService,
+                            dernierControleLe = controle,
                             detecteurFuite = detecteur,
                         ),
                     )
@@ -352,9 +358,87 @@ private fun CaseDetecteurFuite(detecteur: Boolean, onDetecteur: (Boolean) -> Uni
     }
 }
 
-/** Une date saisie, ou `null` si elle est incomplète ou mal formée. */
-private fun dateOuNull(valeur: String): LocalDate? =
-    runCatching { LocalDate.parse(valeur.trim()) }.getOrNull()
+/**
+ * Une date facultative, choisie au calendrier et jamais tapée.
+ *
+ * Elle se tapait au format AAAA-MM-JJ, et une saisie mal formée — « 12/03/2024 »,
+ * la façon dont tout le monde écrit une date — devenait `null` **sans un mot** :
+ * le dernier contrôle d'étanchéité disparaissait, et l'échéance F-Gas avec lui,
+ * sur une fiche qu'on croyait avoir remplie. Le calendrier ne laisse rien passer
+ * de mal formé, et c'est la seule façon d'en être sûr.
+ *
+ * « Effacer » reste un geste à part entière : une date de mise en service posée
+ * sur la mauvaise machine doit pouvoir s'enlever, et une date facultative qu'on
+ * ne peut plus vider ne l'est plus. Sans date, le calendrier s'ouvre sur
+ * aujourd'hui, qui n'est qu'un point de départ — rien n'est posé avant « Valider ».
+ */
+@Composable
+private fun ChampDateFacultative(
+    libelle: String,
+    date: LocalDate?,
+    onDate: (LocalDate?) -> Unit,
+) {
+    var choix by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Elle dit qu'elle se touche, par l'icône de calendrier : même règle que
+        // le titre de la tournée et l'entrée au plan.
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = LocalCibles.current.action)
+                .clickable { choix = true },
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = libelle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = date?.let { libelleDateAvecAnnee(it) } ?: "Non renseignée",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (date == null) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+            }
+            Icon(
+                imageVector = Icons.Filled.CalendarMonth,
+                contentDescription = "Choisir la date : ${libelle.lowercase()}",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        if (date != null) {
+            TextButton(
+                onClick = { onDate(null) },
+                modifier = Modifier.heightIn(min = LocalCibles.current.action),
+            ) {
+                Text(text = "Effacer")
+            }
+        }
+    }
+
+    if (choix) {
+        SelecteurDate(
+            date = date ?: LocalDate.now(),
+            onDateChoisie = { jour ->
+                onDate(jour)
+                choix = false
+            },
+            onFermer = { choix = false },
+        )
+    }
+}
 
 private fun libelleEtancheite(etat: EtatEtancheite): String = when {
     etat.enRetard -> "Étanchéité en retard"
