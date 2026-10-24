@@ -641,8 +641,8 @@ private fun ChoixFournisseur(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (fournisseurs.isEmpty()) {
                         Text(
-                            text = "Le carnet de fournisseurs est vide. Il se remplit dans " +
-                                "l'onglet voisin.",
+                            text = "Le carnet de fournisseurs est vide. Il se remplit dans la " +
+                                "vue voisine, « Fournisseurs ».",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

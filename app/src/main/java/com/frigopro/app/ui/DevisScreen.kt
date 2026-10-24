@@ -81,13 +81,13 @@ import com.frigopro.app.ui.theme.LocalStatuts
 import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 
-/** L'onglet Devis, avec son état. */
+/** La vue Devis de l'onglet Factures, avec son état. */
 @Composable
 fun DevisRoute(
     modifier: Modifier = Modifier,
     /** Passer aux factures : la bascule de l'onglet, tenue par la coquille. */
     onVoirFactures: () -> Unit = {},
-    /** Passer à la tournée : un autre onglet, donc la coquille seule sait le faire. */
+    /** Passer à « Aujourd'hui » : un autre onglet, donc la coquille seule sait le faire. */
     onAllerALaTournee: () -> Unit = {},
     viewModel: DevisViewModel = viewModel(factory = DevisViewModel.Factory),
     facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
@@ -186,8 +186,9 @@ fun DevisRoute(
             // Facturer bascule l'onglet tout seul : le ViewModel des factures
             // est partagé, et la facture créée devient celle qu'il montre.
             onFacturer = { facturesViewModel.onFacturerDevis(ouvert) },
-            // Pré-remplir puis basculer : la feuille de saisie vit dans l'onglet
-            // Tournée, et c'est là que la date se choisit — devant le planning.
+            // Pré-remplir puis basculer : la feuille de saisie est posée par la
+            // coquille, et c'est sur « Aujourd'hui » que la date se choisit —
+            // devant la journée, flèches et sélecteur à portée.
             onPlanifier = {
                 tournee.onPlanifierDepuisDevis(
                     devis = ouvert.devis,

@@ -93,8 +93,6 @@ import com.frigopro.app.ui.theme.StyleChiffrePetit
  */
 @Composable
 fun ClientsRoute(
-    vue: VueCarnet = VueCarnet.CLIENTS,
-    onVue: (VueCarnet) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
@@ -321,8 +319,6 @@ fun ClientsRoute(
                 onVoirToutLeParc = viewModel::onVoirToutLeParc,
             ),
             etatListe = etatListe,
-            vue = vue,
-            onVue = onVue,
             onNouveauClient = viewModel::onNouveauClient,
             onOuvrirFiche = viewModel::onOuvrirFiche,
             onNouveauSite = viewModel::onNouveauSite,
@@ -674,9 +670,6 @@ fun ClientsScreen(
     onAjouterMachine: (String) -> Unit,
     modifier: Modifier = Modifier,
     etatListe: LazyListState = rememberLazyListState(),
-    /** Le carnet ouvert, et la bascule vers les deux autres. Voir [CadreCarnet]. */
-    vue: VueCarnet = VueCarnet.CLIENTS,
-    onVue: (VueCarnet) -> Unit = {},
     /** La sélection en cours dans un parc, `null` hors du mode sélection. */
     selection: SelectionParc? = null,
     actionsSelection: ActionsSelection = ActionsSelection(),
@@ -729,9 +722,10 @@ fun ClientsScreen(
         }
     }
 
+    // Seul dans son onglet, donc sans bascule : voir [VueAtelier] pour ce qui
+    // a séparé le carnet des clients du magasin et des fournisseurs.
     CadreCarnet(
-        vue = vue,
-        onVue = onVue,
+        titre = "Clients",
         iconeAjout = Icons.Filled.PersonAdd,
         descriptionAjout = "Ajouter un client",
         onAjouter = onNouveauClient,

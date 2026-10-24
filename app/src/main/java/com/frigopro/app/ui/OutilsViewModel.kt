@@ -8,15 +8,17 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.VerificationFluideRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * L'onglet Outils.
+ * La vue Outils de l'Atelier.
  *
- * Il ne tient presque rien, et c'est la nature de l'onglet : un convertisseur
+ * Il ne tient presque rien, et c'est la nature de la vue : un convertisseur
  * d'unités ou un bilan de puissance n'a **pas d'état à conserver**. On y entre une
  * valeur, on lit le résultat, on referme — rien là-dedans ne mérite d'aller en
  * base, et y mettre un historique de conversions aurait donné quelque chose à
@@ -29,6 +31,26 @@ class OutilsViewModel(
     private val verifications: VerificationFluideRepository,
     private val parametres: ParametresRepository,
 ) : ViewModel() {
+
+    private val _ouvert = MutableStateFlow<Outil?>(null)
+
+    /**
+     * L'outil ouvert, `null` pour la liste.
+     *
+     * Tenu ici et non dans la composition : un état de composition se perd au
+     * changement d'onglet, et la réglette réglée sur un R-448A se refermait dès
+     * qu'on allait chercher un prix dans les factures. Ce n'est pas un état de
+     * calcul — rien n'en est persisté —, seulement l'endroit où l'on était.
+     */
+    val ouvert: StateFlow<Outil?> = _ouvert.asStateFlow()
+
+    fun onOuvrir(outil: Outil) {
+        _ouvert.value = outil
+    }
+
+    fun onFermer() {
+        _ouvert.value = null
+    }
 
     /** Les fluides dont l'utilisateur a contrôlé la courbe de saturation. */
     val fluidesVerifies: StateFlow<Set<String>> = verifications.verifies

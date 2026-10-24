@@ -1,13 +1,11 @@
 package com.frigopro.app.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,46 +25,78 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.RangeePastilles
 
 /**
- * Les trois carnets de l'onglet.
+ * Les trois vues de l'onglet Atelier : ce que je transporte, chez qui je
+ * l'achète, et de quoi calculer sur place.
  *
- * ## Pourquoi trois carnets et pas trois onglets
+ * ## Pourquoi ces trois-là ensemble
  *
- * La barre en porte déjà six, un de plus que ce que Material recommande, et un
- * septième réduirait chaque cible à ce qu'un pouce ganté ne trouve plus (voir
- * `FrigoProApp`). La bascule est la réponse que le projet a déjà donnée pour la
- * facturation, et elle vaut ici pour la même raison.
+ * L'onglet s'appelait **Carnets** et réunissait les clients, le magasin et les
+ * fournisseurs, au motif que ce sont trois listes qu'on tient à jour. Le motif
+ * était juste et le regroupement ne l'était pas : on n'ouvre jamais le carnet des
+ * clients pour la même raison que le magasin. Le premier sert la tournée et la
+ * facture — c'est *pour qui* je travaille —, les deux autres servent l'atelier —
+ * c'est *avec quoi*. Les clients ont donc leur onglet, et l'onglet **Outils**,
+ * qui ne regardait aucune donnée de l'application, est venu prendre la troisième
+ * place : une réglette ou un convertisseur sont l'outillage de l'atelier au même
+ * titre que le stock du camion, et la barre du bas y gagnait un onglet pour le
+ * planning.
  *
- * Ce qui les réunit sous un même onglet n'est pas un pis-aller : ce sont les
- * **carnets** de l'entreprise — pour qui je travaille, chez qui j'achète, et ce
- * que je transporte. Trois listes qu'on tient à jour et qu'on consulte, par
- * opposition aux cinq autres onglets qui montrent du temps (une tournée, une
- * semaine) ou des documents.
+ * Trois pastilles et pas une de plus : c'est le compte qui tient sur un écran de
+ * 320 points sans défiler, et une pastille rognée est une destination qu'on ne
+ * voit pas (voir `RangeePastilles`).
  *
- * Le magasin est au milieu **délibérément** : c'est celui qu'on ouvre le plus
- * souvent des trois — chaque matin, avant de charger.
+ * Le magasin est **en tête** et c'est la vue par défaut : c'est celle qu'on ouvre
+ * le plus souvent des trois — chaque matin, avant de charger —, et celle vers
+ * laquelle l'accueil mène quand il manque quelque chose.
  */
-enum class VueCarnet(val libelle: String) {
-    CLIENTS("Clients"),
+enum class VueAtelier(val libelle: String) {
     MAGASIN("Magasin"),
     FOURNISSEURS("Fournisseurs"),
+    OUTILS("Outils"),
 }
 
 /**
- * La coquille commune aux trois : le titre, la bascule, et le bouton d'ajout.
+ * La bascule des trois vues de l'Atelier.
  *
- * Nommée une fois plutôt que recopiée trois fois, pour la raison que le projet
- * donne à tout son vocabulaire visuel : trois copies d'un `Scaffold` et de ses
- * marges divergent au premier ajustement, et c'est exactement ce qui arrive
- * quand chacun recopie un `Box`.
+ * Nommée une fois parce que trois écrans la posent — le magasin, les
+ * fournisseurs, la liste des outils —, et que trois copies d'une même bascule
+ * divergent au premier ajustement.
+ */
+@Composable
+fun BasculeAtelier(vue: VueAtelier, onVue: (VueAtelier) -> Unit) {
+    RangeePastilles(
+        options = VueAtelier.entries,
+        retenue = vue,
+        libelle = { it.libelle },
+        onChoisir = onVue,
+    )
+}
+
+/**
+ * La coquille commune aux listes qu'on tient : le titre, la bascule s'il y en a
+ * une, et le bouton d'ajout s'il y a quelque chose à ajouter.
+ *
+ * Nommée une fois plutôt que recopiée, pour la raison que le projet donne à tout
+ * son vocabulaire visuel : quatre copies d'un `Scaffold` et de ses marges
+ * divergent au premier ajustement, et c'est exactement ce qui arrive quand chacun
+ * recopie un `Box`. Le carnet des clients y passe **sans bascule** — il est seul
+ * dans son onglet —, la liste des outils **sans bouton d'ajout** — on n'y ajoute
+ * rien.
+ *
+ * Le titre nomme la vue ouverte et non l'onglet, comme partout : « Atelier »
+ * au-dessus d'une bascule « Magasin · Fournisseurs · Outils » répéterait le nom
+ * du groupe et laisserait l'écran sans dire lequel des trois on regarde.
  */
 @Composable
 fun CadreCarnet(
-    vue: VueCarnet,
-    onVue: (VueCarnet) -> Unit,
-    iconeAjout: ImageVector,
-    descriptionAjout: String,
-    onAjouter: () -> Unit,
+    titre: String,
     modifier: Modifier = Modifier,
+    /** L'icône du bouton flottant, `null` quand il n'y a rien à ajouter. */
+    iconeAjout: ImageVector? = null,
+    descriptionAjout: String = "",
+    onAjouter: () -> Unit = {},
+    /** La bascule de l'onglet, posée sous le titre ; `null` pour une vue seule. */
+    bascule: (@Composable () -> Unit)? = null,
     contenu: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold(
@@ -76,73 +106,72 @@ fun CadreCarnet(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAjouter,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(imageVector = iconeAjout, contentDescription = descriptionAjout)
+            if (iconeAjout != null) {
+                FloatingActionButton(
+                    onClick = onAjouter,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(imageVector = iconeAjout, contentDescription = descriptionAjout)
+                }
             }
         },
     ) { marges ->
         Column(modifier = Modifier.padding(marges)) {
             Text(
-                text = vue.libelle,
+                text = titre,
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
             )
-            RangeePastilles(
-                options = VueCarnet.entries,
-                retenue = vue,
-                libelle = { it.libelle },
-                onChoisir = onVue,
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = MargeEcran)
-                    .padding(bottom = 14.dp),
-            )
+            if (bascule != null) {
+                // Sans défilement : trois pastilles tiennent, et une rangée qui
+                // glisse cacherait la dernière destination sans le dire.
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = MargeEcran)
+                        .padding(bottom = 14.dp),
+                ) { bascule() }
+            }
             contenu()
         }
     }
 }
 
 /**
- * L'onglet des carnets : celui qui est ouvert, et ce qu'il montre.
+ * L'onglet Atelier : la vue ouverte, et ce qu'elle montre.
  *
  * La vue est tenue par la **coquille** et non ici, et c'est ce qui permet à
  * l'accueil d'ouvrir le magasin directement quand il manque quelque chose : un
  * état posé dans cette fonction aurait été hors d'atteinte, et il aurait fallu
- * transporter l'intention d'un onglet à l'autre. Elle survit ainsi à une
- * rotation par le `rememberSaveable` de la coquille, mais pas à la fermeture de
- * l'application : on rouvre sur les clients, qui est le carnet le plus consulté
- * sur la durée.
+ * transporter l'intention d'un onglet à l'autre. Elle survit ainsi au changement
+ * d'onglet et à une rotation, mais pas à la fermeture de l'application : on
+ * rouvre sur le magasin.
  */
 @Composable
-fun CarnetsRoute(
-    vue: VueCarnet,
-    onVue: (VueCarnet) -> Unit,
+fun AtelierRoute(
+    vue: VueAtelier,
+    onVue: (VueAtelier) -> Unit,
     modifier: Modifier = Modifier,
     /** Mène à une page des Réglages : le coefficient, depuis la saisie des prix. */
     onReglage: (PageReglages) -> Unit = {},
     materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory),
     saisiePrix: SaisiePrixViewModel = viewModel(factory = SaisiePrixViewModel.Factory),
 ) {
+    val bascule: @Composable () -> Unit = { BasculeAtelier(vue = vue, onVue = onVue) }
     when (vue) {
-        VueCarnet.CLIENTS -> ClientsRoute(vue = vue, onVue = onVue, modifier = modifier)
-        VueCarnet.MAGASIN -> MagasinRoute(
-            vue = vue,
-            onVue = onVue,
+        VueAtelier.MAGASIN -> MagasinRoute(
+            bascule = bascule,
             modifier = modifier,
             viewModel = materiel,
             saisiePrix = saisiePrix,
             onReglage = onReglage,
         )
-        VueCarnet.FOURNISSEURS -> FournisseursRoute(
-            vue = vue,
-            onVue = onVue,
+        VueAtelier.FOURNISSEURS -> FournisseursRoute(
+            bascule = bascule,
             modifier = modifier,
             viewModel = materiel,
         )
+        VueAtelier.OUTILS -> OutilsRoute(bascule = bascule, modifier = modifier)
     }
 }
 
@@ -155,8 +184,7 @@ fun CarnetsRoute(
  */
 @Composable
 private fun MagasinRoute(
-    vue: VueCarnet,
-    onVue: (VueCarnet) -> Unit,
+    bascule: @Composable () -> Unit,
     modifier: Modifier,
     viewModel: MaterielViewModel,
     saisiePrix: SaisiePrixViewModel,
@@ -203,11 +231,11 @@ private fun MagasinRoute(
     }
 
     CadreCarnet(
-        vue = vue,
-        onVue = onVue,
+        titre = VueAtelier.MAGASIN.libelle,
         iconeAjout = Icons.Filled.Add,
         descriptionAjout = "Ajouter un article",
         onAjouter = viewModel::onNouvelArticle,
+        bascule = bascule,
         modifier = modifier,
     ) {
         EcranMagasin(
@@ -271,8 +299,7 @@ private fun SaisiePrixRoute(
 /** Les fournisseurs : la liste filtrée, et la fiche ouverte. Même motif. */
 @Composable
 private fun FournisseursRoute(
-    vue: VueCarnet,
-    onVue: (VueCarnet) -> Unit,
+    bascule: @Composable () -> Unit,
     modifier: Modifier,
     viewModel: MaterielViewModel,
 ) {
@@ -300,11 +327,11 @@ private fun FournisseursRoute(
     }
 
     CadreCarnet(
-        vue = vue,
-        onVue = onVue,
+        titre = VueAtelier.FOURNISSEURS.libelle,
         iconeAjout = Icons.Filled.PersonAdd,
         descriptionAjout = "Ajouter un fournisseur",
         onAjouter = viewModel::onNouveauFournisseur,
+        bascule = bascule,
         modifier = modifier,
     ) {
         EcranFournisseurs(

@@ -28,9 +28,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -42,12 +39,14 @@ import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.MargeEcran
 
 /**
- * Les outils de l'onglet, et ce que chacun répond.
+ * Les outils de l'Atelier, et ce que chacun répond.
  *
- * Un onglet à part plutôt qu'une fonction cachée dans un écran : ce sont des
+ * Une vue à part plutôt qu'une fonction cachée dans un écran : ce sont des
  * outils de **métier**, qu'on consulte sans intervention ouverte — au téléphone
  * avec un client, devant une plaque, en préparant une tournée. Les enfouir dans la
- * fiche d'une intervention obligeait à en ouvrir une pour convertir des psi.
+ * fiche d'une intervention obligeait à en ouvrir une pour convertir des psi. Ils
+ * ont été un onglet à eux seuls, et sont devenus la troisième vue de l'Atelier
+ * (voir [VueAtelier]) quand le planning a eu besoin de la place.
  */
 enum class Outil(
     val titre: String,
@@ -102,29 +101,37 @@ enum class Outil(
 }
 
 /**
- * L'onglet Outils : la liste, et l'outil ouvert.
+ * La vue Outils de l'Atelier : la liste, et l'outil ouvert.
  *
  * Un outil ouvert **remplace** la liste plutôt que de s'empiler dessus, comme un
  * devis ou une machine ailleurs dans l'application : une seule profondeur, un
  * simple `BackHandler`, et toujours pas de graphe de navigation.
+ *
+ * L'outil ouvert est tenu par le [OutilsViewModel] et non par un
+ * `rememberSaveable` d'ici : passer à l'onglet des factures pour retrouver un
+ * prix, puis revenir, refermait la réglette sur laquelle on avait réglé son
+ * fluide. Un `ViewModel` survit au changement d'onglet, un état de composition
+ * non.
  */
 @Composable
 fun OutilsRoute(
+    /** La bascule de l'Atelier, posée sous le titre de la liste. */
+    bascule: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: OutilsViewModel = viewModel(factory = OutilsViewModel.Factory),
 ) {
     val verifies by viewModel.fluidesVerifies.collectAsStateWithLifecycle()
-    var ouvert by rememberSaveable { mutableStateOf<Outil?>(null) }
+    val ouvert by viewModel.ouvert.collectAsStateWithLifecycle()
 
-    BackHandler(enabled = ouvert != null) { ouvert = null }
+    BackHandler(enabled = ouvert != null) { viewModel.onFermer() }
 
     val outil = ouvert
     if (outil == null) {
-        ListeOutils(onOuvrir = { ouvert = it }, modifier = modifier)
+        ListeOutils(onOuvrir = viewModel::onOuvrir, bascule = bascule, modifier = modifier)
         return
     }
 
-    CadreOutil(outil = outil, onFermer = { ouvert = null }, modifier = modifier) {
+    CadreOutil(outil = outil, onFermer = viewModel::onFermer, modifier = modifier) {
         when (outil) {
             Outil.REGLETTE -> CorpsReglette(
                 // Aucune machine en vue : la réglette ouvre sur un fluide couvert,
@@ -146,51 +153,44 @@ fun OutilsRoute(
     }
 }
 
-/** La liste des outils, un par carte. */
+/** La liste des outils, un par carte, sous la bascule de l'Atelier. */
 @Composable
-private fun ListeOutils(onOuvrir: (Outil) -> Unit, modifier: Modifier = Modifier) {
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        // La barre d'onglets, sous cet écran, pose déjà la marge du bas.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { marges ->
-        Column(modifier = Modifier.padding(marges)) {
-            Text(
-                text = "Outils",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(horizontal = MargeEcran, vertical = 12.dp),
-            )
-            LazyColumn(
-                contentPadding = PaddingValues(start = MargeEcran, end = MargeEcran, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(items = Outil.entries, key = { it.name }) { outil ->
-                    Carte(onClick = { onOuvrir(outil) }) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = outil.icone,
-                                contentDescription = null,
-                                modifier = Modifier.size(26.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = outil.titre, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    text = outil.sousTitre,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun ListeOutils(
+    onOuvrir: (Outil) -> Unit,
+    bascule: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // La coquille des carnets, sans bouton d'ajout : on n'ajoute pas d'outil.
+    CadreCarnet(titre = VueAtelier.OUTILS.libelle, bascule = bascule, modifier = modifier) {
+        LazyColumn(
+            contentPadding = PaddingValues(start = MargeEcran, end = MargeEcran, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(items = Outil.entries, key = { it.name }) { outil ->
+                Carte(onClick = { onOuvrir(outil) }) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = outil.icone,
+                            contentDescription = null,
+                            modifier = Modifier.size(26.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = outil.titre, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = outil.sousTitre,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

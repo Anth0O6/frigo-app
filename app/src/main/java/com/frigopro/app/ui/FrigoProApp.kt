@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.RequestQuote
-import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
@@ -55,9 +55,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
  */
 enum class Onglet(val libelle: String, val icone: ImageVector) {
     TOURNEE("Tournée", Icons.Filled.Today),
+    CLIENTS("Clients", Icons.Filled.Contacts),
     FACTURES("Factures", Icons.Filled.RequestQuote),
-    CARNETS("Carnets", Icons.Filled.Contacts),
-    OUTILS("Outils", Icons.Filled.Straighten),
+    ATELIER("Atelier", Icons.Filled.Build),
     REGLAGES("Réglages", Icons.Filled.Tune),
 }
 
@@ -91,7 +91,11 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
     // C'est le même motif que la facture ouverte depuis l'accueil, à ceci près
     // qu'un carnet n'est pas un `ViewModel` et ne peut donc pas être partagé
     // par `viewModel()`.
-    var carnet by rememberSaveable { mutableStateOf(VueCarnet.CLIENTS) }
+    var atelier by rememberSaveable { mutableStateOf(VueAtelier.MAGASIN) }
+
+    // La vue des Factures, tenue ici pour la même raison : posée dans la route,
+    // elle se perdait à chaque changement d'onglet.
+    var facturation by rememberSaveable { mutableStateOf(VueFacturation.FACTURES) }
 
     // La page des Réglages est tenue ici pour la même raison que le carnet, et
     // c'est le bandeau de l'accueil qui l'exige : « une ligne de main-d'œuvre se
@@ -124,13 +128,17 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
         ) {
             when (onglet) {
                 Onglet.TOURNEE -> TourneeRoute(
-                    onAllerAuxDevis = { onglet = Onglet.FACTURES },
-                    // Le même onglet que les devis : c'est la facture ouverte
-                    // dans le ViewModel partagé qui y fait montrer les factures.
-                    onAllerAuxFactures = { onglet = Onglet.FACTURES },
+                    onAllerAuxDevis = {
+                        facturation = VueFacturation.DEVIS
+                        onglet = Onglet.FACTURES
+                    },
+                    onAllerAuxFactures = {
+                        facturation = VueFacturation.FACTURES
+                        onglet = Onglet.FACTURES
+                    },
                     onVoirMagasin = {
-                        carnet = VueCarnet.MAGASIN
-                        onglet = Onglet.CARNETS
+                        atelier = VueAtelier.MAGASIN
+                        onglet = Onglet.ATELIER
                     },
                     onReglage = { page ->
                         pageReglages = page
@@ -138,18 +146,20 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                     },
                 )
 
+                Onglet.CLIENTS -> ClientsRoute()
                 Onglet.FACTURES -> FacturationRoute(
+                    vue = facturation,
+                    onVue = { facturation = it },
                     onAllerALaTournee = { onglet = Onglet.TOURNEE },
                 )
-                Onglet.CARNETS -> CarnetsRoute(
-                    vue = carnet,
-                    onVue = { carnet = it },
+                Onglet.ATELIER -> AtelierRoute(
+                    vue = atelier,
+                    onVue = { atelier = it },
                     onReglage = { page ->
                         pageReglages = page
                         onglet = Onglet.REGLAGES
                     },
                 )
-                Onglet.OUTILS -> OutilsRoute()
                 Onglet.REGLAGES -> ReglagesRoute(
                     page = pageReglages,
                     onPage = { pageReglages = it },

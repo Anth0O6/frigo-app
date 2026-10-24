@@ -64,50 +64,65 @@ import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.LocalStatuts
 import java.time.LocalDate
 
-/** Les deux faces de l'onglet : ce qu'on propose, et ce qu'on réclame. */
+/**
+ * Les deux faces de l'onglet : ce qu'on réclame, et ce qu'on propose.
+ *
+ * **Les factures d'abord**, et c'est une correction : l'onglet s'intitulait
+ * « Factures » et s'ouvrait sur les devis, si bien que le premier écran vu sous
+ * ce nom en montrait un autre. Ce sont les factures qu'on vient chercher le plus
+ * souvent ici — une relance, un paiement à pointer —, le devis se créant le plus
+ * souvent depuis une intervention ou un client.
+ */
 enum class VueFacturation(val libelle: String) {
-    DEVIS("Devis"),
     FACTURES("Factures"),
+    DEVIS("Devis"),
 }
 
 /**
- * L'onglet « Devis », qui porte en réalité les deux documents commerciaux.
+ * L'onglet « Factures », qui porte les deux documents commerciaux.
  *
- * Une bascule plutôt qu'un septième onglet, et ce n'est pas un pis-aller : la
- * barre en porte déjà six, un de plus que ce que Material recommande, et un
- * septième aurait réduit chaque cible à ce qu'un pouce ganté ne trouve plus. Les
- * deux documents se suivent d'ailleurs dans le temps — on chiffre, puis on
- * facture — et les mettre à deux endroits éloignés aurait séparé les deux moitiés
- * d'un même geste.
+ * Une bascule plutôt qu'un onglet de plus, et ce n'est pas un pis-aller : c'est
+ * le motif que partagent les trois onglets à plusieurs vues, et un onglet
+ * supplémentaire aurait réduit chaque cible à ce qu'un pouce ganté ne trouve
+ * plus. Les deux documents se suivent d'ailleurs dans le temps — on chiffre, puis
+ * on facture — et les mettre à deux endroits éloignés aurait séparé les deux
+ * moitiés d'un même geste.
  *
- * Ouvrir une facture depuis ailleurs — le bouton « Facturer » d'une intervention
- * — bascule la vue tout seul : le ViewModel des factures est partagé, et une
- * facture ouverte est l'unique raison qu'a cet onglet de montrer les factures.
+ * La vue est tenue par la **coquille** et non ici : posée dans un
+ * `rememberSaveable` de cette route, elle se perdait à chaque changement
+ * d'onglet, et l'on revenait sur la vue par défaut après être allé voir une
+ * intervention. C'est le motif de la vue de l'Atelier et de la page des Réglages.
+ *
+ * Ouvrir une facture depuis ailleurs — « Facturer » sur une intervention ou sur
+ * un devis, une relance de l'accueil — bascule la vue tout seul : le ViewModel
+ * des factures est partagé, et une facture ouverte est l'unique raison qu'a cet
+ * onglet de montrer les factures plutôt que ce qu'on regardait.
  */
 @Composable
 fun FacturationRoute(
+    vue: VueFacturation,
+    onVue: (VueFacturation) -> Unit,
     modifier: Modifier = Modifier,
-    /** Un devis accepté se planifie, et la tournée est un autre onglet. */
+    /** Un devis accepté se planifie, et la journée est un autre onglet. */
     onAllerALaTournee: () -> Unit = {},
     facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
 ) {
-    var vue by rememberSaveable { mutableStateOf(VueFacturation.DEVIS) }
     val factureOuverte by facturesViewModel.ouverte.collectAsStateWithLifecycle()
 
     LaunchedEffect(factureOuverte) {
-        if (factureOuverte != null) vue = VueFacturation.FACTURES
+        if (factureOuverte != null) onVue(VueFacturation.FACTURES)
     }
 
     when (vue) {
         VueFacturation.DEVIS -> DevisRoute(
             modifier = modifier,
-            onVoirFactures = { vue = VueFacturation.FACTURES },
+            onVoirFactures = { onVue(VueFacturation.FACTURES) },
             onAllerALaTournee = onAllerALaTournee,
         )
 
         VueFacturation.FACTURES -> FacturesRoute(
             modifier = modifier,
-            onVoirDevis = { vue = VueFacturation.DEVIS },
+            onVoirDevis = { onVue(VueFacturation.DEVIS) },
             viewModel = facturesViewModel,
         )
     }
