@@ -147,11 +147,20 @@ class Cibles(
      * un document réglementaire.
      */
     val case: Dp,
+    /**
+     * Hauteur d'une pastille de bascule (`RangeePastilles`).
+     *
+     * Elle a rejoint les cibles quand la bascule est devenue le **contrôle de
+     * navigation** de trois onglets — Planning, Factures, Atelier : une pastille
+     * de 38 points qu'on rate avec un gant fait rester sur la mauvaise vue, et
+     * c'est précisément le geste qu'on fait sans regarder.
+     */
+    val pastille: Dp,
 )
 
-private val CiblesNormales = Cibles(action = 56.dp, carre = 52.dp, case = 26.dp)
+private val CiblesNormales = Cibles(action = 56.dp, carre = 52.dp, case = 26.dp, pastille = 40.dp)
 
-private val CiblesGantees = Cibles(action = 68.dp, carre = 64.dp, case = 34.dp)
+private val CiblesGantees = Cibles(action = 68.dp, carre = 64.dp, case = 34.dp, pastille = 52.dp)
 
 /** Les cibles tactiles en vigueur. */
 val LocalCibles = staticCompositionLocalOf { CiblesNormales }

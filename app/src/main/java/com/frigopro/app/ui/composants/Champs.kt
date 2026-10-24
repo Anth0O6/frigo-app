@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
@@ -26,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -34,8 +37,10 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.ui.Nombres
+import com.frigopro.app.ui.theme.LocalCibles
 import com.frigopro.app.ui.theme.StyleChiffre
 
 /**
@@ -201,7 +206,17 @@ private fun champDe(valeur: Double?): TextFieldValue {
     return TextFieldValue(texte, TextRange(texte.length))
 }
 
-/** Une rangée de pastilles dont une seule est retenue : les onglets de la maquette. */
+/**
+ * Une rangée de pastilles dont une seule est retenue : les onglets de la maquette.
+ *
+ * C'est le **contrôle de navigation** de trois onglets — Planning, Factures et
+ * Atelier portent chacun leur bascule sous le titre —, et elle suit donc le mode
+ * gants comme tout ce qui décide de quelque chose : sa hauteur vient de
+ * [LocalCibles]. Trois pastilles au plus, et aucun défilement : la Tournée en
+ * avait porté quatre, et la dernière sortait de l'écran sur un téléphone de
+ * 320 points sans rien pour dire qu'elle existait — la règle de [RangeeOnglets],
+ * tenue ici en limitant le nombre plutôt qu'en empilant icône et libellé.
+ */
 @Composable
 fun <T> RangeePastilles(
     options: List<T>,
@@ -210,10 +225,12 @@ fun <T> RangeePastilles(
     onChoisir: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val hauteur = LocalCibles.current.pastille
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { option ->
             val choisie = option == retenue
             Surface(
+                modifier = Modifier.heightIn(min = hauteur),
                 shape = MaterialTheme.shapes.small,
                 color = if (choisie) {
                     MaterialTheme.colorScheme.primary
@@ -222,21 +239,28 @@ fun <T> RangeePastilles(
                 },
                 onClick = { onChoisir(option) },
             ) {
-                Text(
-                    text = libelle(option),
-                    style = if (choisie) {
-                        MaterialTheme.typography.labelMedium
-                    } else {
-                        MaterialTheme.typography.bodyMedium
-                    },
-                    color = if (choisie) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        MaterialTheme.colorScheme.secondary
-                    },
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    maxLines = 1,
-                )
+                // Centré dans la hauteur de la cible : en mode gants la pastille
+                // grandit, et le libellé ne doit pas rester collé en haut.
+                Box(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = libelle(option),
+                        style = if (choisie) {
+                            MaterialTheme.typography.labelMedium
+                        } else {
+                            MaterialTheme.typography.bodyMedium
+                        },
+                        color = if (choisie) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.secondary
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -331,6 +355,12 @@ fun ChampRecherche(
     onValeur: (String) -> Unit,
     indication: String,
     modifier: Modifier = Modifier,
+    /**
+     * De quoi lui donner le focus d'emblée : la recherche d'« Aujourd'hui »
+     * s'ouvre par une loupe, et une loupe qui ouvre un champ où il faut encore
+     * toucher pour écrire est un geste de trop.
+     */
+    focus: FocusRequester? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -351,7 +381,9 @@ fun ChampRecherche(
             BasicTextField(
                 value = valeur,
                 onValueChange = onValeur,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .let { champ -> if (focus != null) champ.focusRequester(focus) else champ },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
