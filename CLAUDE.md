@@ -4,7 +4,7 @@ Application Android native destinée aux techniciens frigoristes en tournée.
 Elle affiche les interventions d'une journée, se déplace d'un jour à l'autre ou
 d'une semaine à l'autre, et permet de les créer, les modifier, les supprimer et
 de suivre leur avancement, chacune rangée sous un type que le technicien nomme
-lui-même dans l'onglet Réglages.
+lui-même dans les Réglages.
 
 Chaque intervention s'ouvre sur **ce qui s'y est vraiment passé** : un
 chronomètre qui se met en pause et reprend, les relevés frigorifiques (BP, HP,
@@ -13,7 +13,7 @@ registre, les pièces posées, des photos avant/après, et un compte-rendu que l
 client signe du doigt. Les relevés alimentent une **aide au dépannage** qui
 propose des pistes — jamais un verdict — et le contrôle qui tranche chacune.
 
-Un onglet Carnets tient le carnet des clients — adresse et téléphone compris — ainsi que le
+Un onglet Clients tient le carnet des clients — adresse et téléphone compris — ainsi que le
 parc de machines de chaque client : plaque signalétique, fluide et charge,
 photos, échéance du contrôle d'étanchéité et historique. Un onglet Factures
 permet de chiffrer sur place, **déplacement compris** : temps de trajet,
@@ -126,7 +126,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── InterventionRepository.kt
 │       │   │   └── ClientRepository.kt
 │       │   └── ui/                 # écrans, ViewModels et thème
-│       │       ├── FrigoProApp.kt      # coquille : les cinq onglets
+│       │       ├── FrigoProApp.kt      # coquille : les cinq onglets et la roue des Réglages
 │       │       ├── EcranDemarrage.kt  # logo, anneau et nom, le temps que ce soit prêt
 │       │       ├── Dates.kt            # formats et conversions de dates
 │       │       ├── ActionsExternes.kt  # appel et itinéraire (intentions Android)
@@ -134,14 +134,15 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── EtatFormulaire.kt
 │       │       ├── FormulaireIntervention.kt
 │       │       ├── SelecteurDate.kt
-│       │       ├── InterventionsScreen.kt
+│       │       ├── InterventionsScreen.kt # les morceaux d'une journée, et la feuille de saisie
+│       │       ├── PlanningRoute.kt     # Semaine | Entretien
 │       │       ├── InterventionsViewModel.kt
 │       │       ├── EtatFicheClient.kt
 │       │       ├── FicheClient.kt
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
 │       │       ├── SelectionMachines.kt # cocher un parc : zone et gamme en lot
-│       │       ├── EcranCarnets.kt     # les trois carnets, et leur coquille
+│       │       ├── EcranCarnets.kt     # l'Atelier : magasin, fournisseurs, outils
 │       │       ├── EcranMagasin.kt     # l'inventaire, atelier et camion
 │       │       ├── EcranFournisseurs.kt # le carnet, filtré, et le catalogue
 │       │       ├── EcranSaisiePrix.kt   # un tarif fournisseur, ligne après ligne
@@ -159,7 +160,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── DialogueSignature.kt # signer au doigt, puis rasteriser
 │       │       ├── EcranSemaine.kt      # le planning des cinq jours ouvrés
 │       │       ├── FriseHoraire.kt      # le temps en hauteur, les créneaux dessus
-│       │       ├── EcranAujourdhui.kt   # l'accueil : « et maintenant ? »
+│       │       ├── EcranAujourdhui.kt   # Aujourd'hui : « et maintenant ? », puis la journée
 │       │       ├── AujourdhuiViewModel.kt
 │       │       ├── AujourdhuiRoute.kt
 │       │       ├── OngletFiche.kt       # créneau, adresse, machine, checklist
@@ -178,13 +179,13 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── PdfDevis.kt          # le seul à connaître Canvas
 │       │       ├── EtatReglette.kt      # pression ↔ température, et le côté
 │       │       ├── FeuilleReglette.kt   # la réglette, curseur et avertissement
-│       │       ├── EcranPreventif.kt     # ce que le calendrier doit, par statut
+│       │       ├── EcranPreventif.kt     # l'Entretien : ce que le calendrier doit, par statut
 │       │       ├── FeuilleVisite.kt      # consigner une visite, et ses points
 │       │       ├── SectionPlanMachine.kt # le plan d'une machine, sur sa fiche
 │       │       ├── SectionGammes.kt      # créer et tenir une gamme
 │       │       ├── MaintenanceViewModel.kt
 │       │       ├── DocumentAttestation.kt # ce que l'attestation imprimée dit
-│       │       ├── EcranOutils.kt       # l'onglet Outils, et le cadre d'un outil
+│       │       ├── EcranOutils.kt       # les outils de l'Atelier, et le cadre d'un outil
 │       │       ├── OutilsCalculs.kt     # convertisseur, bilan, F-Gas, fiche fluide
 │       │       ├── OutilSubstitution.kt # par quoi remplacer, et à quel prix
 │       │       ├── OutilChampMagnetique.kt # bobine alimentée, aimant, contacteur collé
@@ -619,7 +620,33 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   suite. Les dates d'une machine — mise en service, dernier contrôle — se
   choisissent **au calendrier**, avec « Effacer » : tapées en AAAA-MM-JJ, une
   saisie mal formée devenait `null` sans un mot, et l'échéance F-Gas disparaissait.
-- **`ui`** — `FrigoProApp` est la coquille : cinq onglets, `Tournée`,
+- **`ui`** — `FrigoProApp` est la coquille : cinq onglets, **`Aujourd'hui`,
+  `Planning`, `Clients`, `Factures` et `Atelier`**, et les **Réglages en plein
+  écran derrière une roue crantée**, qui masquent la barre du bas. C'est l'état
+  issu de la réorganisation, et il prime sur l'historique qui suit, conservé
+  parce qu'il dit pourquoi :
+  - **Aujourd'hui** réunit « Maintenant » et « Jour » : la carte de ce qui se
+    passe, les alertes, puis la journée (frise ou liste) et sa recherche ;
+    `onRevenirAAujourdhui` y ramène, et toucher l'onglet déjà ouvert revient au
+    début — sans fermer une feuille, une fiche ou une saisie de prix, qui
+    tiennent une saisie pas encore écrite.
+  - **Planning** (`PlanningRoute`, `VuePlanning`) porte `Semaine | Entretien` ;
+    l'écran des gammes (`EcranGammes`) y vit, et non plus aux Réglages
+    (`PageReglages.GAMMES` a disparu). Un jour ou une intervention touchés dans
+    la semaine ouvrent Aujourd'hui sur eux.
+  - **Clients** est un onglet seul : une échéance F-Gas de l'accueil y ouvre
+    enfin la fiche de sa machine.
+  - **Atelier** (`AtelierRoute`, `VueAtelier`) réunit `Magasin | Fournisseurs |
+    Outils` ; l'outil ouvert est tenu par `OutilsViewModel`.
+  - **Factures** s'ouvre sur `Factures | Devis`, la vue tenue par la coquille.
+  - La feuille de saisie d'une intervention est posée **une seule fois, par la
+    coquille**. Le retour système à la racine d'un onglet ramène à
+    Aujourd'hui ; Réglages ouverts, il referme la page puis les Réglages.
+  - La pastille de bascule suit le mode gants (`Cibles.pastille`, 40 / 52 dp).
+  Ce qui suit, jusqu'à `VueTournee` et `TourneeRoute`, décrit l'organisation
+  d'avant et ses raisons ; les noms supprimés (`VueTournee`, `TourneeRoute`,
+  `VueCarnet`, `CarnetsRoute`) ne se cherchent plus dans le code.
+  Avant : cinq onglets, `Tournée`,
   `Factures`, `Carnets`, `Outils` et `Réglages`, et la barre qui en change.
   **Trois de ces onglets portent plusieurs vues sous une bascule** — la tournée
   ses trois distances de lecture plus le préventif, la facturation ses deux
@@ -1137,8 +1164,7 @@ poignée d'objets ne justifie pas encore Hilt.
 
 La saisie se fait dans une `ModalBottomSheet` plutôt que sur une destination
 dédiée : un seul écran, pas de navigation. Ajouter une vraie destination
-impliquera d'introduire un graphe de navigation et de déplacer
-`TourneeRoute` derrière celui-ci.
+impliquera d'introduire un graphe de navigation et d'y déplacer la coquille.
 
 ### Deux choix faits pour une synchronisation future
 
@@ -1396,7 +1422,7 @@ l'APK : un test rouge bloque la publication.
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature, ce qui manque nommé, urgence posée et retirée, adresse qui ne touche pas l'intervention |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
-| `InterventionsViewModelTest` | Navigation entre les jours, pastille qui démarre par le chrono et ne rouvre ni ne termine rien, chronoAuto qui lance le temps d'un passage en cours par la feuille et rien sans lui, urgence enregistrée, adresse et téléphone qui complètent la fiche sans écraser, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide |
+| `InterventionsViewModelTest` | Navigation entre les jours, pastille qui démarre par le chrono et ne rouvre ni ne termine rien, chronoAuto qui lance le temps d'un passage en cours par la feuille et rien sans lui, urgence enregistrée, adresse et téléphone qui complètent la fiche sans écraser, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide, refermer la recherche qui l'efface, revenir à aujourd'hui |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées, suppression qui emporte le plan du parc — et celui du parc de chaque site — en gardant les visites, fiche complétée là où elle est vide, jamais écrasée, rien d'écrit sans nouveauté |
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
