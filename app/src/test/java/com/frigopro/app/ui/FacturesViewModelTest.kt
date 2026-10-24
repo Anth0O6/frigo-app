@@ -8,11 +8,16 @@ import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxFactureDao
 import com.frigopro.app.data.FauxInterventionDao
 import com.frigopro.app.data.FauxParametresDao
+import com.frigopro.app.data.FauxPrestationDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxSuiviDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.Prestation
+import com.frigopro.app.data.CategoriePrestation
+import com.frigopro.app.data.PrestationRepository
+import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.data.SuiviRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -205,6 +210,68 @@ class FacturesViewModelTest {
         assertFalse("rien n'a été refusé", viewModel.avoirRefuse.value)
     }
 
+    /**
+     * Un brouillon se complète — une ligne libre, une prestation du catalogue,
+     * l'objet — et une facture émise ne se complète plus : le dépôt refuse, quoi
+     * que l'écran propose. Un brouillon ne pouvait jusqu'ici que perdre des lignes.
+     */
+    @Test
+    fun `un brouillon se complete, une facture emise non`() = runTest {
+        val viewModel = creerViewModel()
+        ParametresRepository(daoParametres, stockage).enregistrer(entreprise)
+        advanceUntilIdle()
+        viewModel.onFacturerIntervention(intervention)
+        advanceUntilIdle()
+
+        viewModel.onAjouterLigne("Détendeur oublié", 1.0, "u", 78.5)
+        advanceUntilIdle()
+        viewModel.onAjouterPrestation(
+            Prestation(
+                designation = "Déplacement zone 1",
+                categorie = CategoriePrestation.DEPANNAGE,
+                prixUnitaire = 45.0,
+                unite = "forfait",
+            ),
+        )
+        advanceUntilIdle()
+        viewModel.onObjet("Dépannage chambre froide")
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("Détendeur oublié", "Déplacement zone 1"),
+            daoFactures.contenuLignes.sortedBy { it.rang }.map { it.designation },
+        )
+        assertEquals("Dépannage chambre froide", daoFactures.contenu.single().objet)
+
+        viewModel.onEmettre()
+        advanceUntilIdle()
+        viewModel.onAjouterLigne("Ajout tardif", 1.0, "", 10.0)
+        viewModel.onObjet("Autre objet")
+        advanceUntilIdle()
+
+        assertEquals(2, daoFactures.contenuLignes.size)
+        assertEquals("Dépannage chambre froide", daoFactures.contenu.single().objet)
+    }
+
+    /** Payée le jour dit, et non le jour de la saisie : on pointe relevé en main. */
+    @Test
+    fun `une facture se pointe payee a la date donnee`() = runTest {
+        val viewModel = creerViewModel()
+        ParametresRepository(daoParametres, stockage).enregistrer(entreprise)
+        advanceUntilIdle()
+        viewModel.onFacturerIntervention(intervention)
+        advanceUntilIdle()
+        viewModel.onEmettre()
+        advanceUntilIdle()
+
+        viewModel.onPayee(mars.plusDays(20))
+        advanceUntilIdle()
+
+        val payee = daoFactures.contenu.single()
+        assertEquals(StatutFacture.PAYEE, payee.statut)
+        assertEquals(mars.plusDays(20), payee.payeeLe)
+    }
+
     /** Même raison que dans [DevisViewModelTest] pour `Dispatchers.Main`. */
     private fun TestScope.creerViewModel(): FacturesViewModel {
         val ordonnanceur = UnconfinedTestDispatcher(testScheduler)
@@ -214,6 +281,7 @@ class FacturesViewModelTest {
             SuiviRepository(daoSuivi, stockage),
             ClientRepository(daoClients, stockage),
             ParametresRepository(daoParametres, stockage),
+            PrestationRepository(FauxPrestationDao()),
             // Le PDF ne se dessine pas sans Android : le producteur retient le
             // document et rend `null`. C'est ce que le document **dit** qui est
             // en cause ici, et non son tracé — celui-là est à [DocumentFactureTest].

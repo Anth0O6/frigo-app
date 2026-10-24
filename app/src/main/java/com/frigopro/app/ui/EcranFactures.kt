@@ -38,12 +38,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Avoirs
+import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Facture
 import com.frigopro.app.data.FactureChiffree
 import com.frigopro.app.data.FactureComplete
 import com.frigopro.app.data.LigneFacture
 import com.frigopro.app.data.PenalitesDues
 import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.RappelsFactures
 import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.ui.composants.BarreActions
@@ -52,6 +54,7 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampRecherche
+import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
@@ -123,6 +126,8 @@ fun FacturesRoute(
     val echecExport by viewModel.echecExport.collectAsStateWithLifecycle()
     val solde by viewModel.solde.collectAsStateWithLifecycle()
     val avoirRefuse by viewModel.avoirRefuse.collectAsStateWithLifecycle()
+    val catalogue by viewModel.catalogue.collectAsStateWithLifecycle()
+    val manques by viewModel.manques.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // La permission de notifier n'est demandée qu'ici, et jamais au démarrage :
@@ -139,23 +144,31 @@ fun FacturesRoute(
     LaunchedEffect(documentPret) {
         val fichier = documentPret ?: return@LaunchedEffect
         val ouverte = complete?.facture
+        // Le retard est celui du solde : une facture que ses avoirs couvrent ne
+        // se relance plus, même si on la renvoie.
+        val chiffree = solde?.takeIf { it.chiffree.facture.id == ouverte?.id }?.chiffree
+        val enRetard = chiffree?.enRetard(LocalDate.now()) == true
         contexte.envoyerDocument(
             document = fichier,
             objet = listOf(
-                if (ouverte?.estAvoir == true) "Avoir" else "Facture",
+                when {
+                    ouverte?.estAvoir == true -> "Avoir"
+                    enRetard -> "Relance — facture"
+                    else -> "Facture"
+                },
                 ouverte?.numero.orEmpty(),
             )
                 .filter { it.isNotBlank() }
                 .joinToString(" "),
-            corps = corpsDeLaFacture(ouverte),
+            corps = if (enRetard && chiffree != null) {
+                corpsDeLaRelance(chiffree)
+            } else {
+                corpsDeLaFacture(ouverte)
+            },
         )
         viewModel.onDocumentPartage()
         // Envoyer une facture en retard, c'est la relancer : le noter ici évite
-        // qu'elle remonte le lendemain dans la liste des relances à faire. Le
-        // retard est celui du solde : une facture que ses avoirs couvrent ne se
-        // relance plus, même si on la renvoie.
-        val enRetard = solde?.takeIf { it.chiffree.facture.id == ouverte?.id }
-            ?.chiffree?.enRetard(LocalDate.now()) == true
+        // qu'elle remonte le lendemain dans la liste des relances à faire.
         if (ouverte != null && enRetard) viewModel.onRelancee(ouverte)
     }
 
@@ -208,9 +221,14 @@ fun FacturesRoute(
             solde = solde?.takeIf { it.chiffree.facture.id == ouverte.facture.id },
             onFaireAvoir = viewModel::onFaireAvoir,
             onOuvrir = viewModel::onOuvrir,
+            catalogue = catalogue,
+            manques = manques,
+            onObjet = viewModel::onObjet,
+            onAjouterLigne = viewModel::onAjouterLigne,
+            onAjouterPrestation = viewModel::onAjouterPrestation,
             onEmettre = viewModel::onEmettre,
             onEnvoyer = viewModel::onExporterPdf,
-            onPayee = viewModel::onPayee,
+            onPayee = { le -> viewModel.onPayee(le) },
             onImpayee = viewModel::onImpayee,
             onAnnuler = viewModel::onAnnuler,
             onSupprimer = { viewModel.onSupprimer(ouverte.facture) },
@@ -536,9 +554,20 @@ fun EcranFacture(
     onFaireAvoir: (Map<String, Double>?) -> Unit,
     /** Ouvre un autre document : la facture d'un avoir, ou l'avoir d'une facture. */
     onOuvrir: (String) -> Unit,
+    /** Le catalogue, d'où se complète un brouillon. */
+    catalogue: Map<CategoriePrestation, List<Prestation>> = emptyMap(),
+    /**
+     * Ce qui manque à l'en-tête de l'entreprise : la confirmation d'émission le
+     * nomme avant le geste irréversible — voir [manquesEmetteur].
+     */
+    manques: List<String> = emptyList(),
+    onObjet: (String) -> Unit = {},
+    onAjouterLigne: (String, Double, String, Double) -> Unit = { _, _, _, _ -> },
+    onAjouterPrestation: (Prestation) -> Unit = {},
     onEmettre: () -> Unit,
     onEnvoyer: () -> Unit,
-    onPayee: () -> Unit,
+    /** Payée le jour donné : aujourd'hui par défaut, à confirmer dans la boîte. */
+    onPayee: (LocalDate) -> Unit,
     onImpayee: () -> Unit,
     onAnnuler: () -> Unit,
     onSupprimer: () -> Unit,
@@ -550,6 +579,13 @@ fun EcranFacture(
     val aujourdhui = remember { LocalDate.now() }
     var confirmation by remember { mutableStateOf<ConfirmationFacture?>(null) }
     var saisieAvoir by remember { mutableStateOf(false) }
+    var catalogueOuvert by remember { mutableStateOf(false) }
+    var saisieLigne by remember { mutableStateOf(false) }
+    var paiementOuvert by remember { mutableStateOf(false) }
+    val brouillon = !document.statut.figee
+    // Le retard du solde, et non de la seule échéance : une facture couverte
+    // par ses avoirs ne se relance plus.
+    val enRetard = solde?.chiffree?.enRetard(aujourdhui) == true
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -558,9 +594,10 @@ fun EcranFacture(
         bottomBar = {
             ActionsFacture(
                 facture = document,
+                enRetard = enRetard,
                 onEmettre = { confirmation = ConfirmationFacture.EMETTRE },
                 onEnvoyer = onEnvoyer,
-                onPayee = onPayee,
+                onPayee = { paiementOuvert = true },
                 onImpayee = onImpayee,
                 onAnnuler = { confirmation = ConfirmationFacture.ANNULER },
                 onSupprimer = { confirmation = ConfirmationFacture.SUPPRIMER },
@@ -610,7 +647,13 @@ fun EcranFacture(
                     )
                 }
                 LigneInfoFacture("Statut", document.statut.libelle)
-                if (document.objet.isNotBlank()) LigneInfoFacture("Objet", document.objet)
+                // L'objet se retouche tant que la facture est un brouillon, et
+                // seulement alors : passé l'émission, plus rien ne bouge.
+                if (brouillon) {
+                    ChampTexte(libelle = "Objet", valeur = document.objet, onValeur = onObjet)
+                } else if (document.objet.isNotBlank()) {
+                    LigneInfoFacture("Objet", document.objet)
+                }
                 document.emiseLe?.let {
                     LigneInfoFacture(if (document.estAvoir) "Émis le" else "Émise le", jourCourt(it))
                 }
@@ -630,8 +673,24 @@ fun EcranFacture(
                 facture.lignes.forEach { ligne ->
                     LigneFactureAffichee(
                         ligne = ligne,
-                        modifiable = !document.statut.figee,
+                        modifiable = brouillon,
                         onSupprimer = { onSupprimerLigne(ligne) },
+                    )
+                }
+                // Un brouillon se complète comme un devis — le catalogue, puis la
+                // ligne libre. Un brouillon d'avoir non : il ne crédite que ce qui
+                // a été facturé, et une ligne de plus n'y aurait pas de sens.
+                if (brouillon && !document.estAvoir) {
+                    BoutonContour(
+                        texte = "Ajouter depuis le catalogue",
+                        onClick = { catalogueOuvert = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    BoutonContour(
+                        texte = "+ Ligne libre",
+                        onClick = { saisieLigne = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        couleur = MaterialTheme.colorScheme.secondary,
                     )
                 }
             }
@@ -687,10 +746,45 @@ fun EcranFacture(
         )
     }
 
+    if (catalogueOuvert) {
+        FeuilleCatalogue(
+            catalogue = catalogue,
+            dejaAuDevis = facture.lignes.map { it.designation }.toSet(),
+            onChoisir = onAjouterPrestation,
+            // Une facture puise dans le catalogue sans l'enrichir : la prestation
+            // nouvelle se crée depuis un devis ou dans les Réglages.
+            onCreer = null,
+            unitesVisees = 1,
+            onFermer = { catalogueOuvert = false },
+        )
+    }
+
+    if (saisieLigne) {
+        DialogueLigneDevis(
+            titre = "Ligne de facture",
+            onValider = { designation, quantite, unite, prix ->
+                onAjouterLigne(designation, quantite, unite, prix)
+                saisieLigne = false
+            },
+            onFermer = { saisieLigne = false },
+        )
+    }
+
+    if (paiementOuvert) {
+        DialoguePaiement(
+            onConfirmer = { le ->
+                onPayee(le)
+                paiementOuvert = false
+            },
+            onFermer = { paiementOuvert = false },
+        )
+    }
+
     confirmation?.let { quoi ->
         DialogueConfirmationFacture(
             quoi = quoi,
             avoir = document.estAvoir,
+            manques = manques,
             onConfirmer = {
                 when (quoi) {
                     ConfirmationFacture.EMETTRE -> onEmettre()
@@ -711,6 +805,13 @@ private fun DialogueConfirmationFacture(
     quoi: ConfirmationFacture,
     /** Le document est un avoir : les mêmes gestes, mais pas les mêmes mots. */
     avoir: Boolean,
+    /**
+     * Ce qui manque à l'en-tête de l'entreprise. Nommé à l'émission, et à elle
+     * seule : c'est le dernier moment où l'on peut encore aller le renseigner,
+     * puisqu'une facture émise ne se retouche plus. Le choix reste ouvert — rien
+     * n'est bloqué, et rien n'est plus imprimé chez le client à la place.
+     */
+    manques: List<String> = emptyList(),
     onConfirmer: () -> Unit,
     onFermer: () -> Unit,
 ) {
@@ -759,14 +860,76 @@ private fun DialogueConfirmationFacture(
         )
     }
 
+    val avertissement = manques.takeIf { quoi == ConfirmationFacture.EMETTRE && it.isNotEmpty() }
+
     AlertDialog(
         onDismissRequest = onFermer,
         title = { Text(text = titre) },
-        text = { Text(text = texte) },
-        confirmButton = { TextButton(onClick = onConfirmer) { Text(text = bouton) } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(text = texte)
+                if (avertissement != null) {
+                    Text(
+                        text = "Il manque à l'en-tête de l'entreprise " +
+                            avertissement.joinToString(", ") + ". Le document partira " +
+                            "sans, et ne pourra plus être complété : ces mentions se " +
+                            "renseignent dans les Réglages, avant d'émettre.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalStatuts.current.urgence,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmer) {
+                Text(text = if (avertissement != null) "$bouton quand même" else bouton)
+            }
+        },
         dismissButton = { TextButton(onClick = onFermer) { Text(text = "Revenir") } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
+}
+
+/**
+ * Pointer une facture payée, **à la date du règlement**.
+ *
+ * Aujourd'hui par défaut, parce que c'est le cas courant — on pointe en recevant
+ * le chèque —, et modifiable, parce qu'on pointe aussi ses virements après coup,
+ * relevé de banque en main. Dater du jour de la saisie aurait fait mentir le
+ * « payée le » imprimé sur la facture renvoyée.
+ */
+@Composable
+private fun DialoguePaiement(
+    onConfirmer: (LocalDate) -> Unit,
+    onFermer: () -> Unit,
+) {
+    var le by remember { mutableStateOf(LocalDate.now()) }
+    var calendrierOuvert by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Facture payée") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LigneInfoFacture("Réglée le", jourCourt(le), forte = true)
+                TextButton(onClick = { calendrierOuvert = true }) { Text(text = "Changer la date") }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirmer(le) }) { Text(text = "Payée") } },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Revenir") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+
+    if (calendrierOuvert) {
+        SelecteurDate(
+            date = le,
+            onDateChoisie = {
+                le = it
+                calendrierOuvert = false
+            },
+            onFermer = { calendrierOuvert = false },
+        )
+    }
 }
 
 /**
@@ -1037,6 +1200,12 @@ private const val APERCU_AVOIR = "apercu"
 @Composable
 private fun ActionsFacture(
     facture: Facture,
+    /**
+     * Le solde est en retard : « Envoyer » devient « Relancer », et le message
+     * qui part le dit — reste dû et échéance dépassée. C'était le même geste sous
+     * un nom qui ne disait pas ce qu'il faisait.
+     */
+    enRetard: Boolean = false,
     onEmettre: () -> Unit,
     onEnvoyer: () -> Unit,
     onPayee: () -> Unit,
@@ -1063,7 +1232,7 @@ private fun ActionsFacture(
                 // Un avoir ne se règle pas : c'est l'entreprise qui doit.
                 if (!facture.estAvoir) BoutonContour(texte = "Payée", onClick = onPayee)
                 BoutonPlein(
-                    texte = "Envoyer",
+                    texte = if (enRetard && !facture.estAvoir) "Relancer" else "Envoyer",
                     onClick = onEnvoyer,
                     modifier = Modifier.weight(1f),
                 )
@@ -1149,6 +1318,24 @@ private fun LigneFactureAffichee(
             TextButton(onClick = onSupprimer) { Text(text = "Retirer") }
         }
     }
+}
+
+/**
+ * Le message d'une relance : le numéro, l'échéance dépassée, et **le reste dû** —
+ * pas le total, puisqu'un avoir a pu en créditer une partie, et réclamer à un
+ * client une somme qu'on lui a créditée est la façon la plus sûre de le perdre.
+ *
+ * Les pénalités n'y sont pas chiffrées : elles sont dues de plein droit et la
+ * facture les annonce déjà ; les ajouter d'office à un premier rappel durcirait
+ * le ton d'un message qu'on relit de toute façon avant de l'envoyer.
+ */
+private fun corpsDeLaRelance(chiffree: FactureChiffree): String {
+    val facture = chiffree.facture
+    val echeance = facture.echeanceLe?.let { " arrivée à échéance le ${jourCourt(it)}" }.orEmpty()
+    return "Bonjour,\n\nSauf erreur de notre part, la facture ${facture.numero}$echeance " +
+        "reste à régler pour un montant de ${Nombres.enEuros(chiffree.resteTtc)}. " +
+        "Vous la trouverez ci-jointe.\n\nSi le règlement est déjà parti, merci de ne pas " +
+        "tenir compte de ce message.\n\nCordialement."
 }
 
 /** Le message qui accompagne le PDF, prêt à être complété. */

@@ -16,7 +16,10 @@ import com.frigopro.app.data.FactureComplete
 import com.frigopro.app.data.FactureRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.LigneFacture
+import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.Prestation
+import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.StatutFacture
 import com.frigopro.app.data.SuiviRepository
 import com.frigopro.app.data.auCentime
@@ -88,8 +91,25 @@ class FacturesViewModel(
     private val suivi: SuiviRepository,
     private val clients: ClientRepository,
     private val parametres: ParametresRepository,
+    /** Le catalogue, d'où se complète un brouillon — comme un devis. */
+    private val prestations: PrestationRepository,
     private val pdf: ProducteurPdf,
 ) : ViewModel() {
+
+    /** Le catalogue groupé par famille, pour la feuille d'un brouillon. */
+    val catalogue: StateFlow<Map<CategoriePrestation, List<Prestation>>> = prestations.parCategorie
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), emptyMap())
+
+    /**
+     * Ce qui manque à l'en-tête de l'entreprise, que la confirmation d'émission
+     * nomme avant le geste irréversible — voir [manquesEmetteur].
+     *
+     * Un flux, pour l'**affichage** seulement, que l'écran collecte : rien ne s'écrit
+     * d'après lui. L'émission, elle, relit les réglages en base au moment d'écrire.
+     */
+    val manques: StateFlow<List<String>> = parametres.parametres
+        .map { manquesEmetteur(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), emptyList())
 
     /**
      * Les réglages et le carnet se **lisent au moment de servir**, et ne sont
@@ -247,9 +267,16 @@ class FacturesViewModel(
         _avoirRefuse.value = false
     }
 
-    fun onPayee() {
+    /**
+     * Le client a payé, **le jour dit** — aujourd'hui par défaut, à l'écran.
+     *
+     * La date se demande parce qu'on pointe souvent ses encaissements après coup,
+     * relevé de banque en main : dater le paiement du jour de la saisie ferait
+     * mentir la date « payée le » qui s'imprime sur la facture renvoyée.
+     */
+    fun onPayee(le: LocalDate = LocalDate.now()) {
         val courante = complete.value?.facture ?: return
-        viewModelScope.launch { factures.marquerPayee(courante) }
+        viewModelScope.launch { factures.marquerPayee(courante, le) }
     }
 
     fun onImpayee() {
@@ -281,14 +308,40 @@ class FacturesViewModel(
         }
     }
 
+    /**
+     * Retouche l'objet d'un **brouillon**. Le dépôt refuse sur une facture figée,
+     * et l'écran ne propose pas le champ : les deux gardes valent mieux qu'une.
+     */
     fun onObjet(texte: String) {
         val courante = complete.value?.facture ?: return
         viewModelScope.launch { factures.enregistrer(courante.copy(objet = texte)) }
     }
 
+    /**
+     * Ajoute une ligne libre à un brouillon.
+     *
+     * C'était le trou : un brouillon né d'une intervention ne pouvait que perdre
+     * des lignes, et la pièce oubliée sur place ne pouvait plus y entrer qu'en
+     * supprimant la facture. Une désignation vide est écartée, comme sur un devis.
+     */
     fun onAjouterLigne(designation: String, quantite: Double, unite: String, prix: Double) {
         val courante = complete.value?.facture ?: return
+        if (designation.isBlank()) return
         viewModelScope.launch { factures.ajouterLigne(courante, designation, quantite, unite, prix) }
+    }
+
+    /**
+     * Ajoute une prestation du catalogue à un brouillon, au prix du catalogue
+     * **recopié** — même règle que le devis : changer le tarif ne doit rien
+     * changer à une facture déjà établie.
+     *
+     * Une seule unité, sans dégression : un brouillon de facture ne désigne pas de
+     * machine dont on compterait les unités, et la quantité se corrige à la ligne
+     * suivante si besoin. La dégression se pose sur le devis, d'où une facture la
+     * reprend telle quelle.
+     */
+    fun onAjouterPrestation(prestation: Prestation) {
+        onAjouterLigne(prestation.designation, 1.0, prestation.unite, prestation.prixUnitaire)
     }
 
     fun onSupprimerLigne(ligne: LigneFacture) {
@@ -396,6 +449,7 @@ class FacturesViewModel(
                     conteneur.suivi,
                     conteneur.clients,
                     conteneur.parametres,
+                    conteneur.prestations,
                     ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                 )
             }
