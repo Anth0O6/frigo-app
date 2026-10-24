@@ -199,10 +199,21 @@ fun EcranAujourdhui(
 
             if (impayees.isNotEmpty()) {
                 Section(intitule = "À relancer", espacement = 8.dp) {
-                    impayees.forEach { chiffree ->
+                    impayees.take(IMPAYEES_MONTREES).forEach { chiffree ->
                         LigneImpayee(
                             chiffree = chiffree,
                             onClick = { onOuvrirFacture(chiffree.facture) },
+                        )
+                    }
+                    // Plafonnée comme les trois autres listes, et c'était la
+                    // seule à ne pas l'être : un trimestre difficile en pose
+                    // quinze, et l'accueil alerte, l'onglet des factures relance.
+                    val reste = impayees.size - IMPAYEES_MONTREES
+                    if (reste > 0) {
+                        BoutonContour(
+                            texte = "$reste autre${if (reste > 1) "s" else ""} à relancer",
+                            onClick = onVoirDevis,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
@@ -756,6 +767,9 @@ private fun LigneEcheance(echeance: EcheanceFgas) {
  * mène.
  */
 private const val MANQUANTS_MONTRES = 3
+
+/** Même plafond que les manquants, et pour la même raison. */
+private const val IMPAYEES_MONTREES = 3
 
 /** Même plafond que les manquants, et pour la même raison. */
 private const val PREVENTIF_MONTRE = 3
