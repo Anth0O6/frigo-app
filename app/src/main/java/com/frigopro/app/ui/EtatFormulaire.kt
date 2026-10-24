@@ -48,6 +48,30 @@ data class EtatFormulaire(
     /** Nom affiché, recopié de la machine. Vide quand aucune n'est choisie. */
     val equipementNom: String = "",
     val statut: StatutIntervention = StatutIntervention.PLANIFIEE,
+    /**
+     * L'urgence, que la feuille pose enfin.
+     *
+     * Elle était affichée partout — pastille, compteur du bandeau, liseré de la
+     * semaine — et aucun écran ne la posait : le dépannage qui appelle à 7 h ne
+     * se distinguait pas de l'entretien de l'après-midi. Elle reste séparée du
+     * statut, comme dans le modèle : une urgence reste une urgence une fois
+     * terminée.
+     */
+    val urgente: Boolean = false,
+    /**
+     * L'adresse du client, **pour compléter sa fiche** et non pour la réécrire.
+     *
+     * Ce n'est pas un champ de l'intervention : elle vit sur la fiche du client,
+     * d'où l'itinéraire la lit. La feuille ne demandait que le nom et la ville,
+     * si bien qu'un client inscrit depuis la tournée n'était jamais localisable
+     * et que « Y aller » disparaissait sans un mot. La saisie ne remplit la fiche
+     * **que là où elle est vide** — une adresse déjà relevée ne s'écrase pas
+     * d'une frappe faite en passant. Voir
+     * [com.frigopro.app.data.ClientRepository.completer].
+     */
+    val adresse: String = "",
+    /** Le téléphone du client, même règle que [adresse]. */
+    val telephone: String = "",
     val notes: String = "",
     /** Durée prévue du créneau, d'où la hauteur qu'il prend sur le planning. */
     val dureeMin: Int = DUREE_PAR_DEFAUT_MIN,
@@ -67,15 +91,32 @@ data class EtatFormulaire(
     val estCreation: Boolean get() = id == null
 
     /** On n'enregistre pas d'intervention sans savoir chez qui ni où. */
-    val estValide: Boolean get() = client.isNotBlank() && ville.isNotBlank()
+    val estValide: Boolean get() = manque.isEmpty()
+
+    /**
+     * Ce qui manque pour enregistrer, nommé : « le client », « la ville ».
+     *
+     * Un bouton grisé sans explication se lit comme une panne, et l'on cherche
+     * alors le défaut ailleurs que dans le champ vide du haut de la feuille. Le
+     * dire tient en une ligne, et c'est cette même liste qui décide de la
+     * validité : l'écran ne peut pas annoncer un manque que la règle ne voit pas.
+     */
+    val manque: List<String>
+        get() = buildList {
+            if (client.isBlank()) add("le client")
+            if (ville.isBlank()) add("la ville")
+        }
 
     /**
      * L'intervention à enregistrer.
      *
      * En édition, le formulaire écrit **par-dessus** [origine] : tout ce qu'il
      * n'affiche pas — le temps chronométré, le numéro attribué, la signature du
-     * client, l'urgence — traverse l'opération intact. `modifieLe` est posé par
-     * le dépôt, seul juge de l'instant d'écriture.
+     * client — traverse l'opération intact. `modifieLe` est posé par le dépôt,
+     * seul juge de l'instant d'écriture.
+     *
+     * [adresse] et [telephone] n'y passent pas : ils vont à la fiche du client,
+     * pas à l'intervention.
      */
     fun versIntervention(): Intervention {
         val base = origine ?: Intervention(
@@ -98,6 +139,7 @@ data class EtatFormulaire(
             equipementId = equipementId,
             equipementNom = equipementNom,
             statut = statut,
+            urgente = urgente,
             notes = notes,
             dureeMin = dureeMin,
             technicienId = technicienId,
@@ -121,6 +163,7 @@ data class EtatFormulaire(
             equipementId = intervention.equipementId,
             equipementNom = intervention.equipementNom,
             statut = intervention.statut,
+            urgente = intervention.urgente,
             notes = intervention.notes,
             dureeMin = intervention.dureeMin,
             technicienId = intervention.technicienId,

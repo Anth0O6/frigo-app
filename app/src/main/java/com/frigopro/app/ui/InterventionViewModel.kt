@@ -260,9 +260,21 @@ class InterventionViewModel(
             initialValue = Duration.ZERO,
         )
 
-    fun onOuvrir(intervention: Intervention) {
+    fun onOuvrir(intervention: Intervention) = onOuvrirSur(intervention, OngletIntervention.FICHE)
+
+    /**
+     * Ouvre l'intervention directement sur un volet.
+     *
+     * C'est ce que fait la pastille d'une intervention en cours, et le bouton
+     * « Terminer » de sa carte : terminer ne se fait que par la clôture, et la
+     * clôture est sur le volet Rapport, où l'on fait d'abord signer. Ouvrir sur
+     * la fiche aurait laissé chercher le geste ; le faire à la place de
+     * l'utilisateur aurait clos une intervention sans signature ni relecture.
+     * Voir [GesteStatut].
+     */
+    fun onOuvrirSur(intervention: Intervention, cible: OngletIntervention) {
         _ouverte.value = intervention.id
-        _onglet.value = OngletIntervention.FICHE
+        _onglet.value = cible
         // La checklist est posée à l'ouverture plutôt qu'à la création de
         // l'intervention : une intervention saisie la semaine dernière doit la
         // recevoir aussi, et le dépôt ne la pose qu'une fois.
@@ -277,8 +289,8 @@ class InterventionViewModel(
      * le lancer. Le premier de ces trois n'apprenait rien à personne — on sait
      * chez qui l'on est, on vient de s'y garer — et le deuxième était à chercher.
      *
-     * L'intervention passe **en cours** par le même chemin que le chronomètre du
-     * volet des relevés, [InterventionRepository.basculerChrono] : un seul
+     * L'intervention passe **en cours** par le même chemin que le chronomètre de
+     * l'écran d'intervention, [InterventionRepository.basculerChrono] : un seul
      * endroit décide que le travail a commencé, et le statut suit le chronomètre
      * plutôt que d'être posé à part. Le `chronoAuto` des Réglages n'a donc rien à
      * voir ici — il vaut pour un statut changé à la main, où le chronomètre suit ;
@@ -348,7 +360,15 @@ class InterventionViewModel(
         viewModelScope.launch { interventions.poserTemps(courante, duree) }
     }
 
-    /** Clôt l'intervention : chrono arrêté, statut terminé, numéro attribué. */
+    /**
+     * Clôt l'intervention : chrono arrêté, statut terminé, numéro attribué.
+     *
+     * C'est le **seul** chemin vers « terminé » : la pastille de la tournée et le
+     * formulaire y menaient aussi, en écrivant le statut seul — sans arrêter le
+     * temps ni numéroter, alors que « Facturer » apparaît dès le statut terminé.
+     * Voir [GesteStatut]. L'écran demande confirmation avant d'appeler ceci :
+     * la référence attribuée ne se reprend pas.
+     */
     fun onCloturer() {
         val courante = etat.value?.intervention ?: return
         viewModelScope.launch {

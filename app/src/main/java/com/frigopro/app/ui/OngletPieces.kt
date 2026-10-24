@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -23,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -31,6 +35,7 @@ import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.LieuStock
 import com.frigopro.app.data.PiecePosee
 import com.frigopro.app.data.Photo
+import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampTexte
@@ -89,6 +94,7 @@ fun OngletPieces(
     magasin: List<ArticleEnStock> = emptyList(),
 ) {
     var saisieOuverte by remember { mutableStateOf(false) }
+    var aRetirer by remember { mutableStateOf<PiecePosee?>(null) }
 
     Column(
         modifier = modifier
@@ -101,7 +107,7 @@ fun OngletPieces(
             Encart(texte = "Aucune pièce posée. Celles que vous ajoutez ici se reportent sur le compte-rendu.")
         }
         etat.pieces.forEach { piece ->
-            LignePiece(piece = piece, onSupprimer = actions.onSupprimerPiece)
+            LignePiece(piece = piece, onSupprimer = { aRetirer = piece })
         }
         BoutonContour(
             texte = "+ Ajouter une pièce",
@@ -109,6 +115,37 @@ fun OngletPieces(
             modifier = Modifier.fillMaxWidth(),
         )
         EspaceVertical(24)
+    }
+
+    // Retirer une pièce ne la remet pas au camion, et la boîte le dit : la ligne
+    // ne désigne pas l'article, et une pièce réellement posée puis effacée du
+    // compte-rendu n'est pas revenue dans le véhicule. Le magasin se corrige
+    // depuis sa fiche, qui écrit une quantité absolue.
+    aRetirer?.let { piece ->
+        AlertDialog(
+            onDismissRequest = { aRetirer = null },
+            title = { Text(text = "Retirer cette pièce ?") },
+            text = {
+                Text(
+                    text = "« ${libellePiece(piece)} » sera retirée du compte-rendu. Elle n'est " +
+                        "pas remise au camion : si elle n'a pas été posée, corrigez le stock " +
+                        "depuis la fiche de l'article, au magasin.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        actions.onSupprimerPiece(piece.id)
+                        aRetirer = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text(text = "Retirer")
+                }
+            },
+            dismissButton = { TextButton(onClick = { aRetirer = null }) { Text(text = "Annuler") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
     }
 
     if (saisieOuverte) {
@@ -123,9 +160,20 @@ fun OngletPieces(
     }
 }
 
+/** « Détendeur TES2 ×2 » : ce qu'une confirmation nomme. */
+internal fun libellePiece(piece: PiecePosee): String =
+    "${piece.designation} ×${Nombres.enTexte(piece.quantite)}"
+
+/**
+ * Une pièce posée, et sa corbeille.
+ *
+ * Toucher la ligne l'effaçait sans rien demander, d'un frôlement en faisant
+ * défiler : la suppression passe désormais par une corbeille visible, puis par
+ * une confirmation. La ligne elle-même ne fait plus rien.
+ */
 @Composable
-private fun LignePiece(piece: PiecePosee, onSupprimer: (String) -> Unit) {
-    Carte(contour = true, onClick = { onSupprimer(piece.id) }) {
+private fun LignePiece(piece: PiecePosee, onSupprimer: () -> Unit) {
+    Carte(contour = true) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -144,6 +192,13 @@ private fun LignePiece(piece: PiecePosee, onSupprimer: (String) -> Unit) {
                 text = "×${Nombres.enTexte(piece.quantite)}",
                 style = StyleChiffrePetit,
                 color = MaterialTheme.colorScheme.secondary,
+            )
+            BoutonCarre(
+                icone = Icons.Filled.Delete,
+                description = "Retirer ${piece.designation}",
+                onClick = onSupprimer,
+                couleur = MaterialTheme.colorScheme.onSurfaceVariant,
+                fond = Color.Transparent,
             )
         }
     }

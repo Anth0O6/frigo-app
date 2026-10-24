@@ -45,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -86,6 +88,11 @@ import java.time.LocalTime
 fun TourneeRoute(
     /** Chiffrer depuis une intervention : la coquille seule sait changer d'onglet. */
     onAllerAuxDevis: () -> Unit,
+    /**
+     * Facturer depuis une intervention mène aux factures, sur la facture créée.
+     * Distinct de [onAllerAuxDevis] : facturer ne doit créer aucun devis.
+     */
+    onAllerAuxFactures: () -> Unit,
     /** Le manque annoncé par l'accueil mène au magasin, dans un autre onglet. */
     onVoirMagasin: () -> Unit,
     /**
@@ -145,6 +152,7 @@ fun TourneeRoute(
                 devis.onNouveau(detail.etat.value?.client)
                 onAllerAuxDevis()
             },
+            onAllerAuxFactures = onAllerAuxFactures,
             onModifierFiche = {
                 detail.etat.value?.intervention?.let(viewModel::onModifierIntervention)
             },
@@ -200,7 +208,14 @@ fun TourneeRoute(
             onNouvelleIntervention = viewModel::onNouvelleIntervention,
             onOuvrirIntervention = detail::onOuvrir,
             onModifierIntervention = viewModel::onModifierIntervention,
-            onChangerStatut = viewModel::onChangerStatut,
+            // Un seul chemin par transition : voir [GesteStatut].
+            onChangerStatut = { intervention ->
+                when (gesteStatut(intervention.statut)) {
+                    GesteStatut.DEMARRER -> viewModel.onDemarrer(intervention)
+                    GesteStatut.CLOTURER, GesteStatut.VOIR_RAPPORT ->
+                        detail.onOuvrirSur(intervention, OngletIntervention.RAPPORT)
+                }
+            },
             frise = frise,
             onBasculerVue = viewModel::onBasculerVue,
             recherche = recherche,
@@ -289,6 +304,10 @@ fun InterventionsScreen(
     onNouvelleIntervention: () -> Unit,
     onOuvrirIntervention: (Intervention) -> Unit,
     onModifierIntervention: (Intervention) -> Unit,
+    /**
+     * La pastille d'une ligne, et « Terminer » sur la carte en cours. Ce n'est
+     * plus un cycle de statuts : voir [GesteStatut] pour ce que chacun fait.
+     */
     onChangerStatut: (Intervention) -> Unit,
     /** La journée en frise horaire plutôt qu'en liste. */
     frise: Boolean,
@@ -735,6 +754,11 @@ private fun SeparateurVertical() {
  * C'est la seule carte de la liste qui porte des boutons : celle qu'on est en
  * train de faire est la seule sur laquelle on agit sans réfléchir — terminer,
  * appeler, y aller. Les autres se contentent d'attendre.
+ *
+ * « Terminer » **ouvre le volet Rapport** et ne termine rien d'un appui : il
+ * écrivait le statut seul, sans arrêter le temps ni attribuer la référence du
+ * compte-rendu. Sur le Rapport on fait signer, puis on clôture — le seul chemin
+ * vers « terminé ». Voir [GesteStatut].
  */
 @Composable
 private fun CarteEnCours(
@@ -826,8 +850,9 @@ private fun CarteEnCours(
  * Une intervention qui attend, ou qui est faite.
  *
  * Une ligne, une heure, un nom : de quoi balayer la journée du pouce. La
- * pastille de droite change le statut sans ouvrir quoi que ce soit — c'est le
- * geste qu'on fait en remontant dans la camionnette.
+ * pastille de droite démarre une intervention planifiée sans rien ouvrir — c'est
+ * le geste qu'on fait en descendant de la camionnette —, et mène au compte-rendu
+ * de toutes les autres. Voir [GesteStatut].
  */
 @Composable
 private fun LigneCompacte(
@@ -884,16 +909,30 @@ private fun LigneCompacte(
                 couleur = MaterialTheme.colorScheme.onSurfaceVariant,
                 fond = androidx.compose.ui.graphics.Color.Transparent,
             )
-            PastilleStatut(terminee = terminee, onClick = onChangerStatut)
+            PastilleStatut(statut = intervention.statut, onClick = onChangerStatut)
         }
     }
 }
 
-/** Le rond qu'on touche pour avancer : vide à faire, coché terminé. */
+/**
+ * Le rond qu'on touche pour avancer : vide à faire, coché terminé.
+ *
+ * Sa description dit ce que l'appui **fait**, et non l'état qu'il montre :
+ * c'est elle que lit un lecteur d'écran, et « terminée » sur un rond qui ouvre
+ * le compte-rendu promettrait un autre geste que celui qui se produit.
+ */
 @Composable
-private fun PastilleStatut(terminee: Boolean, onClick: () -> Unit) {
+private fun PastilleStatut(statut: StatutIntervention, onClick: () -> Unit) {
+    val terminee = statut == StatutIntervention.TERMINEE
+    val description = when (gesteStatut(statut)) {
+        GesteStatut.DEMARRER -> "Démarrer l'intervention"
+        GesteStatut.CLOTURER -> "Ouvrir le compte-rendu pour clôturer"
+        GesteStatut.VOIR_RAPPORT -> "Voir le compte-rendu"
+    }
     Surface(
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier
+            .size(40.dp)
+            .semantics { contentDescription = description },
         shape = MaterialTheme.shapes.extraLarge,
         color = androidx.compose.ui.graphics.Color.Transparent,
         onClick = onClick,
@@ -902,7 +941,7 @@ private fun PastilleStatut(terminee: Boolean, onClick: () -> Unit) {
             if (terminee) {
                 Icon(
                     imageVector = Icons.Filled.Check,
-                    contentDescription = "Rouvrir l'intervention",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )
             } else {

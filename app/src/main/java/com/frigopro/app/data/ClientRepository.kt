@@ -67,6 +67,32 @@ class ClientRepository(
     }
 
     /**
+     * Complète la fiche d'un client avec une adresse et un téléphone, **là où
+     * elle est vide** et nulle part ailleurs ; rend la fiche telle qu'elle est
+     * après coup, ou `null` si le client n'existe pas.
+     *
+     * C'est le chemin par lequel la feuille d'intervention donne enfin de quoi
+     * appeler et y aller : le carnet se remplissant depuis la tournée, où seuls
+     * le nom et la ville étaient demandés, un client inscrit ainsi ne portait
+     * jamais ni l'un ni l'autre. La règle de non-écrasement est le point : une
+     * adresse relevée sur la fiche avec soin ne doit pas être remplacée par ce
+     * qu'on a tapé en passant dans une intervention — le carnet se corrige
+     * depuis la fiche, qui est faite pour cela.
+     *
+     * Rien n'est écrit quand rien ne change, pour ne pas poser un `modifieLe`
+     * neuf sur une ligne qu'on n'a pas touchée : c'est lui qui départagera un
+     * jour deux téléphones.
+     */
+    suspend fun completer(clientId: String, adresse: String, telephone: String): Client? {
+        val fiche = dao.tous().firstOrNull { it.id == clientId } ?: return null
+        val complete = fiche.copy(
+            adresse = fiche.adresse.ifBlank { adresse.trim() },
+            telephone = fiche.telephone.ifBlank { telephone.trim() },
+        )
+        return if (complete == fiche) fiche else enregistrer(complete)
+    }
+
+    /**
      * Le site de ce nom chez ce donneur d'ordre, ou `null`.
      *
      * Sert à refuser un doublon là où il en est un — sous le même parent — et

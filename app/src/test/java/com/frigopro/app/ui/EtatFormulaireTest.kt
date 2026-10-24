@@ -26,6 +26,37 @@ class EtatFormulaireTest {
         assertTrue(EtatFormulaire(client = "Boucherie Lemoine", ville = "Rouen").estValide)
     }
 
+    /** Le bouton grisé dit pourquoi, et c'est la même liste qui décide. */
+    @Test
+    fun `ce qui manque est nomme, et c'est ce qui decide de la validite`() {
+        assertEquals(listOf("le client", "la ville"), EtatFormulaire().manque)
+        assertEquals(listOf("la ville"), EtatFormulaire(client = "Boucherie Lemoine").manque)
+        assertEquals(emptyList<String>(), EtatFormulaire(client = "Boucherie Lemoine", ville = "Rouen").manque)
+    }
+
+    /**
+     * L'urgence est saisie par la feuille : elle traverse dans les deux sens, et
+     * se retire aussi.
+     */
+    @Test
+    fun `l'urgence se pose et se retire par la feuille`() {
+        val posee = EtatFormulaire(client = "A", ville = "B", urgente = true).versIntervention()
+        assertTrue(posee.urgente)
+
+        val retiree = EtatFormulaire.depuis(posee).copy(urgente = false).versIntervention()
+        assertFalse(retiree.urgente)
+        assertEquals(posee.id, retiree.id)
+    }
+
+    /** L'adresse et le téléphone vont à la fiche du client, pas à l'intervention. */
+    @Test
+    fun `l'adresse saisie ne touche pas a l'intervention`() {
+        val sans = EtatFormulaire(id = "id-1", client = "A", ville = "B")
+        val avec = sans.copy(adresse = "12 rue des Halles", telephone = "02 35 00 00 00")
+
+        assertEquals(sans.versIntervention(), avec.versIntervention())
+    }
+
     @Test
     fun `un formulaire sans identifiant est une creation`() {
         assertTrue(EtatFormulaire().estCreation)

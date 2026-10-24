@@ -13,6 +13,8 @@ import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.TypeIntervention
@@ -71,6 +73,46 @@ enum class VueTournee(val libelle: String) {
 }
 
 /**
+ * Ce que fait la pastille de statut d'une ligne — et le bouton « Terminer » de
+ * la carte en cours —, selon où en est l'intervention.
+ *
+ * La pastille faisait tourner le statut en boucle — planifié, en cours,
+ * terminé, puis de nouveau planifié — en écrivant le statut seul. C'était un
+ * second chemin vers « en cours », qui ne lançait pas le chronomètre, et un
+ * second chemin vers « terminé », qui ne l'arrêtait pas et ne numérotait pas le
+ * compte-rendu ; « Facturer » apparaissait pourtant dès le statut terminé, sur
+ * une intervention sans référence et au temps encore courant. Et un appui de
+ * trop rouvrait une intervention close.
+ *
+ * Il n'y a plus qu'**un chemin par transition**. Commencer passe par le
+ * chronomètre ([InterventionRepository.basculerChrono]), comme « Démarrer » sur
+ * l'accueil : un seul endroit décide que le travail a commencé. Terminer ne se
+ * fait que par la **clôture**, qui arrête le temps et attribue la référence, et
+ * la pastille y **mène** — elle ouvre l'intervention sur le volet Rapport, où
+ * l'on fait signer puis où l'on clôture — au lieu de la faire à moitié. Une
+ * intervention terminée ouvre son compte-rendu : elle ne se rouvre plus d'un
+ * doigt qui glisse.
+ */
+enum class GesteStatut {
+    /** Lancer le chronomètre, ce qui met l'intervention en cours. */
+    DEMARRER,
+
+    /** Ouvrir le volet Rapport pour clôturer. */
+    CLOTURER,
+
+    /** Ouvrir le compte-rendu d'une intervention déjà close. */
+    VOIR_RAPPORT,
+}
+
+/** Voir [GesteStatut]. `A_VALIDER` mène à la clôture comme `EN_COURS`. */
+fun gesteStatut(statut: StatutIntervention): GesteStatut = when (statut) {
+    StatutIntervention.PLANIFIEE -> GesteStatut.DEMARRER
+    StatutIntervention.EN_COURS -> GesteStatut.CLOTURER
+    StatutIntervention.A_VALIDER -> GesteStatut.CLOTURER
+    StatutIntervention.TERMINEE -> GesteStatut.VOIR_RAPPORT
+}
+
+/**
  * Détient l'état de l'écran « Interventions ».
  *
  * L'UI observe [jour], [lignes], [clients], [types] et [formulaire], et remonte
@@ -82,6 +124,13 @@ class InterventionsViewModel(
     private val typeRepository: TypeInterventionRepository,
     private val equipementRepository: EquipementRepository,
     private val technicienRepository: TechnicienRepository,
+    /**
+     * Les réglages, dont ce ViewModel ne lit qu'une chose : `chronoAuto`, au
+     * moment d'enregistrer une intervention passée « en cours » à la main.
+     * Lus par une fonction `suspend` et non tenus en `StateFlow` : personne ici
+     * ne collecterait ce flux, et `.value` resterait à sa valeur initiale.
+     */
+    private val parametresRepository: ParametresRepository,
 ) : ViewModel() {
 
     private val _jour = MutableStateFlow(LocalDate.now())
@@ -361,15 +410,21 @@ class InterventionsViewModel(
     }
 
     /**
-     * Fait avancer le statut depuis la liste, sans ouvrir le formulaire :
-     * marquer une intervention terminée doit tenir en un geste, sur place.
+     * Commence le travail depuis la pastille d'une ligne, sans rien ouvrir.
+     *
+     * Par le chronomètre et non par le statut seul : voir [GesteStatut]. Le
+     * statut suit le chronomètre ([InterventionRepository.basculerChrono]),
+     * exactement comme « Démarrer » sur l'accueil.
+     *
+     * Un chronomètre qui tourne déjà n'est pas mis en pause : `basculerChrono`
+     * est une bascule, et le doigt qui insiste sur une pastille ne veut jamais
+     * arrêter ce qu'il vient de lancer. Seule une intervention **planifiée** se
+     * démarre ici : les autres ont leur geste, qui ouvre l'intervention.
      */
-    fun onChangerStatut(intervention: Intervention) {
-        viewModelScope.launch {
-            interventionRepository.enregistrer(
-                intervention.copy(statut = intervention.statut.suivant()),
-            )
-        }
+    fun onDemarrer(intervention: Intervention) {
+        if (gesteStatut(intervention.statut) != GesteStatut.DEMARRER) return
+        if (intervention.chrono.enMarche) return
+        viewModelScope.launch { interventionRepository.basculerChrono(intervention) }
     }
 
     fun onFormulaireChange(etat: EtatFormulaire) {
@@ -456,7 +511,16 @@ class InterventionsViewModel(
      * Une saisie incomplète laisse le formulaire ouvert.
      *
      * Un client absent du carnet y est inscrit au passage : c'est ainsi que le
-     * carnet se remplit, sans écran de saisie dédié.
+     * carnet se remplit, sans écran de saisie dédié. L'adresse et le téléphone
+     * saisis complètent sa fiche **là où elle est vide** — voir
+     * [ClientRepository.completer].
+     *
+     * Une intervention que la feuille fait passer « en cours » lance le
+     * chronomètre si le réglage `chronoAuto` le demande : c'est le sens que son
+     * KDoc lui donne — démarrer le temps dès que l'intervention passe en cours,
+     * sans second geste —, et c'est le seul endroit où le statut passe encore en
+     * cours **sans** le chronomètre. Désactivé, ce qui est le défaut, le statut
+     * change seul : un chrono oublié vaut mieux qu'un chrono faux.
      */
     fun onValiderFormulaire() {
         val etat = _formulaire.value ?: return
@@ -467,6 +531,9 @@ class InterventionsViewModel(
         viewModelScope.launch {
             val clientId = etat.clientId
                 ?: clientRepository.trouverOuCreer(etat.client, etat.ville).id
+            if (etat.adresse.isNotBlank() || etat.telephone.isNotBlank()) {
+                clientRepository.completer(clientId, etat.adresse, etat.telephone)
+            }
             // Le donneur d'ordre entre au carnet par le même chemin : sans cela,
             // une sous-traitance tapée à la main laisserait un nom sur
             // l'intervention et rien dans le carnet, et la facture partirait sans
@@ -474,9 +541,15 @@ class InterventionsViewModel(
             val donneurId = etat.clientFactureId ?: etat.clientFactureNom.trim()
                 .takeIf { it.isNotBlank() }
                 ?.let { clientRepository.trouverOuCreer(it, etat.ville).id }
-            interventionRepository.enregistrer(
-                etat.versIntervention().copy(clientId = clientId, clientFactureId = donneurId),
-            )
+            val aEcrire = etat.versIntervention().copy(clientId = clientId, clientFactureId = donneurId)
+            val passeEnCours = aEcrire.statut == StatutIntervention.EN_COURS &&
+                etat.origine?.statut != StatutIntervention.EN_COURS
+            if (passeEnCours && !aEcrire.chrono.enMarche && parametresRepository.lire().chronoAuto) {
+                // `basculerChrono` enregistre lui-même : une seule écriture.
+                interventionRepository.basculerChrono(aEcrire)
+            } else {
+                interventionRepository.enregistrer(aEcrire)
+            }
         }
     }
 
@@ -507,6 +580,7 @@ class InterventionsViewModel(
                     conteneur.typesIntervention,
                     conteneur.equipements,
                     conteneur.techniciens,
+                    conteneur.parametres,
                 )
             }
         }

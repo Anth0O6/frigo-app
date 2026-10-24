@@ -125,6 +125,9 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
             when (onglet) {
                 Onglet.TOURNEE -> TourneeRoute(
                     onAllerAuxDevis = { onglet = Onglet.FACTURES },
+                    // Le même onglet que les devis : c'est la facture ouverte
+                    // dans le ViewModel partagé qui y fait montrer les factures.
+                    onAllerAuxFactures = { onglet = Onglet.FACTURES },
                     onVoirMagasin = {
                         carnet = VueCarnet.MAGASIN
                         onglet = Onglet.CARNETS

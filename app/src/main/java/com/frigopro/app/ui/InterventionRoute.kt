@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
+import com.frigopro.app.data.Intervention
 import kotlinx.coroutines.launch
 
 /**
@@ -41,6 +42,15 @@ fun InterventionRoute(
      * c'est la coquille qui le sait, et c'est elle qui bascule.
      */
     onCreerDevis: () -> Unit,
+    /**
+     * Mener à l'onglet des factures, sur la facture qu'on vient de créer.
+     *
+     * Un rappel à part, et non `onCreerDevis` : « Facturer » passait par lui,
+     * si bien que chaque facture créée depuis une intervention laissait derrière
+     * elle un **devis vide et numéroté** — un rang de la séquence des devis
+     * consommé pour rien, et une ligne fantôme dans la liste.
+     */
+    onAllerAuxFactures: () -> Unit,
     /** Ouvrir le formulaire de l'intervention : la coquille seule le détient. */
     onModifierFiche: () -> Unit,
     modifier: Modifier = Modifier,
@@ -171,15 +181,8 @@ fun InterventionRoute(
             onCloturer = viewModel::onCloturer,
             onBasculerPoint = viewModel::onBasculerPoint,
             onCreerDevis = onCreerDevis,
-            // Facturer crée la facture — ou rouvre celle qui existe déjà — et la
-            // pose comme facture ouverte. La coquille bascule ensuite sur
-            // l'onglet, qui la montre : le ViewModel des factures est partagé.
             onFacturer = {
-                val courante = etat?.intervention
-                if (courante != null) {
-                    facturesViewModel.onFacturerIntervention(courante)
-                    onCreerDevis()
-                }
+                facturerIntervention(etat?.intervention, facturesViewModel, onAllerAuxFactures)
             },
         ),
         modifier = modifier,
@@ -208,6 +211,33 @@ fun InterventionRoute(
             onFermer = { signatureOuverte = false },
         )
     }
+}
+
+/**
+ * Facturer une intervention : créer sa facture — ou rouvrir celle qui existe
+ * déjà — et mener à l'onglet des factures, qui la montre.
+ *
+ * Rien d'autre, et c'est le point : ce geste appelait aussi le chemin « créer un
+ * devis », qui ouvrait un devis vide et numéroté avant que l'onglet ne bascule
+ * sur la facture. La signature le rend désormais impossible — la fonction n'a
+ * accès à aucun devis.
+ *
+ * L'onglet sait montrer la facture sans qu'on lui transporte d'identifiant : le
+ * [FacturesViewModel] est partagé (`viewModel()` rend une seule instance par
+ * classe), [FacturesViewModel.onFacturerIntervention] la pose comme facture
+ * ouverte, et `FacturationRoute` bascule sur la vue des factures dès qu'une
+ * facture est ouverte.
+ *
+ * Une fonction et non une lambda dans la route, pour s'éprouver sans Compose.
+ */
+internal fun facturerIntervention(
+    intervention: Intervention?,
+    factures: FacturesViewModel,
+    onAllerAuxFactures: () -> Unit,
+) {
+    if (intervention == null) return
+    factures.onFacturerIntervention(intervention)
+    onAllerAuxFactures()
 }
 
 /**

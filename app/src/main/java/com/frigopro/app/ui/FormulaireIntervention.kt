@@ -50,6 +50,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
@@ -224,6 +226,12 @@ fun FormulaireIntervention(
                 keyboardOptions = OPTIONS_CLAVIER,
             )
 
+            ChampsCoordonnees(
+                etat = etat,
+                fiche = clients.firstOrNull { it.id == etat.clientId },
+                onEtatChange = onEtatChange,
+            )
+
             ChampDonneurDOrdre(
                 etat = etat,
                 clients = clients,
@@ -376,22 +384,65 @@ fun FormulaireIntervention(
                 )
             }
 
+            // L'urgence, enfin saisissable : affichée partout, elle n'était posée
+            // nulle part. Un interrupteur et non une pastille de statut, parce
+            // qu'elle est indépendante de l'avancement — une urgence reste une
+            // urgence une fois terminée.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Urgence", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = "Signalée sur la tournée, le planning et le bandeau du jour.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = etat.urgente,
+                    onCheckedChange = { onEtatChange(etat.copy(urgente = it)) },
+                )
+            }
+
             Text(
                 text = "Statut",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                StatutIntervention.entries.forEach { statut ->
-                    FilterChip(
-                        selected = etat.statut == statut,
-                        onClick = { onEtatChange(etat.copy(statut = statut)) },
-                        label = { Text(text = statut.libelle) },
-                    )
+            // « Terminé » n'est plus proposé ici : terminer ne se fait que par la
+            // clôture, qui arrête le temps et attribue la référence du
+            // compte-rendu — la puce l'écrivait seule, sans l'un ni l'autre. Et
+            // une intervention close ne se rouvre pas d'ici : rouvrir garderait
+            // un numéro attribué sur une intervention de nouveau « planifiée ».
+            // Voir [GesteStatut].
+            if (etat.statut == StatutIntervention.TERMINEE) {
+                Text(
+                    text = "Terminée — clôturée depuis son compte-rendu, elle ne se rouvre pas d'ici.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatutIntervention.entries
+                        .filter { it != StatutIntervention.TERMINEE }
+                        .forEach { statut ->
+                            FilterChip(
+                                selected = etat.statut == statut,
+                                onClick = { onEtatChange(etat.copy(statut = statut)) },
+                                label = { Text(text = statut.libelle) },
+                            )
+                        }
                 }
+                Text(
+                    text = "Pour terminer, ouvrez l'intervention et clôturez-la depuis son compte-rendu.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             OutlinedTextField(
@@ -427,6 +478,17 @@ fun FormulaireIntervention(
                 Button(onClick = onValider, enabled = etat.estValide) {
                     Text(text = if (etat.estCreation) "Ajouter" else "Enregistrer")
                 }
+            }
+            // Le bouton grisé dit pourquoi : sans cela il se lisait comme une
+            // panne, et l'on cherchait le défaut ailleurs que dans le champ vide.
+            if (!etat.estValide) {
+                Text(
+                    text = "Il manque ${etat.manque.joinToString(" et ")}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End,
+                )
             }
         }
     }
@@ -618,6 +680,83 @@ private fun ChampDonneurDOrdre(
                 )
             }
         }
+    }
+}
+
+/**
+ * L'adresse et le téléphone du client, **facultatifs**, pour compléter sa fiche.
+ *
+ * La feuille ne demandait que le nom et la ville : tout client inscrit depuis la
+ * tournée restait sans adresse ni téléphone, et « Y aller » comme « Appeler »
+ * disparaissaient de son intervention sans un mot. Les deux champs remplissent
+ * la fiche **seulement là où elle est vide** — une adresse déjà relevée ne
+ * s'écrase pas d'une frappe faite en passant.
+ *
+ * C'est pourquoi un champ que la fiche renseigne déjà ne s'affiche pas en
+ * saisie : il se montre en clair, pour qu'on sache qu'il est connu, et se
+ * corrige depuis le carnet. Proposer un champ qui serait ensuite ignoré aurait
+ * menti.
+ */
+@Composable
+private fun ChampsCoordonnees(
+    etat: EtatFormulaire,
+    /** La fiche du client choisi dans le carnet ; `null` pour un nom tapé. */
+    fiche: Client?,
+    onEtatChange: (EtatFormulaire) -> Unit,
+) {
+    val adresseConnue = fiche?.adresse?.takeIf { it.isNotBlank() }
+    val telephoneConnu = fiche?.telephone?.takeIf { it.isNotBlank() }
+
+    if (adresseConnue != null) {
+        CoordonneeConnue(intitule = "Adresse", valeur = adresseConnue)
+    } else {
+        OutlinedTextField(
+            value = etat.adresse,
+            onValueChange = { onEtatChange(etat.copy(adresse = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "Adresse (facultatif)") },
+            supportingText = { Text(text = "Pour « Y aller » : complète la fiche du client.") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Next,
+            ),
+        )
+    }
+
+    if (telephoneConnu != null) {
+        CoordonneeConnue(intitule = "Téléphone", valeur = telephoneConnu)
+    } else {
+        OutlinedTextField(
+            value = etat.telephone,
+            onValueChange = { onEtatChange(etat.copy(telephone = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "Téléphone (facultatif)") },
+            supportingText = { Text(text = "Pour « Appeler » : complète la fiche du client.") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Phone,
+                imeAction = ImeAction.Next,
+            ),
+        )
+    }
+}
+
+/** Une coordonnée que la fiche porte déjà : lue, pas ressaisie. */
+@Composable
+private fun CoordonneeConnue(intitule: String, valeur: String) {
+    Column {
+        Text(
+            text = intitule,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = valeur,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

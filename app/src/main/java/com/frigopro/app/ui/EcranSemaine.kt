@@ -3,6 +3,7 @@ package com.frigopro.app.ui
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -245,30 +246,46 @@ private fun LigneHoraire(
                 .width(46.dp)
                 .padding(top = 14.dp),
         )
-        // Pas de bouton ici : la rangée d'une semaine est trop étroite pour en
-        // porter un sans écraser l'heure et le nom. L'appui long corrige, et
-        // l'écran de l'intervention — à un appui simple — porte le bouton visible.
+        // Un bouton visible, et pas seulement l'appui long : celui-ci ne se
+        // devine pas et se perd avec des gants. La rangée passait pour trop
+        // étroite ; elle laisse pourtant au nom plus de la moitié de la carte une
+        // fois le bouton posé, et un nom tronqué se lit encore là où un geste
+        // caché ne se trouve pas. L'appui long reste, en doublure.
         Carte(
             liseré = liseré,
             onClick = onOuvrir,
             onLongClick = onModifier,
             modifier = Modifier.weight(1f),
         ) {
-            Text(
-                text = intervention.client,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = listOf(intervention.typeLibelle, intervention.ville)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = intervention.client,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = listOf(intervention.typeLibelle, intervention.ville)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                BoutonCarre(
+                    icone = Icons.Filled.Edit,
+                    description = "Modifier ${intervention.client}",
+                    onClick = onModifier,
+                    couleur = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fond = Color.Transparent,
+                )
+            }
         }
     }
 }

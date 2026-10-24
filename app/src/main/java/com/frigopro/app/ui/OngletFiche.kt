@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.PointChecklist
 import com.frigopro.app.data.RentabiliteIntervention
 import com.frigopro.app.ui.composants.BoutonContour
-import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -111,6 +110,31 @@ fun OngletFiche(
             }
         }
 
+        // Ce qui manque est dit, et mène à la feuille qui le saisit. Les deux
+        // boutons disparaissaient sans un mot pour tout client inscrit depuis la
+        // tournée, où ni l'adresse ni le téléphone n'étaient demandés : on
+        // croyait la fonction absente. La feuille ne complète la fiche que là où
+        // elle est vide.
+        val sansAdresse = client?.localisable != true
+        val sansTelephone = client?.appelable != true
+        if (sansAdresse || sansTelephone) {
+            Encart(
+                texte = when {
+                    sansAdresse && sansTelephone ->
+                        "Ni adresse ni téléphone sur la fiche du client : « Y aller » et " +
+                            "« Appeler » ne peuvent pas se proposer."
+                    sansAdresse -> "Pas d'adresse sur la fiche du client : « Y aller » ne peut pas se proposer."
+                    else -> "Pas de téléphone sur la fiche du client : « Appeler » ne peut pas se proposer."
+                },
+                complement = when {
+                    sansAdresse && sansTelephone -> "Ajouter l'adresse et le téléphone"
+                    sansAdresse -> "Ajouter l'adresse"
+                    else -> "Ajouter le téléphone"
+                },
+                onClick = actions.onModifierFiche,
+            )
+        }
+
         val machine = etat.equipement
         if (machine != null || intervention.equipementNom.isNotBlank()) {
             Carte(contour = true) {
@@ -174,17 +198,8 @@ fun OngletFiche(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        // Facturer se propose dès que l'intervention est terminée, et pas
-        // avant : facturer un travail en cours reviendrait à demander de l'argent
-        // pour quelque chose qui n'est pas fini. Le brouillon reste modifiable —
-        // c'est l'émission qui fige, pas ce bouton.
-        if (etat.intervention.statut.close) {
-            BoutonPlein(
-                texte = "Facturer cette intervention",
-                onClick = actions.onFacturer,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        // « Facturer » a quitté ce volet pour celui du Rapport, où la clôture
+        // mène : c'est là qu'on arrive une fois le travail clos.
 
         SectionRentabilite(rentabilite = etat.rentabilite)
         EspaceVertical(24)

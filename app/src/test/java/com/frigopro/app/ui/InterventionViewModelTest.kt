@@ -261,6 +261,44 @@ class InterventionViewModelTest {
         assertEquals(premier, daoInterventions.contenu.single().numero)
     }
 
+    /**
+     * « Terminer » et la pastille d'une intervention en cours mènent au volet
+     * Rapport, où l'on clôture : ouvrir sur la fiche aurait laissé chercher le
+     * geste, et terminer à la place de l'utilisateur aurait clos sans signature.
+     * L'ouverture elle-même n'écrit rien.
+     */
+    @Test
+    fun `ouvrir sur le rapport y mene sans rien cloturer`() = runTest {
+        val enCours = INTERVENTION.copy(statut = StatutIntervention.EN_COURS)
+        daoInterventions.enregistrer(enCours)
+        val viewModel = creerViewModel()
+
+        viewModel.onOuvrirSur(enCours, OngletIntervention.RAPPORT)
+        advanceUntilIdle()
+
+        assertEquals(OngletIntervention.RAPPORT, viewModel.onglet.value)
+        assertEquals(enCours.id, viewModel.ouverte.value)
+        val ligne = daoInterventions.contenu.single()
+        assertEquals("rien n'est clos d'un appui", StatutIntervention.EN_COURS, ligne.statut)
+        assertEquals("", ligne.numero)
+    }
+
+    /** La confirmation de suppression nomme ce qui sort du registre, à sa date. */
+    @Test
+    fun `un mouvement se nomme par sa masse, son fluide, son sens et la date de l'intervention`() {
+        val mouvement = com.frigopro.app.data.MouvementFluide(
+            interventionId = INTERVENTION.id,
+            fluide = "R-449A",
+            sens = SensFluide.AJOUT,
+            masseKg = 1.2,
+        )
+
+        assertEquals(
+            "1,2 kg de R-449A ajouté le 12/03",
+            libelleMouvement(mouvement, LocalDate.of(2026, 3, 12)),
+        )
+    }
+
     // — Relevés ————————————————————————————————————————————————————————————
 
     /**

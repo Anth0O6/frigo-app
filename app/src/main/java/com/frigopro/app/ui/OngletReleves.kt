@@ -9,8 +9,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.Fluides
@@ -28,6 +31,7 @@ import com.frigopro.app.data.MouvementFluide
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.arrondiDixieme
 import com.frigopro.app.data.enDuree
+import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonDiscret
 import com.frigopro.app.ui.composants.Carte
@@ -170,6 +174,11 @@ fun OngletReleves(
  * figurera sur le compte-rendu, et un technicien doit pouvoir vérifier d'un
  * coup d'œil qu'elle n'est pas absurde — un chrono lancé la veille et oublié
  * se voit immédiatement.
+ *
+ * Elle **affiche** le chronomètre et ne le commande pas : le seul bouton est
+ * celui de la barre du bas, visible depuis les cinq volets. Deux boutons pour
+ * une même bascule finissaient par se contredire sous les yeux — « Pause » ici,
+ * « Reprendre » en bas, selon celui qu'on avait touché en dernier.
  */
 @Composable
 private fun CarteTempsPasse(
@@ -212,12 +221,6 @@ private fun CarteTempsPasse(
                     )
                 }
             }
-            BoutonContour(
-                texte = if (chrono.enMarche) "Pause" else "Démarrer",
-                onClick = actions.onBasculerChrono,
-                couleur = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 4.dp),
-            )
         }
 
         // Le chronomètre suppose qu'on y pense en arrivant. On n'y pense pas
@@ -343,6 +346,7 @@ private fun libelleTempsPasse(minutes: Int): String {
 @Composable
 private fun SectionFluide(etat: EtatIntervention, actions: ActionsIntervention) {
     var saisieOuverte by remember { mutableStateOf<SensFluide?>(null) }
+    var aSupprimer by remember { mutableStateOf<MouvementFluide?>(null) }
 
     Section(intitule = "Fluide") {
         Carte(contour = true) {
@@ -395,8 +399,35 @@ private fun SectionFluide(etat: EtatIntervention, actions: ActionsIntervention) 
             }
         }
         etat.mouvements.forEach { mouvement ->
-            LigneMouvement(mouvement = mouvement, onSupprimer = actions.onSupprimerMouvement)
+            LigneMouvement(mouvement = mouvement, onSupprimer = { aSupprimer = mouvement })
         }
+    }
+
+    aSupprimer?.let { mouvement ->
+        AlertDialog(
+            onDismissRequest = { aSupprimer = null },
+            title = { Text(text = "Retirer ce mouvement du registre ?") },
+            text = {
+                Text(
+                    text = "« ${libelleMouvement(mouvement, etat.intervention.date)} » sortira du " +
+                        "registre des fluides. C'est une donnée réglementaire : ne la retirez " +
+                        "que si elle a été saisie par erreur.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        actions.onSupprimerMouvement(mouvement.id)
+                        aSupprimer = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text(text = "Retirer")
+                }
+            },
+            dismissButton = { TextButton(onClick = { aSupprimer = null }) { Text(text = "Annuler") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
     }
 
     val sens = saisieOuverte
@@ -413,9 +444,18 @@ private fun SectionFluide(etat: EtatIntervention, actions: ActionsIntervention) 
     }
 }
 
+/**
+ * Une ligne du registre, et sa corbeille.
+ *
+ * Toucher la ligne l'effaçait, sans rien demander : un frôlement en faisant
+ * défiler sortait un mouvement du registre réglementaire. La suppression passe
+ * maintenant par une **corbeille visible**, à la taille des cibles du mode gants,
+ * puis par une confirmation qui nomme ce qui part ; la ligne elle-même ne fait
+ * plus rien.
+ */
 @Composable
-private fun LigneMouvement(mouvement: MouvementFluide, onSupprimer: (String) -> Unit) {
-    Carte(onClick = { onSupprimer(mouvement.id) }) {
+private fun LigneMouvement(mouvement: MouvementFluide, onSupprimer: () -> Unit) {
+    Carte {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -439,6 +479,13 @@ private fun LigneMouvement(mouvement: MouvementFluide, onSupprimer: (String) -> 
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },
+            )
+            BoutonCarre(
+                icone = Icons.Filled.Delete,
+                description = "Retirer ce mouvement du registre",
+                onClick = onSupprimer,
+                couleur = MaterialTheme.colorScheme.onSurfaceVariant,
+                fond = Color.Transparent,
             )
         }
     }
@@ -502,6 +549,17 @@ private fun DialogueMouvementFluide(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
 }
+
+/**
+ * « 1,2 kg de R-449A ajouté le 12/03 » : ce qu'une confirmation nomme.
+ *
+ * La date est celle de l'**intervention**, comme au registre, et non celle de la
+ * saisie : c'est sous elle que la ligne y figure, et c'est elle qu'un contrôle
+ * rapproche de la fiche.
+ */
+internal fun libelleMouvement(mouvement: MouvementFluide, date: java.time.LocalDate): String =
+    "${Nombres.enTexte(mouvement.masseKg)} kg de ${mouvement.fluide.ifBlank { "fluide" }} " +
+        "${mouvement.sens.libelle.lowercase()} le ${jourCourt(date)}"
 
 /** « GWP 2141 · charge 6,2 kg », ou ce qu'on en sait. */
 private fun descriptionCharge(etat: EtatIntervention): String {

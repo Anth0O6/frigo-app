@@ -9,11 +9,14 @@ import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.FauxClientDao
 import com.frigopro.app.data.FauxEquipementDao
 import com.frigopro.app.data.FauxInterventionDao
+import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxTypeInterventionDao
 import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.FauxTechnicienDao
 import com.frigopro.app.data.InterventionRepository
+import com.frigopro.app.data.Parametres
+import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.data.StatutIntervention
 import com.frigopro.app.data.TypeIntervention
@@ -46,6 +49,7 @@ class InterventionsViewModelTest {
     private val daoTypes = FauxTypeInterventionDao(dao)
     private val daoEquipements = FauxEquipementDao(dao)
     private val daoTechniciens = FauxTechnicienDao(dao)
+    private val daoParametres = FauxParametresDao()
 
     @After
     fun nettoyer() {
@@ -126,44 +130,186 @@ class InterventionsViewModelTest {
         assertTrue(dao.contenu.isEmpty())
     }
 
+    /**
+     * Un seul chemin par transition : la pastille commence le travail par le
+     * chronomètre, mène à la clôture pour terminer, et ouvre le compte-rendu
+     * d'une intervention close au lieu de la rouvrir.
+     */
     @Test
-    fun `changer le statut fait avancer l'intervention en boucle`() = runTest {
-        val viewModel = creerViewModel()
-        enregistrer(viewModel, client = "Fromagerie Hardy", ville = "Caudebec")
-        advanceUntilIdle()
-
-        assertEquals(StatutIntervention.PLANIFIEE, dao.contenu.single().statut)
-
-        viewModel.onChangerStatut(dao.contenu.single())
-        advanceUntilIdle()
-        assertEquals(StatutIntervention.EN_COURS, dao.contenu.single().statut)
-
-        viewModel.onChangerStatut(dao.contenu.single())
-        advanceUntilIdle()
-        assertEquals(StatutIntervention.TERMINEE, dao.contenu.single().statut)
-
-        viewModel.onChangerStatut(dao.contenu.single())
-        advanceUntilIdle()
-        assertEquals(
-            "revenir au début permet de corriger une fausse manœuvre",
-            StatutIntervention.PLANIFIEE,
-            dao.contenu.single().statut,
-        )
+    fun `la pastille demarre, mene a la cloture, et ne rouvre jamais`() {
+        assertEquals(GesteStatut.DEMARRER, gesteStatut(StatutIntervention.PLANIFIEE))
+        assertEquals(GesteStatut.CLOTURER, gesteStatut(StatutIntervention.EN_COURS))
+        assertEquals(GesteStatut.CLOTURER, gesteStatut(StatutIntervention.A_VALIDER))
+        assertEquals(GesteStatut.VOIR_RAPPORT, gesteStatut(StatutIntervention.TERMINEE))
     }
 
     @Test
-    fun `changer le statut ne touche a rien d'autre`() = runTest {
+    fun `demarrer depuis la pastille lance le chrono et met en cours`() = runTest {
         val viewModel = creerViewModel()
-        enregistrer(viewModel, client = "Primeur Vasseur", ville = "Duclair")
+        enregistrer(viewModel, client = "Fromagerie Hardy", ville = "Caudebec")
         advanceUntilIdle()
         val avant = dao.contenu.single()
 
-        viewModel.onChangerStatut(avant)
+        viewModel.onDemarrer(avant)
         advanceUntilIdle()
 
         val apres = dao.contenu.single()
-        assertEquals(avant.copy(statut = apres.statut, modifieLe = apres.modifieLe), apres)
+        assertEquals(StatutIntervention.EN_COURS, apres.statut)
+        assertTrue("le statut suit le chronomètre", apres.chrono.enMarche)
+        assertEquals(
+            "rien d'autre ne bouge",
+            avant.copy(statut = apres.statut, chrono = apres.chrono, modifieLe = apres.modifieLe),
+            apres,
+        )
         assertNull("la liste ne doit pas ouvrir le formulaire", viewModel.formulaire.value)
+    }
+
+    /**
+     * Le défaut réparé : un appui de trop faisait passer une intervention
+     * terminée à « planifiée », et une intervention en cours à « terminée »
+     * sans arrêter le temps ni numéroter. La pastille n'écrit plus que le
+     * démarrage.
+     */
+    @Test
+    fun `la pastille n'ecrit rien sur une intervention en cours ou terminee`() = runTest {
+        val enCours = Intervention(
+            id = "en-cours",
+            date = LocalDate.now(),
+            heure = LocalTime.of(8, 0),
+            client = "Boucherie Lemoine",
+            ville = "Rouen",
+            statut = StatutIntervention.EN_COURS,
+        )
+        val terminee = enCours.copy(
+            id = "terminee",
+            statut = StatutIntervention.TERMINEE,
+            numero = "INT-2609-012",
+        )
+        dao.enregistrer(enCours)
+        dao.enregistrer(terminee)
+        val viewModel = creerViewModel()
+
+        viewModel.onDemarrer(enCours)
+        viewModel.onDemarrer(terminee)
+        advanceUntilIdle()
+
+        assertEquals(enCours, dao.contenu.single { it.id == "en-cours" })
+        assertEquals("une intervention close ne se rouvre plus", terminee, dao.contenu.single { it.id == "terminee" })
+    }
+
+    @Test
+    fun `demarrer deux fois depuis la pastille ne met pas en pause`() = runTest {
+        val viewModel = creerViewModel()
+        enregistrer(viewModel, client = "Primeur Vasseur", ville = "Duclair")
+        advanceUntilIdle()
+
+        viewModel.onDemarrer(dao.contenu.single())
+        advanceUntilIdle()
+        viewModel.onDemarrer(dao.contenu.single())
+        advanceUntilIdle()
+
+        assertTrue(dao.contenu.single().chrono.enMarche)
+    }
+
+    /** `chronoAuto` : le sens que lui donne son KDoc, et son défaut. */
+    @Test
+    fun `passer en cours par la feuille lance le chrono si chronoAuto le demande`() = runTest {
+        daoParametres.enregistrer(Parametres(chronoAuto = true))
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(
+                client = "Fromagerie Hardy",
+                ville = "Caudebec",
+                statut = StatutIntervention.EN_COURS,
+            ),
+        )
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val posee = dao.contenu.single()
+        assertEquals(StatutIntervention.EN_COURS, posee.statut)
+        assertTrue(posee.chrono.enMarche)
+    }
+
+    @Test
+    fun `sans chronoAuto, passer en cours par la feuille ne lance rien`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(
+                client = "Fromagerie Hardy",
+                ville = "Caudebec",
+                statut = StatutIntervention.EN_COURS,
+            ),
+        )
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val posee = dao.contenu.single()
+        assertEquals(StatutIntervention.EN_COURS, posee.statut)
+        assertTrue("un chrono oublié vaut mieux qu'un chrono faux", posee.chrono.vierge)
+    }
+
+    @Test
+    fun `l'urgence posee par la feuille est enregistree`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(client = "Fromagerie Hardy", ville = "Caudebec", urgente = true),
+        )
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        assertTrue(dao.contenu.single().urgente)
+    }
+
+    /**
+     * Le client inscrit depuis la tournée reçoit enfin de quoi l'appeler et y
+     * aller : sans cela « Appeler » et « Y aller » disparaissaient sans un mot.
+     */
+    @Test
+    fun `l'adresse et le telephone saisis completent la fiche du client inscrit`() = runTest {
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(
+                client = "Fromagerie Hardy",
+                ville = "Caudebec",
+                adresse = "12 rue des Halles",
+                telephone = "02 35 00 00 00",
+            ),
+        )
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val inscrit = daoClients.contenu.single()
+        assertTrue(inscrit.localisable)
+        assertTrue(inscrit.appelable)
+        assertEquals("12 rue des Halles", inscrit.adresse)
+    }
+
+    @Test
+    fun `la feuille ne remplace pas l'adresse d'un client du carnet`() = runTest {
+        val client = Client(id = "cl-1", nom = "Boucherie Morel", ville = "Lyon", adresse = "8 place du Marché")
+        daoClients.enregistrer(client)
+        val viewModel = creerViewModel()
+        viewModel.onNouvelleIntervention()
+        viewModel.onClientChoisi(client)
+        viewModel.onFormulaireChange(
+            viewModel.formulaire.value!!.copy(adresse = "3 impasse du Port", telephone = "04 78 00 00 00"),
+        )
+
+        viewModel.onValiderFormulaire()
+        advanceUntilIdle()
+
+        val relu = daoClients.contenu.single()
+        assertEquals("8 place du Marché", relu.adresse)
+        assertEquals("le vide se complète", "04 78 00 00 00", relu.telephone)
     }
 
     @Test
@@ -640,6 +786,7 @@ class InterventionsViewModelTest {
             TypeInterventionRepository(daoTypes),
             EquipementRepository(daoEquipements, FauxRangementPhotos()),
             TechnicienRepository(daoTechniciens),
+            ParametresRepository(daoParametres, FauxRangementPhotos()),
         )
     }
 

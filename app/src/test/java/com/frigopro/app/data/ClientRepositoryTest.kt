@@ -91,6 +91,60 @@ class ClientRepositoryTest {
     }
 
     /**
+     * Un client inscrit depuis la tournée n'avait ni adresse ni téléphone, et
+     * « Y aller » comme « Appeler » disparaissaient sans un mot. La feuille
+     * d'intervention les complète désormais.
+     */
+    @Test
+    fun `completer remplit une fiche vide et la rend localisable et appelable`() = runTest {
+        val inscrit = repository.trouverOuCreer("Fromagerie Hardy", "Caudebec")
+        assertFalse(inscrit.localisable)
+
+        val complete = repository.completer(inscrit.id, " 12 rue des Halles ", " 02 35 00 00 00 ")
+
+        assertEquals("12 rue des Halles", complete?.adresse)
+        assertEquals("02 35 00 00 00", complete?.telephone)
+        assertTrue(dao.contenu.single().localisable)
+        assertTrue(dao.contenu.single().appelable)
+    }
+
+    /**
+     * La règle qui rend le geste sûr : une adresse relevée avec soin sur la
+     * fiche ne s'écrase pas d'une frappe faite en passant dans une intervention.
+     */
+    @Test
+    fun `completer n'ecrase jamais une adresse ni un telephone deja saisis`() = runTest {
+        val fiche = repository.enregistrer(
+            Client(
+                id = "cl-1",
+                nom = "Fromagerie Hardy",
+                ville = "Caudebec",
+                adresse = "12 rue des Halles",
+            ),
+        )
+
+        repository.completer(fiche.id, "3 impasse du Port", "02 35 00 00 00")
+
+        val relue = dao.contenu.single()
+        assertEquals("l'adresse déjà relevée reste", "12 rue des Halles", relue.adresse)
+        assertEquals("le téléphone vide se complète", "02 35 00 00 00", relue.telephone)
+    }
+
+    /** Rien à compléter : la ligne n'est pas réécrite, et garde son horodatage. */
+    @Test
+    fun `completer sans rien de neuf n'ecrit rien`() = runTest {
+        val fiche = repository.enregistrer(
+            Client(nom = "Fromagerie Hardy", ville = "Caudebec", adresse = "12 rue des Halles"),
+        )
+
+        repository.completer(fiche.id, "", "")
+
+        assertEquals(fiche.modifieLe, dao.contenu.single().modifieLe)
+        assertNull("un client inconnu ne se crée pas par ce chemin", repository.completer("absent", "x", "y"))
+        assertEquals(1, dao.contenu.size)
+    }
+
+    /**
      * Les sites se rangent sous leur donneur d'ordre, et n'encombrent pas le
      * premier rang du carnet.
      *

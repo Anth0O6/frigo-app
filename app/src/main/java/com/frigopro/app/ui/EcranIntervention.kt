@@ -14,12 +14,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +36,7 @@ import com.frigopro.app.data.Photo
 import com.frigopro.app.data.PointChecklist
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.enChrono
+import com.frigopro.app.data.enDuree
 import com.frigopro.app.ui.composants.BarreActions
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonPlein
@@ -125,7 +132,7 @@ fun EcranIntervention(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = { EnTeteIntervention(etat = etat, ecoule = ecoule, actions = actions) },
-        bottomBar = { BarreClotureIntervention(etat = etat, actions = actions) },
+        bottomBar = { BarreClotureIntervention(etat = etat, ecoule = ecoule, actions = actions) },
     ) { marges ->
         Column(modifier = Modifier.padding(marges)) {
             // Les cinq volets tiennent l'écran, sans défilement horizontal :
@@ -257,10 +264,36 @@ private fun EnTeteIntervention(
  * arrêter le temps — et celui de droite l'action terminale. Une intervention
  * déjà close n'offre plus que de rouvrir son compte-rendu : la reclôturer
  * n'aurait aucun sens, et lui réattribuerait un numéro.
+ *
+ * C'est aussi **le seul bouton de chronomètre** de l'écran : la carte « Temps
+ * passé » du volet des relevés en portait un second, si bien qu'on pouvait
+ * mettre en pause d'un côté et se demander de l'autre pourquoi le temps ne
+ * tournait plus. Celui-ci est visible depuis les cinq volets.
+ *
+ * La clôture **demande confirmation**, et la boîte dit ce qu'elle fait : elle
+ * arrête le temps et attribue la référence définitive du compte-rendu, ce qui
+ * ne se reprend pas. Collée à « Pause » et irréversible, elle se déclenchait
+ * d'un pouce ganté qui visait le chronomètre.
  */
 @Composable
-private fun BarreClotureIntervention(etat: EtatIntervention, actions: ActionsIntervention) {
+private fun BarreClotureIntervention(
+    etat: EtatIntervention,
+    ecoule: Duration,
+    actions: ActionsIntervention,
+) {
     val chrono = etat.intervention.chrono
+    var confirmation by remember { mutableStateOf(false) }
+    if (confirmation) {
+        ConfirmationCloture(
+            etat = etat,
+            ecoule = ecoule,
+            onConfirmer = {
+                confirmation = false
+                actions.onCloturer()
+            },
+            onFermer = { confirmation = false },
+        )
+    }
     BarreActions {
         BoutonPlein(
             texte = if (chrono.enMarche) "Pause" else if (chrono.vierge) "Démarrer" else "Reprendre",
@@ -288,13 +321,63 @@ private fun BarreClotureIntervention(etat: EtatIntervention, actions: ActionsInt
                 else -> "Clôturer"
             },
             onClick = if (etat.intervention.numero.isEmpty()) {
-                actions.onCloturer
+                { confirmation = true }
             } else {
                 { actions.onOnglet(OngletIntervention.RAPPORT) }
             },
             modifier = Modifier.weight(1.4f),
         )
     }
+}
+
+/**
+ * Ce que la clôture fait, dit avant et non après.
+ *
+ * Trois choses, et la boîte les nomme parce que la deuxième ne se reprend pas :
+ * le temps s'arrête au chiffre affiché, le compte-rendu reçoit sa référence
+ * définitive, l'intervention passe terminée — et devient facturable. Ce qui
+ * reste à cocher est rappelé sans rien bloquer : une intervention peut
+ * légitimement se clore sans que tout s'applique, et l'application n'a pas à en
+ * juger. La signature manquante est rappelée pour la même raison, et parce
+ * qu'elle se demande plus facilement avant de partir qu'après.
+ */
+@Composable
+private fun ConfirmationCloture(
+    etat: EtatIntervention,
+    ecoule: Duration,
+    onConfirmer: () -> Unit,
+    onFermer: () -> Unit,
+) {
+    val reste = etat.checklist.size - etat.pointsFaits
+    AlertDialog(
+        onDismissRequest = onFermer,
+        title = { Text(text = "Clôturer l'intervention ?") },
+        text = {
+            Text(
+                text = buildString {
+                    append("Le temps s'arrête à ${ecoule.enDuree()}, et le compte-rendu reçoit ")
+                    append("sa référence définitive : elle ne se reprend pas. L'intervention ")
+                    append("passe terminée et devient facturable.")
+                    if (etat.checklist.isNotEmpty() && reste > 0) {
+                        append("\n\n")
+                        append(
+                            if (reste == 1) {
+                                "1 point de la checklist n'est pas coché."
+                            } else {
+                                "$reste points de la checklist ne sont pas cochés."
+                            },
+                        )
+                    }
+                    if (etat.intervention.signatureFichier == null) {
+                        append("\n\nLe client n'a pas signé.")
+                    }
+                },
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirmer) { Text(text = "Clôturer") } },
+        dismissButton = { TextButton(onClick = onFermer) { Text(text = "Annuler") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
 }
 
 /** Un espace vertical, pour aérer une colonne sans multiplier les `Spacer`. */

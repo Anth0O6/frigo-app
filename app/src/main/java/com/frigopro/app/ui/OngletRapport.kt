@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.enDuree
 import com.frigopro.app.ui.composants.BoutonContour
+import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
@@ -168,6 +169,20 @@ fun OngletRapport(
         if (etat.intervention.numero.isEmpty()) {
             Encart(
                 texte = "Le compte-rendu recevra sa référence à la clôture de l'intervention.",
+            )
+        }
+
+        // Facturer se propose dès que l'intervention est terminée, et pas
+        // avant : facturer un travail en cours reviendrait à demander de l'argent
+        // pour quelque chose qui n'est pas fini. Il est ici et non sur la fiche
+        // parce que la clôture mène à ce volet : le geste suivant est sous le
+        // doigt au moment où il se pose. Le brouillon reste modifiable — c'est
+        // l'émission qui fige, pas ce bouton.
+        if (etat.intervention.statut.close) {
+            BoutonPlein(
+                texte = "Facturer cette intervention",
+                onClick = actions.onFacturer,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         EspaceVertical(24)
