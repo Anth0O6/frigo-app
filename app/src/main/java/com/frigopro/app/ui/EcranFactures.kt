@@ -784,6 +784,9 @@ fun EcranFacture(
                 saisieLigne = false
             },
             onFermer = { saisieLigne = false },
+            // Le choix HT ou TTC, ouvert en HT : l'écran des factures ne lit pas le
+            // réglage de saisie, et une facture se complète rarement à la main.
+            tauxTva = document.tauxTva.takeIf { document.assujettiTva },
         )
     }
 

@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.Article
+import com.frigopro.app.data.ChiffrageTtc
 import com.frigopro.app.data.Fournisseur
 import com.frigopro.app.data.LectureTarif
 import com.frigopro.app.data.LigneDevis
@@ -80,7 +81,32 @@ data class ImportFournisseur(
     val mettreAJourPrix: Boolean = true,
     /** Créer une fiche au magasin pour chaque ligne cochée qu'il ne connaît pas. */
     val creerArticles: Boolean = true,
+    /**
+     * Le coût d'achat est le prix fournisseur **TVA comprise** : proposé selon le
+     * réglage [com.frigopro.app.data.CoutAchat] — en franchise on paie la TVA sans
+     * la récupérer —, et changeable pour ce devis-ci.
+     */
+    val achatTtc: Boolean = false,
+    /** La TVA du fournisseur, le taux des Réglages par défaut ; `null` pour un champ vidé. */
+    val tauxTvaAchat: Double? = 20.0,
+    /** Le taux du devis client, `null` en franchise : ce qui fait son TTC. */
+    val tauxTvaDevis: Double? = 20.0,
 ) {
+
+    /**
+     * Ce que coûte une ligne à l'unité : le prix net lu, ou ce prix TVA comprise.
+     * C'est sur lui que la marge s'applique et lui qui part en prix d'achat sur
+     * la ligne du devis, si bien que la marge affichée est celle qu'on fait
+     * vraiment. Le magasin, lui, garde le **HT** du fournisseur : sa fiche dit
+     * « hors taxes », et un devis fournisseur repris en franchise ne doit pas la
+     * faire mentir.
+     */
+    fun cout(ligne: LigneImport): Double? =
+        if (achatTtc) {
+            tauxTvaAchat?.takeIf { it >= 0.0 }?.let { ChiffrageTtc.versTtc(ligne.lue.prixNet, it) }
+        } else {
+            ligne.lue.prixNet
+        }
 
     /**
      * Le coefficient appliqué à une ligne : le sien s'il a été tapé, sinon le
@@ -94,8 +120,16 @@ data class ImportFournisseur(
         }
 
     /** Le prix de vente unitaire, arrondi au centime — le même calcul que la feuille du matériel. */
-    fun prixVente(ligne: LigneImport): Double? =
-        coefficientDe(ligne)?.takeIf { it > 0.0 }?.let { (ligne.lue.prixNet * it).auCentime() }
+    fun prixVente(ligne: LigneImport): Double? {
+        val cout = cout(ligne) ?: return null
+        return coefficientDe(ligne)?.takeIf { it > 0.0 }?.let { (cout * it).auCentime() }
+    }
+
+    /** Le total HT de ce qui sera ajouté, arrondi ligne à ligne comme sur le devis. */
+    val totalHt: Double get() = versLignes().sumOf { it.montant.auCentime() }.auCentime()
+
+    /** Le même, TVA du devis comprise ; égal au HT en franchise. */
+    val totalTtc: Double get() = tauxTvaDevis?.let { ChiffrageTtc.versTtc(totalHt, it) } ?: totalHt
 
     val retenues: List<LigneImport> get() = lignes.filter { it.retenue }
 
@@ -116,14 +150,15 @@ data class ImportFournisseur(
             marge == null -> "Choisissez de marger ou non."
             retenues.isEmpty() -> "Aucune ligne cochée."
             retenues.any { (it.quantite ?: 0.0) <= 0.0 } -> "Une quantité manque."
+            achatTtc && tauxTvaAchat == null -> "Le taux de TVA du fournisseur manque."
             retenues.any { prixVente(it) == null } -> "Un coefficient manque."
             else -> null
         }
 
     /**
-     * Les lignes du devis client. Le **prix d'achat est celui lu**, et non celui
-     * de la fiche : c'est le prix du jour du chiffrage, celui qui rend la marge
-     * juste — même règle que [DevisViewModel.onAjouterArticle].
+     * Les lignes du devis client. Le **prix d'achat est le coût lu** ([cout]), et
+     * non celui de la fiche : c'est le prix du jour du chiffrage, celui qui rend
+     * la marge juste — même règle que [DevisViewModel.onAjouterArticle].
      */
     fun versLignes(): List<LigneDevis> = retenues.mapNotNull { ligne ->
         val prix = prixVente(ligne) ?: return@mapNotNull null
@@ -134,7 +169,7 @@ data class ImportFournisseur(
             quantite = quantite,
             unite = ligne.unite,
             prixUnitaire = prix,
-            prixAchat = ligne.lue.prixNet,
+            prixAchat = cout(ligne) ?: ligne.lue.prixNet,
         )
     }
 

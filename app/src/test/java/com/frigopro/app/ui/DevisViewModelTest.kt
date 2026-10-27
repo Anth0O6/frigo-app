@@ -888,6 +888,49 @@ class DevisViewModelTest {
         assertEquals(6.50, daoMateriel.tousLesArticles().single().prixAchat, 0.0)
     }
 
+    /**
+     * En franchise, le coût d'un devis fournisseur repris est proposé **TVA
+     * comprise** : on la paie sans la récupérer, et marger sur le HT vendrait sous
+     * le prix de revient. Le total ne porte pas de TVA, et le magasin garde le HT.
+     */
+    @Test
+    fun `en franchise le cout d'achat est propose TVA comprise`() = runTest {
+        daoParametres.enregistrer(Parametres(assujettiTva = false, coefficientMateriel = 1.4))
+        daoMateriel.enregistrerArticles(listOf(barre))
+        lecture = listOf("GOULOTTE BLANC 80X60MM  GOU-80-2M  6,00 U  7,15  42,90")
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+
+        viewModel.onLireFournisseur("content://devis.pdf")
+        advanceUntilIdle()
+        val lu = viewModel.importFournisseur.value!!
+        assertTrue(lu.achatTtc)
+        assertNull("pas de TVA sur le devis d'un franchisé", lu.tauxTvaDevis)
+
+        viewModel.onMargeImport(ChoixMarge.MARGER)
+        viewModel.onValiderImport()
+        advanceUntilIdle()
+
+        val ligne = daoDevis.contenuLignes.single()
+        assertEquals(8.58, ligne.prixAchat, 0.001) // 7,15 × 1,2
+        assertEquals(12.01, ligne.prixUnitaire, 0.001) // 8,58 × 1,4
+        assertEquals(7.15, daoMateriel.tousLesArticles().single().prixAchat, 0.001)
+    }
+
+    /** Cocher une lecture depuis le devis la règle : c'est le réglage, et non une préférence du devis. */
+    @Test
+    fun `une lecture cochee depuis le devis devient le reglage`() = runTest {
+        val viewModel = creerViewModel()
+
+        viewModel.onTtcParLigne(true)
+        viewModel.onSousTotaux(true)
+        advanceUntilIdle()
+
+        assertTrue(daoParametres.contenu!!.ttcParLigne)
+        assertTrue(daoParametres.contenu!!.sousTotaux)
+    }
+
     /** Une page scannée illisible le dit, et s'efface. */
     @Test
     fun `un scan illisible depuis le devis le dit et s'efface`() = runTest {

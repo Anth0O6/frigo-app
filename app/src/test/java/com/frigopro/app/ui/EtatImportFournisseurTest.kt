@@ -166,6 +166,45 @@ class EtatImportFournisseurTest {
         assertTrue(deux.versArticles(1.25, listOf(barre, arrivee)).isEmpty())
     }
 
+    /**
+     * Au coût TTC, la TVA du fournisseur s'ajoute au prix lu **avant** la marge,
+     * et c'est ce coût qui part en prix d'achat sur la ligne : 100 € HT à 20 %
+     * coûtent 120 €, et marger de 1,3 vend 156 €. Le magasin, lui, garde le HT.
+     */
+    @Test
+    fun `au cout TTC la marge s'applique sur la TVA comprise`() {
+        val ttc = ImportFournisseur(
+            marge = ChoixMarge.MARGER,
+            coefficient = 1.3,
+            achatTtc = true,
+            tauxTvaAchat = 20.0,
+            lignes = listOf(LigneImport(0, lue("GOU-80-2M", 2.0, 100.0), barre, quantite = 2.0)),
+        )
+
+        val ligne = ttc.versLignes().single()
+        assertEquals(120.0, ligne.prixAchat, 0.001)
+        assertEquals(156.0, ligne.prixUnitaire, 0.001)
+        assertEquals("le magasin garde le HT", 100.0, ttc.versPrix(1.35).single().prixAchat, 0.001)
+
+        // Au coûtant, on revend ce qu'on a payé : TVA comprise.
+        val coutant = ttc.copy(marge = ChoixMarge.COUTANT)
+        assertEquals(120.0, coutant.versLignes().single().prixUnitaire, 0.001)
+
+        // Un taux vidé empêche d'ajouter plutôt que de compter la TVA à zéro.
+        assertEquals("Le taux de TVA du fournisseur manque.", ttc.copy(tauxTvaAchat = null).manque)
+    }
+
+    /** Le total ajouté se dit HT et TTC au taux du devis ; en franchise, le TTC est le HT. */
+    @Test
+    fun `le total ajoute se dit HT et TTC`() {
+        val pret = etat.copy(marge = ChoixMarge.COUTANT, tauxTvaDevis = 20.0)
+            .avecLigne(1) { it.copy(retenue = false) }
+        assertEquals(42.90, pret.totalHt, 0.001) // 6 × 7,15
+        assertEquals(51.48, pret.totalTtc, 0.001)
+
+        assertEquals(42.90, pret.copy(tauxTvaDevis = null).totalTtc, 0.001)
+    }
+
     /** Hors magasin, l'intitulé est celui du fournisseur rendu lisible, la référence à la suite. */
     @Test
     fun `une ligne hors magasin garde le nom du fournisseur`() {

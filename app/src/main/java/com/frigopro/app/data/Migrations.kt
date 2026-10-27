@@ -1150,3 +1150,25 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
         )
     }
 }
+
+/**
+ * Le chiffrage en HT ou en TTC : quatre colonnes sur la ligne des réglages,
+ * aucune table.
+ *
+ * Les défauts ne changent rien à ce qui existe : `coutAchat` suit le régime
+ * réglé — une entreprise assujettie, cas de toutes les bases d'avant puisque
+ * c'est le défaut de `assujettiTva`, reste au coût HT —, et les trois cases
+ * arrivent décochées, si bien qu'un devis se saisit et s'affiche comme la
+ * veille. L'entité ne déclare pas ces défauts, pour la raison écrite à
+ * `MIGRATION_11_12`.
+ */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `parametres` ADD COLUMN `coutAchat` TEXT NOT NULL DEFAULT 'SELON_REGIME'",
+        )
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `saisieTtc` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `ttcParLigne` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `parametres` ADD COLUMN `sousTotaux` INTEGER NOT NULL DEFAULT 0")
+    }
+}

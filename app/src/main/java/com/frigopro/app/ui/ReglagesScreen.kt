@@ -196,6 +196,12 @@ fun ReglagesRoute(
         paliers = paliers,
         onDefinirPalier = viewModel::onDefinirPalier,
         onSupprimerPalier = viewModel::onSupprimerPalier,
+        chiffrage = ActionsChiffrage(
+            onCoutAchat = viewModel::onCoutAchat,
+            onSaisieTtc = viewModel::onSaisieTtc,
+            onTtcParLigne = viewModel::onTtcParLigne,
+            onSousTotaux = viewModel::onSousTotaux,
+        ),
         tarifDeplacement = ActionsTarifDeplacement(
             onAdresseDepart = viewModel::onAdresseDepart,
             onMode = viewModel::onModeDeplacement,
@@ -299,6 +305,8 @@ fun ReglagesScreen(
      * déplacement dans un devis.
      */
     tarifDeplacement: ActionsTarifDeplacement,
+    /** Le chiffrage HT ou TTC : même regroupement que le déplacement. */
+    chiffrage: ActionsChiffrage = ActionsChiffrage(),
     /** Le registre des fluides : les années disponibles, et l'export. */
     registre: ActionsRegistre = ActionsRegistre(),
     /**
@@ -424,6 +432,7 @@ fun ReglagesScreen(
                         onTauxPenalites = onTauxPenalites,
                         onCoefficientMateriel = onCoefficientMateriel,
                         onAssujettiTva = onAssujettiTva,
+                        chiffrage = chiffrage,
                     )
                 }
 

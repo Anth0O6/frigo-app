@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Article
+import com.frigopro.app.data.ChiffrageTtc
+import com.frigopro.app.data.auCentime
 import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Devis
@@ -73,6 +76,7 @@ import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
+import com.frigopro.app.ui.composants.CaseACocher
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
 import com.frigopro.app.ui.composants.MargeEcran
@@ -229,6 +233,13 @@ fun DevisRoute(
                 onOublierEchec = viewModel::onOublierEchec,
             ),
             importFournisseur = importFournisseur,
+            affichage = AffichageChiffrage(
+                saisieTtc = reglages.saisieTtc,
+                ttcParLigne = reglages.ttcParLigne,
+                sousTotaux = reglages.sousTotaux,
+                onTtcParLigne = viewModel::onTtcParLigne,
+                onSousTotaux = viewModel::onSousTotaux,
+            ),
             actionsImport = ActionsImportFournisseur(
                 onScanner = {
                     val prise = viewModel.preparerScan()
@@ -246,6 +257,8 @@ fun DevisRoute(
                 onCoefficient = viewModel::onCoefficientImport,
                 onMettreAJourPrix = viewModel::onMettreAJourPrixImport,
                 onCreerArticles = viewModel::onCreerArticlesImport,
+                onAchatTtc = viewModel::onAchatTtcImport,
+                onTauxAchat = viewModel::onTauxAchatImport,
                 onRetenir = viewModel::onRetenirLigneImport,
                 onQuantite = viewModel::onQuantiteImport,
                 onCoefficientLigne = viewModel::onCoefficientLigneImport,
@@ -706,12 +719,17 @@ fun EcranDevis(
     actionsDeplacement: ActionsDeplacement,
     /** Un devis fournisseur lu et pas encore ajouté ; `null` quand rien n'est en cours. */
     importFournisseur: ImportFournisseur? = null,
+    /** Saisie et lecture en HT ou en TTC, telles que réglées et changeables ici. */
+    affichage: AffichageChiffrage = AffichageChiffrage(),
     actionsImport: ActionsImportFournisseur = ActionsImportFournisseur(),
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val fige = facture != null
+    // Le taux du document et non celui des Réglages : un devis garde le régime et
+    // le taux de sa création. `null` en franchise, où il n'y a pas de TTC à part.
+    val tauxDocument = devis.devis.tauxTva.takeIf { devis.devis.assujettiTva }
     var saisieOuverte by remember { mutableStateOf(false) }
     var clientOuvert by remember { mutableStateOf(false) }
     var machineOuverte by remember { mutableStateOf(false) }
@@ -832,6 +850,7 @@ fun EcranDevis(
                 LigneDuDevis(
                     ligne = ligne,
                     onClick = if (fige) null else ({ ligneOuverte = ligne }),
+                    tauxTtc = tauxDocument?.takeIf { affichage.ttcParLigne },
                 )
             }
             if (devis.lignes.isNotEmpty() && !fige) {
@@ -893,7 +912,11 @@ fun EcranDevis(
                 SectionDeplacement(etat = deplacement, actions = actionsDeplacement)
             }
 
-            CarteTotaux(devis = devis, onOffrirTva = if (fige) null else onOffrirTva)
+            CarteTotaux(
+                devis = devis,
+                onOffrirTva = if (fige) null else onOffrirTva,
+                affichage = affichage,
+            )
 
             if (!fige) {
                 RangeePastilles(
@@ -967,6 +990,8 @@ fun EcranDevis(
                 saisieOuverte = false
             },
             onFermer = { saisieOuverte = false },
+            tauxTva = tauxDocument,
+            saisieTtc = affichage.saisieTtc,
         )
     }
 
@@ -982,6 +1007,8 @@ fun EcranDevis(
                 ligneOuverte = null
             },
             onFermer = { ligneOuverte = null },
+            tauxTva = tauxDocument,
+            saisieTtc = affichage.saisieTtc,
         )
     }
 
@@ -1087,6 +1114,8 @@ private fun LigneDuDevis(
     ligne: LigneDevis,
     /** `null` sur un devis figé : la ligne se lit, elle ne s'ouvre plus. */
     onClick: (() -> Unit)?,
+    /** Le taux auquel montrer aussi le TTC de la ligne ; `null` pour le HT seul. */
+    tauxTtc: Double? = null,
 ) {
     val vert = LocalStatuts.current.termine
     Carte(contour = true, onClick = onClick) {
@@ -1113,6 +1142,15 @@ private fun LigneDuDevis(
                     )
                     Puce(texte = "OFFERT", couleur = vert, fond = vert.copy(alpha = 0.18f))
                 }
+            } else if (tauxTtc != null) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(text = "${Nombres.enEuros(ligne.montant)} HT", style = StyleChiffrePetit)
+                    Text(
+                        text = "${Nombres.enEuros(ChiffrageTtc.versTtc(ligne.montant.auCentime(), tauxTtc))} TTC",
+                        style = StyleChiffrePetit,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             } else {
                 Text(text = Nombres.enEuros(ligne.montant), style = StyleChiffrePetit)
             }
@@ -1138,16 +1176,43 @@ private fun DialogueModifierLigne(
     onEnregistrer: (LigneDevis) -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
+    tauxTva: Double? = null,
+    saisieTtc: Boolean = false,
 ) {
+    // Ouverte en TTC, la boîte montre le prix TTC de la ligne : c'est la valeur
+    // qu'on y pense, et la retoucher sans y toucher la réécrit au même HT.
+    val ouvreEnTtc = tauxTva != null && saisieTtc
     var designation by remember(ligne.id) { mutableStateOf(ligne.designation) }
     var quantite by remember(ligne.id) { mutableStateOf(Nombres.enTexte(ligne.quantite)) }
     var unite by remember(ligne.id) { mutableStateOf(ligne.unite) }
-    var prix by remember(ligne.id) { mutableStateOf(Nombres.enTexte(ligne.prixUnitaire)) }
+    var prix by remember(ligne.id) {
+        mutableStateOf(
+            Nombres.enTexte(
+                if (ouvreEnTtc && tauxTva != null) {
+                    ChiffrageTtc.versTtc(ligne.prixUnitaire, tauxTva)
+                } else {
+                    ligne.prixUnitaire
+                },
+            ),
+        )
+    }
+    var enTtc by remember(ligne.id) { mutableStateOf(ouvreEnTtc) }
     var offerte by remember(ligne.id) { mutableStateOf(ligne.offerte) }
     var confirmerRetrait by remember(ligne.id) { mutableStateOf(false) }
 
     val quantiteLue = Nombres.versDecimal(quantite)
-    val prixLu = Nombres.versDecimal(prix)
+    // Le prix retenu est toujours le HT : c'est lui que porte la ligne. Une
+    // valeur retapée en TTC à l'identique ne déplace donc le HT que si l'arrondi
+    // l'impose — et le TTC recalculé, dit sous le champ, le montre.
+    val prixLu = prixHtSaisi(prix, enTtc, tauxTva).let { lu ->
+        if (enTtc && tauxTva != null && lu != null &&
+            ChiffrageTtc.versTtc(ligne.prixUnitaire, tauxTva) == Nombres.versDecimal(prix)
+        ) {
+            ligne.prixUnitaire
+        } else {
+            lu
+        }
+    }
     val valide = designation.isNotBlank() &&
         quantiteLue != null && quantiteLue > 0.0 &&
         prixLu != null && prixLu >= 0.0
@@ -1176,11 +1241,15 @@ private fun DialogueModifierLigne(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                ChampTexte(
-                    libelle = "Prix unitaire HT",
-                    valeur = prix,
-                    onValeur = { prix = it },
-                    clavier = KeyboardType.Decimal,
+                ChampPrixLigne(
+                    prix = prix,
+                    onPrix = { prix = it },
+                    enTtc = enTtc,
+                    onEnTtc = {
+                        prix = basculerPrix(prix, versTtc = it, tauxTva = tauxTva)
+                        enTtc = it
+                    },
+                    tauxTva = tauxTva,
                 )
                 // Offrir est un geste commercial : il se coche, en toutes lettres,
                 // et se lit sur le devis en prix barré.
@@ -1383,9 +1452,36 @@ private fun CarteTotaux(
     devis: DevisComplet,
     /** `null` sur un devis figé : le geste ne se propose plus. */
     onOffrirTva: (() -> Unit)?,
+    affichage: AffichageChiffrage = AffichageChiffrage(),
 ) {
     val statuts = LocalStatuts.current
+    val assujetti = devis.devis.assujettiTva
     Carte(relief = true) {
+        // Les sous-totaux viennent avant le total qu'ils composent, et chacun dit
+        // son HT et son TTC : c'est la lecture « matériel à tant, main-d'œuvre à
+        // tant » qu'on fait au client. Chaque TVA s'arrondit à part, et le total
+        // en dessous fait foi — le dire évite de chercher le centime.
+        if (affichage.sousTotaux && devis.lignes.isNotEmpty()) {
+            val sous = ChiffrageTtc.sousTotaux(devis.lignes, devis.devis.tauxTva, assujetti)
+            sous.forEach { st ->
+                LigneTotal(
+                    intitule = st.famille.libelle,
+                    valeur = if (assujetti) {
+                        "${Nombres.enEuros(st.ht)} HT · ${Nombres.enEuros(st.ttc)} TTC"
+                    } else {
+                        Nombres.enEuros(st.ht)
+                    },
+                )
+            }
+            if (assujetti && sous.size > 1) {
+                Text(
+                    text = "TVA arrondie par famille : le total ci-dessous fait foi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
         LigneTotal("Total HT", Nombres.enEuros(devis.totalHt))
 
         if (devis.devis.assujettiTva) {
@@ -1454,6 +1550,26 @@ private fun CarteTotaux(
             )
         }
 
+        // Les deux lectures se changent ici, sur le devis qu'on regarde, et le
+        // choix devient le réglage : c'est le même interrupteur que dans les
+        // Réglages, et non une seconde préférence qui pourrait le contredire.
+        if (devis.lignes.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (assujetti) {
+                    CaseLecture(
+                        texte = "TTC par ligne",
+                        cochee = affichage.ttcParLigne,
+                        onBasculer = { affichage.onTtcParLigne(!affichage.ttcParLigne) },
+                    )
+                }
+                CaseLecture(
+                    texte = "Sous-totaux",
+                    cochee = affichage.sousTotaux,
+                    onBasculer = { affichage.onSousTotaux(!affichage.sousTotaux) },
+                )
+            }
+        }
+
         // Le geste n'est proposé qu'à une entreprise assujettie : en franchise en
         // base il n'y a pas de TVA à offrir, et un bouton qui n'agirait sur rien
         // ferait croire à une remise accordée.
@@ -1501,11 +1617,16 @@ internal fun DialogueLigneDevis(
     onValider: (String, Double, String, Double) -> Unit,
     onFermer: () -> Unit,
     titre: String = "Ligne de devis",
+    /** Le taux du document, `null` en franchise : pas de TTC à proposer. */
+    tauxTva: Double? = null,
+    /** La saisie s'ouvre en TTC — le réglage, que la boîte permet de changer. */
+    saisieTtc: Boolean = false,
 ) {
     var designation by remember { mutableStateOf("") }
     var quantite by remember { mutableStateOf("1") }
     var unite by remember { mutableStateOf("") }
     var prix by remember { mutableStateOf("") }
+    var enTtc by remember { mutableStateOf(tauxTva != null && saisieTtc) }
 
     AlertDialog(
         onDismissRequest = onFermer,
@@ -1528,11 +1649,15 @@ internal fun DialogueLigneDevis(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                ChampTexte(
-                    libelle = "Prix unitaire HT",
-                    valeur = prix,
-                    onValeur = { prix = it },
-                    clavier = KeyboardType.Decimal,
+                ChampPrixLigne(
+                    prix = prix,
+                    onPrix = { prix = it },
+                    enTtc = enTtc,
+                    onEnTtc = {
+                        prix = basculerPrix(prix, versTtc = it, tauxTva = tauxTva)
+                        enTtc = it
+                    },
+                    tauxTva = tauxTva,
                 )
             }
         },
@@ -1543,7 +1668,7 @@ internal fun DialogueLigneDevis(
                         designation,
                         Nombres.versDecimal(quantite) ?: 1.0,
                         unite,
-                        Nombres.versDecimal(prix) ?: 0.0,
+                        prixHtSaisi(prix, enTtc, tauxTva) ?: 0.0,
                     )
                 },
                 enabled = designation.isNotBlank(),
@@ -1821,6 +1946,95 @@ private fun LignePrestation(
  * formule trop longue se fait effacer. Il nomme le devis, parce qu'un courriel
  * avec une pièce jointe et aucun texte finit parfois en indésirable.
  */
+/**
+ * Comment le devis se saisit et se lit : les réglages « HT ou TTC », et les
+ * deux gestes qui en changent la lecture depuis le devis ouvert.
+ */
+data class AffichageChiffrage(
+    val saisieTtc: Boolean = false,
+    val ttcParLigne: Boolean = false,
+    val sousTotaux: Boolean = false,
+    val onTtcParLigne: (Boolean) -> Unit = {},
+    val onSousTotaux: (Boolean) -> Unit = {},
+)
+
+/** Une lecture qui se coche, toute la rangée sensible : gants aux mains. */
+@Composable
+private fun CaseLecture(texte: String, cochee: Boolean, onBasculer: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .heightIn(min = LocalCibles.current.case)
+            .clickable(onClick = onBasculer),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CaseACocher(cochee = cochee)
+        Text(text = texte, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/**
+ * Le prix d'une ligne, saisi HT ou TTC.
+ *
+ * Le choix ne se propose que sur un document assujetti — [tauxTva] `null` en
+ * franchise, où HT et TTC ne font qu'un. En TTC, le champ dit dessous le HT qui
+ * sera écrit **et le TTC qu'il redonne**, qui peut s'écarter d'un centime de la
+ * saisie : c'est ce second chiffre que le client lira (voir [ChiffrageTtc]).
+ */
+@Composable
+internal fun ChampPrixLigne(
+    prix: String,
+    onPrix: (String) -> Unit,
+    enTtc: Boolean,
+    onEnTtc: (Boolean) -> Unit,
+    tauxTva: Double?,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (tauxTva != null) {
+            RangeePastilles(
+                options = listOf(false, true),
+                retenue = enTtc,
+                libelle = { if (it) "Prix TTC" else "Prix HT" },
+                onChoisir = onEnTtc,
+            )
+        }
+        ChampTexte(
+            libelle = if (enTtc) "Prix unitaire TTC" else "Prix unitaire HT",
+            valeur = prix,
+            onValeur = onPrix,
+            clavier = KeyboardType.Decimal,
+        )
+        val ht = prixHtSaisi(prix, enTtc, tauxTva)
+        if (tauxTva != null && ht != null) {
+            Text(
+                text = if (enTtc) {
+                    "Soit ${Nombres.enEuros(ht)} HT, qui font " +
+                        "${Nombres.enEuros(ChiffrageTtc.versTtc(ht, tauxTva))} TTC à " +
+                        "${Nombres.enTexte(tauxTva)} %."
+                } else {
+                    "Soit ${Nombres.enEuros(ChiffrageTtc.versTtc(ht, tauxTva))} TTC à " +
+                        "${Nombres.enTexte(tauxTva)} %."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Le HT d'une saisie de prix, `null` si elle ne se lit pas. */
+internal fun prixHtSaisi(texte: String, enTtc: Boolean, tauxTva: Double?): Double? {
+    val lu = Nombres.versDecimal(texte) ?: return null
+    return if (enTtc && tauxTva != null) ChiffrageTtc.versHt(lu, tauxTva) else lu
+}
+
+/** Le champ réécrit dans l'autre sens quand on change de pastille : 50 HT devient 60 TTC. */
+internal fun basculerPrix(texte: String, versTtc: Boolean, tauxTva: Double?): String {
+    val lu = Nombres.versDecimal(texte) ?: return texte
+    if (tauxTva == null) return texte
+    return Nombres.enTexte(if (versTtc) ChiffrageTtc.versTtc(lu, tauxTva) else ChiffrageTtc.versHt(lu, tauxTva))
+}
+
 private fun corpsDuMessage(devis: DevisComplet?): String {
     val numero = devis?.devis?.numero.orEmpty()
     val objet = devis?.devis?.objet.orEmpty()

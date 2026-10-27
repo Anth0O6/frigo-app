@@ -81,6 +81,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Depannage.kt           # les pistes déduites des relevés
 │       │   │   ├── Releve.kt              # relevés, fluide, pièces posées
 │       │   │   ├── Devis.kt               # devis, lignes, et les totaux partagés
+│       │   │   ├── ChiffrageTtc.kt        # HT ↔ TTC, et les sous-totaux par famille
 │       │   │   ├── Facture.kt             # facture et avoir, lignes, échéance, relance et solde
 │       │   │   ├── FactureDao.kt
 │       │   │   ├── FactureRepository.kt    # numérote, fige, et refuse d'effacer
@@ -1027,6 +1028,26 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   le même devis lu deux fois — ou répétée dans le document ne fait qu'une fiche.
   Les deux messages d'échec sont partagés (`LectureTarif.ECHEC_*`), et la case à
   cocher des deux écrans est devenue `CaseACocher`, dans les composants.
+  **HT ou TTC se règle, et se change sur place** (`ChiffrageTtc`, quatre
+  colonnes de `Parametres`, bloc « HT ou TTC » des Tarifs). **Le document reste
+  en HT** : un prix pensé TTC est ramené au HT avant d'être écrit, si bien que
+  totaux, facture et PDF gardent leur règle ; le TTC n'est qu'une façon de
+  saisir et de lire, jamais une seconde valeur stockée. Le **coût d'achat** d'un
+  devis fournisseur repris (`CoutAchat`) suit par défaut le régime — l'assujetti
+  récupère la TVA du fournisseur et marge sur le HT, le franchisé la paie et
+  marge sur le TTC —, se force en HT ou en TTC, et se tranche encore par devis
+  repris, taux du fournisseur modifiable. Ce coût part en prix d'achat sur la
+  ligne, pour que la marge affichée soit celle qu'on fait ; le magasin garde le
+  HT, que sa fiche annonce. La **saisie TTC** des lignes libres et retouchées
+  — penser sa main-d'œuvre en TTC — ne retire jamais la TVA d'une ligne :
+  assujetti, elle est due sur tout le devis, et la case ne se propose pas en
+  franchise. La boîte montre le TTC **recalculé** depuis le HT arrondi, qui peut
+  s'écarter d'un centime de la saisie. Le **TTC par ligne** et les
+  **sous-totaux** (matériel par son prix d'achat, déplacement par son marqueur,
+  le reste en main-d'œuvre et prestations) se cochent aussi sous le total du
+  devis, ce qui règle le même réglage plutôt qu'une préférence du devis qui le
+  contredirait ; chaque TVA de famille s'arrondit à part, et l'écran dit que le
+  total fait foi. Rien de cela n'est imprimé : le PDF garde sa présentation.
   `DialoguePaliers` ne s'ouvre que sur une prestation **comptée par unité** : un
   forfait n'a pas de rangs, et proposer la boîte sur « déplacement zone 1 »
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
@@ -1498,6 +1519,11 @@ toutes les sauvegardes existantes, et rien ne le signalerait avant le jour où
 quelqu'un essaie de restaurer. Même règle que pour `typePanne` — un fichier
 d'alors et une base d'alors doivent donner le même résultat.
 
+`MIGRATION_22_23` apporte le chiffrage HT ou TTC : quatre colonnes sur la ligne
+des réglages, aucune table. Ses défauts ne changent rien à une base en service :
+le coût d'achat suit le régime — assujettie, elle reste au coût HT — et les trois
+cases arrivent décochées.
+
 `MigrationTest` recrée une base telle que la version précédente l'écrivait —
 empreinte d'identité comprise — puis l'ouvre par `FrigoProDatabase.creer` : la
 migration est ainsi vérifiée dans les conditions réelles, y compris son
@@ -1567,7 +1593,7 @@ l'APK : un test rouge bloque la publication.
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
 | `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée, recherche et parcs dépliés tenus hors de l'écran, « voir tout le parc » oublié à la recherche suivante, la page ouverte par identifiant qui suit un renommage et se referme quand le client est supprimé, le site qui revient à son enseigne, interventions — sous-traitées comprises —, factures dues et devis en cours filtrés sur ce seul client et non sur ses sites, et rien d'observé page fermée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
-| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone, machine d'avant le format 16 relue sans détecteur, une facture et son avoir qui reviennent identiques, une facture d'avant le format 17 relue en facture, une nature inconnue qui fait refuser le fichier |
+| `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone, machine d'avant le format 16 relue sans détecteur, une facture et son avoir qui reviennent identiques, une facture d'avant le format 17 relue en facture, une nature inconnue qui fait refuser le fichier, le chiffrage HT ou TTC qui revient entier, relu sans rien changer d'avant le format 18, et refusé sur un coût d'achat inconnu |
 | `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel — zone et détecteur de fuite compris — et jamais ce qui a été fait, le nom de copie qui prend le rang suivant, les zones dérivées du parc et triées sans les vides, une zone donnée à une sélection et à elle seule — ni au reste du parc ni au voisin —, vidée qui ramène « Sans zone », nettoyée, et un grand parc rangé entier malgré le découpage en paquets |
 | `ReductionPhotoTest` | L'arithmétique de la réduction : une photo ne doit pas finir deux fois trop petite |
 | `ArchiveSauvegardeTest` | Aller-retour dans l'archive, JSON relu seul, ancien fichier texte reconnu |
@@ -1586,9 +1612,10 @@ l'APK : un test rouge bloque la publication.
 | `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
-| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire, un devis fournisseur repris qui n'écrit rien avant le choix de la marge puis pose ses lignes, met le magasin à jour et crée la fiche de la ligne qu'il ne connaissait pas — une seule fois, même relu — ou rien de tout cela si on ne le demande pas, et le scan illisible qui le dit et s'efface |
+| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire, un devis fournisseur repris qui n'écrit rien avant le choix de la marge puis pose ses lignes, met le magasin à jour et crée la fiche de la ligne qu'il ne connaissait pas — une seule fois, même relu — ou rien de tout cela si on ne le demande pas, le coût d'achat proposé TVA comprise en franchise, une lecture cochée depuis le devis qui devient le réglage, et le scan illisible qui le dit et s'efface |
 | `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, l'abandon qui n'écrit rien, un devis lu reporté dans la saisie sans rien écrire, sa référence retenue au rapprochement, l'article créé sans prix, le document illisible qui le dit, et la page scannée effacée sitôt lue — illisible ou abandonnée comprise |
-| `EtatImportFournisseurTest` | La marge demandée et jamais supposée, le prix de vente tiré du prix lu au coefficient ou au coûtant, le coefficient d'une ligne qui l'emporte et vidé qui rend au général, la quantité retouchée et le prix d'achat lu sur la ligne posée, la quantité vidée qui empêche d'ajouter, les prix du magasin reportés même décochés selon la règle de la saisie des prix, la fiche née d'une ligne cochée hors magasin au prix lu et à la vente des Réglages, aucune pour une ligne décochée, et une seule par référence |
+| `EtatImportFournisseurTest` | La marge demandée et jamais supposée, le prix de vente tiré du prix lu au coefficient ou au coûtant, le coefficient d'une ligne qui l'emporte et vidé qui rend au général, la quantité retouchée et le prix d'achat lu sur la ligne posée, la quantité vidée qui empêche d'ajouter, les prix du magasin reportés même décochés selon la règle de la saisie des prix, la fiche née d'une ligne cochée hors magasin au prix lu et à la vente des Réglages, aucune pour une ligne décochée, une seule par référence, la marge appliquée sur le coût TVA comprise sans toucher le HT du magasin, et le total ajouté dit HT et TTC |
+| `ChiffrageTtcTest` | Le HT déduit du TTC et qui le refait, les sous-totaux rangés par famille sans la ligne offerte, la franchise sans TVA, le coût d'achat qui suit le régime ou le force |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
 | `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée, une facture créditée qui ne s'annule plus |
@@ -1616,7 +1643,7 @@ l'APK : un test rouge bloque la publication.
 | `RechercheGlobaleTest` | Rien de cherché ni de compté à vide, chaque famille aux règles de `Recherche`, la machine trouvée par sa zone et par son client, le plafond qui dit le compte complet |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste, un avoir trouvé par son numéro et par celui de sa facture, le carnet trouvé par la zone, le parc filtré sur les seules machines désignées, l'unité qui ramène son groupe |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne, l'adresse et le SIRET réclamés malgré la raison sociale |
-| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main, détecteur de fuite arrivé absent sur tout un parc, factures d'avant restées factures et index du lien d'origine posé |
+| `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main, détecteur de fuite arrivé absent sur tout un parc, factures d'avant restées factures et index du lien d'origine posé, chiffrage TTC arrivé sans rien changer |
 
 Les dépôts et les ViewModels s'exercent sur des faux DAO — `FauxInterventionDao`,
 `FauxClientDao`, `FauxTypeInterventionDao`, `FauxEquipementDao`, `FauxSuiviDao`,
@@ -1687,6 +1714,12 @@ migration, tandis qu'un fichier de sauvegarde doit rester lisible par les
 versions suivantes. `FORMAT_COURANT` se numérote donc à part, les champs
 facultatifs portent une valeur par défaut, et une sauvegarde écrite par une
 version plus récente est refusée plutôt que devinée.
+
+Le format 18 ajoute les choix **HT ou TTC** : le coût d'achat d'un devis
+fournisseur repris, la saisie TTC, le TTC par ligne et les sous-totaux. Absents
+d'un fichier d'avant, ils valent ce que la migration pose ; un coût d'achat
+inconnu fait refuser le fichier, parce que le deviner ferait marger sur la mauvaise
+base.
 
 Le format 17 ajoute les **avoirs**, dans la liste des factures : leur nature, la
 facture qu'ils corrigent, et la copie de sa référence. Les champs sont

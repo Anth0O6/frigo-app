@@ -717,11 +717,18 @@ class DevisViewModel(
             return
         }
         val magasin = materiel.articles()
-        val coefficient = parametres.parametres.first().coefficientMateriel.takeIf { it > 0.0 }
+        val reglages = parametres.parametres.first()
+        // Le régime du devis ouvert, qui a gardé celui de sa création ; celui des
+        // Réglages à défaut.
+        val document = complet.value?.devis
+        val assujetti = document?.assujettiTva ?: reglages.assujettiTva
         _import.value = ImportFournisseur(
             fournisseur = tarif.fournisseur,
             date = tarif.date,
-            coefficient = coefficient,
+            coefficient = reglages.coefficientMateriel.takeIf { it > 0.0 },
+            achatTtc = reglages.coutAchat.ttc(assujetti),
+            tauxTvaAchat = reglages.tauxTva,
+            tauxTvaDevis = if (assujetti) document?.tauxTva ?: reglages.tauxTva else null,
             lignes = tarif.lignes.mapIndexed { i, ligne ->
                 LigneImport(
                     rang = i,
@@ -740,6 +747,26 @@ class DevisViewModel(
     fun onMettreAJourPrixImport(oui: Boolean) = modifierImport { it.copy(mettreAJourPrix = oui) }
 
     fun onCreerArticlesImport(oui: Boolean) = modifierImport { it.copy(creerArticles = oui) }
+
+    /** Le coût TVA comprise, pour ce devis fournisseur-ci : voir [CoutAchat]. */
+    fun onAchatTtcImport(oui: Boolean) = modifierImport { it.copy(achatTtc = oui) }
+
+    fun onTauxAchatImport(taux: Double?) = modifierImport { it.copy(tauxTvaAchat = taux) }
+
+    // — Les lectures du devis, qui sont des réglages ————————————————————
+
+    /**
+     * Cocher le TTC par ligne ou les sous-totaux depuis un devis **règle** le choix :
+     * le même réglage que dans les Réglages, et non une préférence du devis qui
+     * pourrait le contredire au suivant.
+     */
+    fun onTtcParLigne(actif: Boolean) {
+        viewModelScope.launch { parametres.modifier { it.copy(ttcParLigne = actif) } }
+    }
+
+    fun onSousTotaux(actif: Boolean) {
+        viewModelScope.launch { parametres.modifier { it.copy(sousTotaux = actif) } }
+    }
 
     fun onRetenirLigneImport(rang: Int, retenue: Boolean) =
         modifierImport { it.avecLigne(rang) { l -> l.copy(retenue = retenue) } }

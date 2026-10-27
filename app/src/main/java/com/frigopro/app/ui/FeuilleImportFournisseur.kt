@@ -46,6 +46,8 @@ data class ActionsImportFournisseur(
     val onCoefficient: (Double?) -> Unit = {},
     val onMettreAJourPrix: (Boolean) -> Unit = {},
     val onCreerArticles: (Boolean) -> Unit = {},
+    val onAchatTtc: (Boolean) -> Unit = {},
+    val onTauxAchat: (Double?) -> Unit = {},
     val onRetenir: (Int, Boolean) -> Unit = { _, _ -> },
     val onQuantite: (Int, Double?) -> Unit = { _, _ -> },
     val onCoefficientLigne: (Int, Double?) -> Unit = { _, _ -> },
@@ -100,6 +102,7 @@ fun FeuilleImportFournisseur(
                 }
                 else -> {
                     item(key = "bilan") { BilanImport(etat) }
+                    item(key = "cout") { CoutAchatImport(etat, actions) }
                     item(key = "marge") { ChoixDeMarge(etat, actions) }
                     if (etat.reconnues.isNotEmpty()) {
                         item(key = "prix") {
@@ -154,6 +157,42 @@ private fun BilanImport(etat: ImportFournisseur) {
     )
 }
 
+/**
+ * Le coût sur lequel la marge s'applique : le HT du fournisseur, ou ce HT TVA
+ * comprise quand on ne la récupère pas. Proposé selon le réglage, et changeable
+ * pour ce devis-ci.
+ */
+@Composable
+private fun CoutAchatImport(etat: ImportFournisseur, actions: ActionsImportFournisseur) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LigneACocher(
+            cochee = etat.achatTtc,
+            texte = "Coût d'achat TVA comprise",
+            onBasculer = { actions.onAchatTtc(!etat.achatTtc) },
+        )
+        if (etat.achatTtc) {
+            ChampChiffre(
+                libelle = "TVA payée au fournisseur",
+                valeur = etat.tauxTvaAchat,
+                unite = "%",
+                onValeur = actions.onTauxAchat,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Text(
+            text = if (etat.achatTtc) {
+                "La TVA du fournisseur s'ajoute au prix lu, et la marge s'applique sur ce " +
+                    "coût : c'est le cas quand on ne récupère pas cette TVA."
+            } else {
+                "La marge s'applique au prix HT du fournisseur : c'est le cas quand on " +
+                    "récupère la TVA payée."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** La question posée avant tout : marger ou non, et de combien. */
 @Composable
 private fun ChoixDeMarge(etat: ImportFournisseur, actions: ActionsImportFournisseur) {
@@ -204,7 +243,11 @@ private fun CarteLigneImport(
             )
             Text(
                 text = buildString {
-                    append("Achat ").append(Nombres.enEuros(ligne.lue.prixNet))
+                    append("Achat ").append(Nombres.enEuros(ligne.lue.prixNet)).append(" HT")
+                    val cout = etat.cout(ligne)
+                    if (etat.achatTtc && cout != null) {
+                        append(" · coût ").append(Nombres.enEuros(cout)).append(" TTC")
+                    }
                     when {
                         article == null && ligne.retenue && etat.creerArticles ->
                             append(" · fiche créée à l'ajout")
@@ -241,13 +284,14 @@ private fun CarteLigneImport(
                         prix == null -> "Prix de vente : choisissez la marge."
                         else -> {
                             val total = (prix * (ligne.quantite ?: 0.0)).auCentime()
-                            val marge = ((prix - ligne.lue.prixNet) * (ligne.quantite ?: 0.0)).auCentime()
+                            val cout = etat.cout(ligne) ?: ligne.lue.prixNet
+                            val marge = ((prix - cout) * (ligne.quantite ?: 0.0)).auCentime()
                             "Vente ${Nombres.enEuros(prix)} l'unité — total ${Nombres.enEuros(total)}" +
                                 ", marge ${Nombres.enEuros(marge)}"
                         }
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (prix != null && prix < ligne.lue.prixNet) {
+                    color = if (prix != null && prix < (etat.cout(ligne) ?: ligne.lue.prixNet)) {
                         statuts.urgence
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -272,10 +316,19 @@ private fun PiedImport(etat: ImportFournisseur, actions: ActionsImportFournisseu
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            val total = etat.versLignes().sumOf { (it.prixUnitaire * it.quantite).auCentime() }
             Text(
-                text = "Total HT ajouté : ${Nombres.enEuros(total.auCentime())}",
+                text = "Total HT ajouté : ${Nombres.enEuros(etat.totalHt)}",
                 style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = if (etat.tauxTvaDevis != null) {
+                    "Soit ${Nombres.enEuros(etat.totalTtc)} TTC à " +
+                        "${Nombres.enTexte(etat.tauxTvaDevis)} % — le total du devis fait foi."
+                } else {
+                    "Franchise en base : pas de TVA, le client paie ${Nombres.enEuros(etat.totalHt)}."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         val n = etat.retenues.size
