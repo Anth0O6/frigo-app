@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Les deux seuls dossiers que le FileProvider expose : `files/photos/`, là où
-    StockagePhotos range les images, et `cache/documents/`, où StockageDocuments
-    écrit les PDF à envoyer. Rien d'autre du stockage de l'application n'est
+    Les trois seuls dossiers que le FileProvider expose : `files/photos/`, là où
+    StockagePhotos range les images, `cache/documents/`, où StockageDocuments
+    écrit les PDF à envoyer, et `cache/scans/`, où StockageScans reçoit un devis
+    photographié. Rien d'autre du stockage de l'application n'est
     atteignable par un URI, en particulier pas la base de données.
 -->
 <paths>
@@ -18,4 +19,13 @@
     <cache-path
         name="documents"
         path="documents/" />
+
+    <!--
+        Les pages d'un devis fournisseur photographiées pour être lues, puis
+        effacées aussitôt : elles portent des prix nets, qui n'ont rien à faire
+        dans une sauvegarde.
+    -->
+    <cache-path
+        name="scans"
+        path="scans/" />
 </paths>

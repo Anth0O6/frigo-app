@@ -99,6 +99,7 @@ fun EcranSaisiePrix(
     onAbandonner: () -> Unit,
     onReglerCoefficient: () -> Unit,
     onLireDevis: (String) -> Unit,
+    onScanner: () -> Unit,
     onRapprocher: (LigneARapprocher, Article) -> Unit,
     onCreerArticle: (LigneARapprocher) -> Unit,
     onIgnorer: (LigneARapprocher) -> Unit,
@@ -172,12 +173,22 @@ fun EcranSaisiePrix(
                 }
             }
 
+            // Le scan d'abord : le devis papier tendu au comptoir de l'agence est
+            // le cas qui ne laisse pas le temps de passer par la galerie. Le
+            // fichier reste pour le PDF reçu par courriel, qui se lit le mieux.
             item(key = "lire") {
-                BoutonContour(
-                    texte = "Lire un devis fournisseur",
-                    onClick = { choisirDocument.launch(arrayOf("application/pdf", "image/*")) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BoutonPlein(
+                        texte = "Scanner un devis",
+                        onClick = onScanner,
+                        modifier = Modifier.weight(1f),
+                    )
+                    BoutonContour(
+                        texte = "Ouvrir un fichier",
+                        onClick = { choisirDocument.launch(arrayOf("application/pdf", "image/*")) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
 
             if (lecture != null) {

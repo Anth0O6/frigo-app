@@ -7,12 +7,14 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Article
+import com.frigopro.app.data.Capture
 import com.frigopro.app.data.Fournisseur
 import com.frigopro.app.data.LecteurTarif
 import com.frigopro.app.data.LectureTarif
 import com.frigopro.app.data.LigneTarif
 import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.ScansDevis
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +51,7 @@ class SaisiePrixViewModel(
     private val materiel: MaterielRepository,
     private val parametres: ParametresRepository,
     private val lecteur: LecteurTarif = LecteurTarif { null },
+    private val scans: ScansDevis = ScansDevis.Aucun,
 ) : ViewModel() {
 
     private val _ouverte = MutableStateFlow(false)
@@ -144,41 +147,65 @@ class SaisiePrixViewModel(
      */
     fun onLireDevis(adresse: String) {
         _lecture.value = LectureDevis(enCours = true)
+        viewModelScope.launch { lire(adresse) }
+    }
+
+    /** Le fichier où l'appareil photo écrira la page à scanner. */
+    fun preparerScan(): Capture = scans.preparer()
+
+    /**
+     * La page photographiée se lit **comme un document choisi** — même lecture,
+     * même bilan, rien d'écrit avant « Enregistrer » —, puis s'efface, lue ou
+     * non : ses prix sont passés dans la saisie, et l'image n'a plus rien à
+     * apprendre qu'on veuille garder (voir [ScansDevis]). Une prise de vue
+     * abandonnée n'ouvre aucun bilan : il n'y a rien eu à lire, et « aucune ligne
+     * de prix reconnue » accuserait la photo qu'on n'a pas prise.
+     */
+    fun onScan(nom: String, pris: Boolean) {
+        if (pris) _lecture.value = LectureDevis(enCours = true)
         viewModelScope.launch {
-            val rangees = lecteur.lire(adresse)
-            if (rangees == null) {
-                _lecture.value = LectureDevis(echec = "Le document n'a pas pu être ouvert.")
-                return@launch
+            try {
+                if (pris) lire(scans.adresse(nom))
+            } finally {
+                scans.effacer(nom)
             }
-            val tarif = LectureTarif.lire(rangees, materiel.fournisseurs.first())
-            if (tarif.lignes.isEmpty()) {
-                _lecture.value = LectureDevis(
-                    echec = "Aucune ligne de prix reconnue. Un PDF reçu par courriel se lit le " +
-                        "mieux ; une photo doit être nette, droite et prise de près.",
-                )
-                return@launch
-            }
-            val magasin = materiel.articles()
-            var reportees = 0
-            val aRapprocher = mutableListOf<LigneARapprocher>()
-            tarif.lignes.forEachIndexed { i, ligne ->
-                val article = LectureTarif.parReference(ligne.reference, magasin)
-                if (article != null) {
-                    reporter(article, ligne, tarif.fournisseur)
-                    reportees++
-                } else {
-                    aRapprocher += LigneARapprocher(i, ligne, LectureTarif.suggestion(ligne.designation, magasin))
-                }
-            }
-            _filtre.value = FiltrePrix.A_ENREGISTRER
-            _lecture.value = LectureDevis(
-                fournisseur = tarif.fournisseur,
-                date = tarif.date,
-                lues = tarif.lignes.size,
-                reportees = reportees,
-                aRapprocher = aRapprocher,
-            )
         }
+    }
+
+    private suspend fun lire(adresse: String) {
+        val rangees = lecteur.lire(adresse)
+        if (rangees == null) {
+            _lecture.value = LectureDevis(echec = "Le document n'a pas pu être ouvert.")
+            return
+        }
+        val tarif = LectureTarif.lire(rangees, materiel.fournisseurs.first())
+        if (tarif.lignes.isEmpty()) {
+            _lecture.value = LectureDevis(
+                echec = "Aucune ligne de prix reconnue. Un PDF reçu par courriel se lit le " +
+                    "mieux ; une photo doit être nette, droite et prise de près.",
+            )
+            return
+        }
+        val magasin = materiel.articles()
+        var reportees = 0
+        val aRapprocher = mutableListOf<LigneARapprocher>()
+        tarif.lignes.forEachIndexed { i, ligne ->
+            val article = LectureTarif.parReference(ligne.reference, magasin)
+            if (article != null) {
+                reporter(article, ligne, tarif.fournisseur)
+                reportees++
+            } else {
+                aRapprocher += LigneARapprocher(i, ligne, LectureTarif.suggestion(ligne.designation, magasin))
+            }
+        }
+        _filtre.value = FiltrePrix.A_ENREGISTRER
+        _lecture.value = LectureDevis(
+            fournisseur = tarif.fournisseur,
+            date = tarif.date,
+            lues = tarif.lignes.size,
+            reportees = reportees,
+            aRapprocher = aRapprocher,
+        )
     }
 
     /** La ligne lue va à cet article : son prix, sa référence et le fournisseur du devis. */
@@ -364,7 +391,12 @@ class SaisiePrixViewModel(
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                SaisiePrixViewModel(conteneur.materiel, conteneur.parametres, conteneur.lecteurDevis)
+                SaisiePrixViewModel(
+                    conteneur.materiel,
+                    conteneur.parametres,
+                    conteneur.lecteurDevis,
+                    conteneur.scansDevis,
+                )
             }
         }
     }

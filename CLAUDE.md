@@ -97,6 +97,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── MaterielRepository.kt
 │       │   │   ├── LectureTarif.kt        # un devis fournisseur lu, par son arithmétique
 │       │   │   ├── LecteurDevis.kt        # la seule classe qui reconnaît du texte
+│       │   │   ├── ScansDevis.kt          # une page photographiée, effacée sitôt lue
 │       │   │   ├── Substitution.kt        # par quoi remplacer un fluide
 │       │   │   ├── Maintenance.kt         # gammes, cadences, échéances dérivées
 │       │   │   ├── MaintenanceDao.kt
@@ -987,6 +988,16 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   celle de ML Kit, **modèle embarqué** et sur l'appareil : un PDF est dessiné page
   à page puis lu comme une photo, un seul chemin pour les deux. Elle alourdit
   l'APK de quelques mégaoctets, prix d'une lecture qui marche sans réseau.
+  **Un devis papier se scanne** sans passer par la galerie : « Scanner un devis »
+  ouvre l'appareil photo, qui écrit dans `cache/scans/` (`StockageScans`), et la
+  page se lit par le même chemin qu'un fichier choisi — puis **s'efface, lue ou
+  non**. Ses prix sont passés dans la saisie ; gardée, l'image emporterait des
+  prix nets dans la prochaine sauvegarde. Une prise de vue abandonnée n'ouvre
+  aucun bilan : « aucune ligne reconnue » accuserait une photo qu'on n'a pas
+  prise. Un scan lit **une page** et remplace le bilan du précédent ; les prix
+  déjà reportés restent dans la saisie, mais les lignes de la page d'avant qui
+  attendaient un rapprochement ne sont plus proposées — rapprocher avant de
+  scanner la suivante.
   `DialoguePaliers` ne s'ouvre que sur une prestation **comptée par unité** : un
   forfait n'a pas de rangs, et proposer la boîte sur « déplacement zone 1 »
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
@@ -1547,7 +1558,7 @@ l'APK : un test rouge bloque la publication.
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
 | `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
-| `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, l'abandon qui n'écrit rien, un devis lu reporté dans la saisie sans rien écrire, sa référence retenue au rapprochement, l'article créé sans prix, et le document illisible qui le dit |
+| `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, l'abandon qui n'écrit rien, un devis lu reporté dans la saisie sans rien écrire, sa référence retenue au rapprochement, l'article créé sans prix, le document illisible qui le dit, et la page scannée effacée sitôt lue — illisible ou abandonnée comprise |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
 | `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée, une facture créditée qui ne s'annule plus |
