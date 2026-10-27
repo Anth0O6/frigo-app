@@ -739,6 +739,8 @@ class DevisViewModel(
 
     fun onMettreAJourPrixImport(oui: Boolean) = modifierImport { it.copy(mettreAJourPrix = oui) }
 
+    fun onCreerArticlesImport(oui: Boolean) = modifierImport { it.copy(creerArticles = oui) }
+
     fun onRetenirLigneImport(rang: Int, retenue: Boolean) =
         modifierImport { it.avecLigne(rang) { l -> l.copy(retenue = retenue) } }
 
@@ -754,8 +756,9 @@ class DevisViewModel(
     }
 
     /**
-     * Écrit l'import : les lignes cochées sur le devis, en une écriture, et les
-     * prix d'achat lus sur les articles de même référence, en une autre.
+     * Écrit l'import : les lignes cochées sur le devis, en une écriture, les
+     * prix d'achat lus sur les articles de même référence, en une autre, puis la
+     * fiche des lignes cochées que le magasin ne connaissait pas.
      *
      * Les prix du magasin passent **après** les lignes et seulement si elles ont
      * été posées : sur un devis facturé entre-temps, rien n'est écrit du tout,
@@ -771,6 +774,7 @@ class DevisViewModel(
             if (posees.isEmpty()) return@launch
             val coefficient = parametres.parametres.first().coefficientMateriel
             materiel.enregistrerPrix(etat.versPrix(coefficient))
+            etat.versArticles(coefficient, materiel.articles()).forEach { materiel.enregistrerArticle(it) }
         }
     }
 

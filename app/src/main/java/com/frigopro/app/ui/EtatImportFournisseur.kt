@@ -2,6 +2,7 @@ package com.frigopro.app.ui
 
 import com.frigopro.app.data.Article
 import com.frigopro.app.data.Fournisseur
+import com.frigopro.app.data.LectureTarif
 import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.LigneTarif
 import com.frigopro.app.data.PrixArticle
@@ -77,6 +78,8 @@ data class ImportFournisseur(
     val coefficient: Double? = null,
     /** Reporter les prix lus sur les articles du magasin de même référence. */
     val mettreAJourPrix: Boolean = true,
+    /** Créer une fiche au magasin pour chaque ligne cochée qu'il ne connaît pas. */
+    val creerArticles: Boolean = true,
 ) {
 
     /**
@@ -98,6 +101,14 @@ data class ImportFournisseur(
 
     /** Les lignes dont la référence est au magasin : celles dont le prix peut s'y reporter. */
     val reconnues: List<LigneImport> get() = lignes.filter { it.article != null }
+
+    /**
+     * Les lignes **cochées** que le magasin ne connaît pas : celles dont une fiche
+     * peut naître. Une ligne décochée n'en crée pas, à la différence du report de
+     * prix — l'avoir écartée du devis est souvent l'avoir jugée mal lue, et une
+     * fiche née d'un chiffre mal lu resterait au magasin.
+     */
+    val horsMagasin: List<LigneImport> get() = retenues.filter { it.article == null }
 
     /** Ce qui empêche encore d'ajouter, dit en clair ; `null` quand tout est prêt. */
     val manque: String?
@@ -146,6 +157,41 @@ data class ImportFournisseur(
                     fournisseurNom = fournisseur?.nom ?: article.fournisseurNom,
                 )
                 .versPrix(article, coefficientReglages)
+        }
+    }
+
+    /**
+     * Les fiches à créer pour les lignes [horsMagasin], relues contre le magasin
+     * **au moment d'écrire** ([existants]) : une référence arrivée entre-temps —
+     * le même devis lu deux fois — ne fait pas de doublon, et deux lignes du même
+     * document à la même référence n'en font qu'une.
+     *
+     * La fiche naît **avec le prix d'achat lu** et son fournisseur, qui arrivent
+     * ensemble comme partout au magasin : « Ajouter au devis » est le geste
+     * explicite, et une fiche créée vide du prix qu'on vient de lire attendrait
+     * dans « sans prix » qu'on le retape. La vente suit la règle de la saisie des
+     * prix — proposée au coefficient des Réglages, rien sans lui —, et non celle
+     * de ce devis-ci : une marge consentie à un client ne devient pas le tarif.
+     * L'intitulé et l'unité sont ceux de la ligne posée, si bien que la fiche et
+     * le devis disent la même chose.
+     */
+    fun versArticles(coefficientReglages: Double, existants: List<Article>): List<Article> {
+        if (!creerArticles) return emptyList()
+        val connus = existants.toMutableList()
+        return horsMagasin.mapNotNull { ligne ->
+            val reference = ligne.lue.reference
+            if (reference.isNotBlank() && LectureTarif.parReference(reference, connus) != null) {
+                return@mapNotNull null
+            }
+            Article(
+                reference = reference,
+                designation = designationLisible(ligne.lue.designation),
+                unite = ligne.unite,
+                prixAchat = ligne.lue.prixNet,
+                prixVente = propositionVente(ligne.lue.prixNet, coefficientReglages) ?: 0.0,
+                fournisseurId = fournisseur?.id,
+                fournisseurNom = fournisseur?.nom.orEmpty(),
+            ).also { connus += it }
         }
     }
 

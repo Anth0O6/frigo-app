@@ -127,6 +127,45 @@ class EtatImportFournisseurTest {
         assertTrue(etat.copy(mettreAJourPrix = false).versPrix(1.35).isEmpty())
     }
 
+    /**
+     * Une ligne cochée hors magasin fait naître sa fiche, au prix lu et chez le
+     * fournisseur du devis, la vente proposée au coefficient des Réglages — pas à
+     * celui consenti sur ce devis. Décochée, elle n'en crée pas ; la case
+     * décochée non plus.
+     */
+    @Test
+    fun `une ligne hors magasin fait naitre sa fiche`() {
+        val marge = etat.copy(marge = ChoixMarge.MARGER).avecLigne(1) { it.copy(coefficient = 2.0) }
+
+        val fiche = marge.versArticles(coefficientReglages = 1.25, existants = listOf(barre)).single()
+        assertEquals("POMPE-REL", fiche.reference)
+        assertEquals("Goulotte blanc 80X60MM", fiche.designation)
+        assertEquals(80.0, fiche.prixAchat, 0.001)
+        assertEquals(100.0, fiche.prixVente, 0.001)
+        assertEquals("four-1", fiche.fournisseurId)
+        assertEquals("Grossiste", fiche.fournisseurNom)
+
+        assertEquals("sans coefficient réglé, aucune vente inventée", 0.0, marge.versArticles(0.0, listOf(barre)).single().prixVente, 0.0)
+        assertTrue(marge.avecLigne(1) { it.copy(retenue = false) }.versArticles(1.25, listOf(barre)).isEmpty())
+        assertTrue(marge.copy(creerArticles = false).versArticles(1.25, listOf(barre)).isEmpty())
+    }
+
+    /**
+     * Pas de doublon : une référence déjà au magasin au moment d'écrire n'en crée
+     * pas, et deux lignes du même document à la même référence n'en font qu'une.
+     */
+    @Test
+    fun `une reference ne cree qu'une fiche`() {
+        val deux = etat.copy(
+            marge = ChoixMarge.COUTANT,
+            lignes = etat.lignes + LigneImport(2, lue("POMPE-REL", 2.0, 80.0), null, quantite = 2.0),
+        )
+        assertEquals(1, deux.versArticles(1.25, listOf(barre)).size)
+
+        val arrivee = Article(reference = "pompe rel", designation = "Pompe de relevage")
+        assertTrue(deux.versArticles(1.25, listOf(barre, arrivee)).isEmpty())
+    }
+
     /** Hors magasin, l'intitulé est celui du fournisseur rendu lisible, la référence à la suite. */
     @Test
     fun `une ligne hors magasin garde le nom du fournisseur`() {

@@ -845,8 +845,26 @@ class DevisViewModelTest {
         assertEquals(10.01, lignes[0].prixUnitaire, 0.001) // 7,15 × 1,4
         assertEquals(7.15, lignes[0].prixAchat, 0.001)
         assertEquals(96.0, lignes[1].prixUnitaire, 0.001)
-        assertEquals("prix d'achat du magasin mis à jour", 7.15, daoMateriel.tousLesArticles().single().prixAchat, 0.001)
+        assertEquals(
+            "prix d'achat du magasin mis à jour",
+            7.15,
+            daoMateriel.tousLesArticles().single { it.id == barre.id }.prixAchat,
+            0.001,
+        )
+        // La ligne hors magasin a sa fiche, au prix lu, la vente au coefficient des
+        // Réglages et non à celui tapé sur la ligne.
+        val creee = daoMateriel.tousLesArticles().single { it.id != barre.id }
+        assertEquals("PR-500", creee.reference)
+        assertEquals("Pompe relevage mini", creee.designation)
+        assertEquals(80.0, creee.prixAchat, 0.001)
+        assertEquals(112.0, creee.prixVente, 0.001)
         assertNull("la feuille se referme", viewModel.importFournisseur.value)
+
+        // Le même devis relu ne crée pas la fiche une seconde fois : la référence
+        // est désormais au magasin.
+        viewModel.onLireFournisseur("content://devis.pdf")
+        advanceUntilIdle()
+        assertEquals(creee.id, viewModel.importFournisseur.value!!.lignes[1].article?.id)
     }
 
     /** Sans la case « mettre à jour », le magasin ne bouge pas, et les lignes se posent quand même. */
@@ -862,6 +880,7 @@ class DevisViewModelTest {
 
         viewModel.onMargeImport(ChoixMarge.COUTANT)
         viewModel.onMettreAJourPrixImport(false)
+        viewModel.onCreerArticlesImport(false)
         viewModel.onValiderImport()
         advanceUntilIdle()
 

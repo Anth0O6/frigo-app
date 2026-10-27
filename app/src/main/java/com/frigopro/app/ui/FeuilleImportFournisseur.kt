@@ -45,6 +45,7 @@ data class ActionsImportFournisseur(
     val onMarge: (ChoixMarge) -> Unit = {},
     val onCoefficient: (Double?) -> Unit = {},
     val onMettreAJourPrix: (Boolean) -> Unit = {},
+    val onCreerArticles: (Boolean) -> Unit = {},
     val onRetenir: (Int, Boolean) -> Unit = { _, _ -> },
     val onQuantite: (Int, Double?) -> Unit = { _, _ -> },
     val onCoefficientLigne: (Int, Double?) -> Unit = { _, _ -> },
@@ -108,6 +109,17 @@ fun FeuilleImportFournisseur(
                                     "${etat.reconnues.size} article${if (etat.reconnues.size > 1) "s" else ""}" +
                                     " du magasin",
                                 onBasculer = { actions.onMettreAJourPrix(!etat.mettreAJourPrix) },
+                            )
+                        }
+                    }
+                    if (etat.horsMagasin.isNotEmpty()) {
+                        item(key = "creer") {
+                            val n = etat.horsMagasin.size
+                            LigneACocher(
+                                cochee = etat.creerArticles,
+                                texte = "Créer la fiche de $n article${if (n > 1) "s" else ""} " +
+                                    "hors magasin, au prix d'achat lu",
+                                onBasculer = { actions.onCreerArticles(!etat.creerArticles) },
                             )
                         }
                     }
@@ -194,6 +206,8 @@ private fun CarteLigneImport(
                 text = buildString {
                     append("Achat ").append(Nombres.enEuros(ligne.lue.prixNet))
                     when {
+                        article == null && ligne.retenue && etat.creerArticles ->
+                            append(" · fiche créée à l'ajout")
                         article == null -> append(" · hors magasin")
                         article.prixAchat > 0.0 && article.prixAchat.auCentime() != ligne.lue.prixNet.auCentime() ->
                             append(" · fiche : ").append(Nombres.enEuros(article.prixAchat))

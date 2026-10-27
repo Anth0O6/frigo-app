@@ -245,6 +245,7 @@ fun DevisRoute(
                 onMarge = viewModel::onMargeImport,
                 onCoefficient = viewModel::onCoefficientImport,
                 onMettreAJourPrix = viewModel::onMettreAJourPrixImport,
+                onCreerArticles = viewModel::onCreerArticlesImport,
                 onRetenir = viewModel::onRetenirLigneImport,
                 onQuantite = viewModel::onQuantiteImport,
                 onCoefficientLigne = viewModel::onCoefficientLigneImport,
