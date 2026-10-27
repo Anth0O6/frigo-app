@@ -44,7 +44,6 @@ import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.AValider
-import com.frigopro.app.ui.theme.Urgence
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
 
@@ -211,7 +210,7 @@ private fun CarteTempsPasse(
                         else -> "${heureLocale(chrono.arriveeLe)} → ${ecoule.enDuree()}"
                     },
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onSurface,
+                    color = if (chrono.enMarche) AValider else MaterialTheme.colorScheme.onSurface,
                 )
                 if (!chrono.vierge && chrono.arriveeLe == null) {
                     Text(

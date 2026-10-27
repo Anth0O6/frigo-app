@@ -1186,7 +1186,17 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   qui disparaît avec la ligne : le temps chronométré, la signature du client, le
   numéro attribué. Ce qui s'est passé sur place ne se retrouve pas, et l'annuler
   par `Snackbar` aurait demandé de garder la ligne en attente quelque part.
-- **`ui.theme`** — thème Material 3 **sombre par défaut**, fidèle à la maquette.
+- **`ui.theme`** — thème Material 3 **sombre par défaut**, direction
+  « Instrument de mesure » choisie sur maquette parmi cinq : fond OLED
+  `#050607`, panneaux `#101316`, angles serrés (4 à 14 dp) plutôt que des cartes
+  très arrondies, et **trois rôles de couleur** — ambre `#FFB224` pour ce qui est
+  en cours et ce qui alerte, cyan `#2ED3E6` pour l'action et le fait accompli,
+  framboise `#FF3B5C` pour la seule urgence ; le prévu reste gris. Trois
+  luminances distinctes, pour qu'un daltonien ne les confonde pas. Le thème clair
+  garde les rôles en teintes assombries (`#8F5A00`, `#00788A`, `#C8102E`).
+  L'intervention en cours et le chronomètre qui tourne sont ambre et non plus
+  rouges : la framboise ne dit plus que l'urgence, si bien qu'elle se voit
+  toujours.
   Les couleurs dynamiques (Material You) ont été retirées : elles se justifiaient
   tant que l'application n'avait pas d'identité propre, mais maintenant qu'une
   couleur *signifie* quelque chose — l'ambre est l'intervention en cours et

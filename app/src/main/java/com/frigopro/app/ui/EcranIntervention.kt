@@ -43,7 +43,6 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.RangeeOnglets
 import com.frigopro.app.ui.theme.AValider
-import com.frigopro.app.ui.theme.Urgence
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
 
@@ -245,7 +244,7 @@ private fun EnTeteIntervention(
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = if (enMarche) {
-                            Urgence.copy(alpha = 0.16f)
+                            AValider.copy(alpha = 0.16f)
                         } else {
                             MaterialTheme.colorScheme.surfaceContainerHigh
                         },
@@ -253,7 +252,7 @@ private fun EnTeteIntervention(
                         Text(
                             text = ecoule.enChrono(),
                             style = StyleChiffrePetit,
-                            color = if (enMarche) Urgence else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (enMarche) AValider else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                         )
                     }
@@ -314,7 +313,7 @@ private fun BarreClotureIntervention(
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
-                surCouleur = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onPrimary,
+                surCouleur = if (chrono.enMarche) AValider else MaterialTheme.colorScheme.onPrimary,
             )
         }
         BoutonPlein(

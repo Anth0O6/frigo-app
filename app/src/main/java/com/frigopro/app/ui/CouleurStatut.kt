@@ -23,7 +23,9 @@ fun couleurStatut(intervention: Intervention): Color {
     return when {
         intervention.statut.close -> statuts.termine
         intervention.urgente -> statuts.urgence
-        intervention.statut == StatutIntervention.EN_COURS -> statuts.urgence
+        // L'ambre dit « en cours », comme sur la maquette : la framboise reste à
+        // la seule urgence, et une urgence se voit donc toujours.
+        intervention.statut == StatutIntervention.EN_COURS -> statuts.aValider
         intervention.statut == StatutIntervention.A_VALIDER -> statuts.aValider
         else -> statuts.planifie
     }

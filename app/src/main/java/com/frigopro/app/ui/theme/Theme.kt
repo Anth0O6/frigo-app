@@ -41,9 +41,9 @@ private val SchemaSombre = darkColorScheme(
     surfaceContainerLow = CarteEteinte,
     surfaceContainer = Carte,
     surfaceContainerHigh = Relief,
-    surfaceContainerHighest = Color(0xFF3A3A3C),
+    surfaceContainerHighest = Color(0xFF262C31),
     outline = Filet,
-    outlineVariant = Color(0xFF2C2C2E),
+    outlineVariant = Color(0xFF1A1F23),
     error = Urgence,
     onError = Color(0xFF3A0A05),
 )
@@ -51,29 +51,29 @@ private val SchemaSombre = darkColorScheme(
 private val SchemaClair = lightColorScheme(
     primary = BleuSombre,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD3E4FA),
-    onPrimaryContainer = Color(0xFF06305F),
+    primaryContainer = Color(0xFFCDEFF3),
+    onPrimaryContainer = Color(0xFF00363E),
     secondary = JourTexteSecondaire,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE5E5EA),
+    secondaryContainer = Color(0xFFE6EAED),
     onSecondaryContainer = JourTexte,
     tertiary = AValiderSombre,
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFE6C2),
+    tertiaryContainer = Color(0xFFFFE9C2),
     onTertiaryContainer = Color(0xFF3A2400),
     background = Jour,
     onBackground = JourTexte,
     surface = Jour,
     onSurface = JourTexte,
-    surfaceVariant = Color(0xFFE5E5EA),
+    surfaceVariant = Color(0xFFE6EAED),
     onSurfaceVariant = JourTexteSecondaire,
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFFAFAFC),
+    surfaceContainerLow = Color(0xFFF9FAFB),
     surfaceContainer = JourCarte,
-    surfaceContainerHigh = Color(0xFFEFEFF4),
-    surfaceContainerHighest = Color(0xFFE5E5EA),
+    surfaceContainerHigh = Color(0xFFEDF0F2),
+    surfaceContainerHighest = Color(0xFFE2E6E9),
     outline = JourFilet,
-    outlineVariant = Color(0xFFE5E5EA),
+    outlineVariant = Color(0xFFE6EAED),
     error = UrgenceSombre,
     onError = Color.White,
 )
@@ -103,7 +103,7 @@ private val StatutsSombres = Statuts(
 
 private val StatutsClairs = Statuts(
     urgence = UrgenceSombre,
-    planifie = BleuSombre,
+    planifie = JourTexteSecondaire,
     aValider = AValiderSombre,
     devis = DevisSombre,
     termine = TermineSombre,
@@ -119,11 +119,11 @@ val LocalStatuts = staticCompositionLocalOf { StatutsSombres }
  * carte héros (24 dp), qui est plus grande et doit le rester à l'œil.
  */
 private val Formes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(10.dp),
+    extraLarge = RoundedCornerShape(14.dp),
 )
 
 /**

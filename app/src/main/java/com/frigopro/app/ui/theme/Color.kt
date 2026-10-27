@@ -3,7 +3,16 @@ package com.frigopro.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Palette de l'application, reprise de la maquette.
+ * Palette de l'application : la direction « Instrument de mesure ».
+ *
+ * L'écran se lit comme un manomètre numérique — fond OLED noir, panneaux à
+ * peine plus clairs, gros chiffres à chasse fixe. **Trois rôles de couleur**, et
+ * trois luminances bien distinctes pour qu'un daltonien ne les confonde pas :
+ * l'**ambre** pour ce qui est en cours et ce qui alerte, le **cyan** pour
+ * l'action et le fait accompli, la **framboise** pour l'urgence. Ce qui est
+ * seulement prévu reste **gris** : « à venir » n'appelle aucun geste, et une
+ * liste de journée toute en couleur n'en signalerait plus aucune. Les noms historiques des constantes sont gardés — `Bleu` est l'action,
+ * `AValider` l'ambre — pour ne pas réécrire chaque écran.
  *
  * Elle est **neutre et sombre** — un noir profond, des cartes gris anthracite —
  * pour que la seule couleur d'un écran soit celle qui porte une information.
@@ -22,10 +31,10 @@ import androidx.compose.ui.graphics.Color
 // — Fonds, du plus profond au plus clair ——————————————————————————————————
 
 /** Fond de l'application. Noir, pour la dalle OLED. */
-val Noir = Color(0xFF0A0A0B)
+val Noir = Color(0xFF050607)
 
 /** Carte ordinaire. */
-val Carte = Color(0xFF1C1C1E)
+val Carte = Color(0xFF101316)
 
 /**
  * Carte d'une ligne déjà faite.
@@ -33,40 +42,40 @@ val Carte = Color(0xFF1C1C1E)
  * Un ton *sous* la carte ordinaire, et non au-dessus : ce qui est terminé doit
  * s'effacer du regard, pas le retenir.
  */
-val CarteEteinte = Color(0xFF141416)
+val CarteEteinte = Color(0xFF0B0D0F)
 
 /** Surface posée sur une carte : une puce, un champ, une vignette. */
-val Relief = Color(0xFF2C2C2E)
+val Relief = Color(0xFF1A1F23)
 
 /** Filet de séparation, à peine visible et c'est voulu. */
-val Filet = Color(0xFF3A3A3C)
+val Filet = Color(0xFF262C31)
 
 /** Trait discontinu : une zone à remplir, une ligne à ajouter. */
-val Pointille = Color(0xFF48484A)
+val Pointille = Color(0xFF39414A)
 
 // — Textes ————————————————————————————————————————————————————————————————
 
-val Texte = Color(0xFFFFFFFF)
+val Texte = Color(0xFFF4F5F6)
 
 /** Sous-titre, unité, légende. Le gris iOS à 55 %. */
-val TexteSecondaire = Color(0x8CEBEBF5)
+val TexteSecondaire = Color(0xFF9AA3AB)
 
 /** Intitulé de section, libellé d'onglet au repos. À 45 %. */
-val TexteTertiaire = Color(0x73EBEBF5)
+val TexteTertiaire = Color(0xFF6E777F)
 
 /** Chevron, repère de liste — à la limite du lisible, et c'est le but. À 30 %. */
-val TexteEteint = Color(0x4DEBEBF5)
+val TexteEteint = Color(0xFF4A5259)
 
 // — Accent ————————————————————————————————————————————————————————————————
 
 /** L'action : ce sur quoi on appuie pour que quelque chose arrive. */
-val Bleu = Color(0xFF0F6FD6)
+val Bleu = Color(0xFF2ED3E6)
 
 /** Bleu éclairci, pour un texte d'action sur un fond déjà bleuté. */
-val BleuClair = Color(0xFF4A9BFF)
+val BleuClair = Color(0xFF7DE6F2)
 
 /** Texte posé sur un aplat de [Bleu]. */
-val SurBleu = Color(0xFFFFFFFF)
+val SurBleu = Color(0xFF00262B)
 
 // — Les cinq statuts ——————————————————————————————————————————————————————
 
@@ -76,43 +85,43 @@ val SurBleu = Color(0xFFFFFFFF)
  * Les deux partagent le rouge à dessein : ce qu'on est en train de faire et ce
  * qui ne peut pas attendre appellent le même geste — y aller maintenant.
  */
-val Urgence = Color(0xFFFF453A)
+val Urgence = Color(0xFFFF3B5C)
 
 /** Ce qui est prévu et se déroulera comme prévu. */
-val Planifie = Color(0xFF0F6FD6)
+val Planifie = Color(0xFF9AA3AB)
 
 /** Ce qui attend une décision : un devis à envoyer, une fiche à signer. */
-val AValider = Color(0xFFFF9F0A)
+val AValider = Color(0xFFFFB224)
 
 /** Le chiffrage, qui n'est ni du travail fait ni du travail promis. */
-val CouleurDevis = Color(0xFFBF5AF2)
+val CouleurDevis = Color(0xFFA79BFF)
 
 /** Ce qui est fait. */
-val Termine = Color(0xFF30D158)
+val Termine = Color(0xFF2ED3E6)
 
 /** Texte posé sur un aplat de [Termine] : très sombre, pour que ça se lise. */
-val SurTermine = Color(0xFF04240D)
+val SurTermine = Color(0xFF00262B)
 
 // — Clair, quand le technicien coupe le thème sombre ——————————————————————
 
 /** Le gris de fond d'iOS en clair, et non un blanc pur qui éblouirait. */
-val Jour = Color(0xFFF2F2F7)
+val Jour = Color(0xFFF4F5F6)
 
 val JourCarte = Color(0xFFFFFFFF)
 
-val JourFilet = Color(0xFFD1D1D6)
+val JourFilet = Color(0xFFD5DADF)
 
-val JourTexte = Color(0xFF000000)
+val JourTexte = Color(0xFF0B0D0F)
 
-val JourTexteSecondaire = Color(0x993C3C43)
+val JourTexteSecondaire = Color(0xFF4E5860)
 
 /** Les teintes de statut assombries : sur blanc, les vives ne passent aucun seuil. */
-val BleuSombre = Color(0xFF0A58AC)
+val BleuSombre = Color(0xFF00788A)
 
-val UrgenceSombre = Color(0xFFC9251C)
+val UrgenceSombre = Color(0xFFC8102E)
 
-val AValiderSombre = Color(0xFF8A5200)
+val AValiderSombre = Color(0xFF8F5A00)
 
-val DevisSombre = Color(0xFF7B2FA8)
+val DevisSombre = Color(0xFF5B4BB5)
 
-val TermineSombre = Color(0xFF1B7A34)
+val TermineSombre = Color(0xFF00788A)
