@@ -78,15 +78,6 @@ jobs:
           path: app/schemas/
           if-no-files-found: warn
 
-      # TEMPORAIRE : a retirer une fois le schema 23 committe.
-      - name: Imprimer le dernier schema Room
-        if: always()
-        run: |
-          dernier=$(ls -1 app/schemas/com.frigopro.app.data.FrigoProDatabase/*.json \
-            | sort -V | tail -1)
-          echo "=== $dernier ==="
-          cat "$dernier"
-
       # Le schéma est produit à la compilation et il est aussi committé : c'est
       # lui qui permettra d'écrire et d'éprouver la migration suivante.
       #
