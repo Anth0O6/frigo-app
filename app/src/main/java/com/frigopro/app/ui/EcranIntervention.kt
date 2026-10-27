@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Photo
@@ -43,6 +44,7 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.RangeeOnglets
 import com.frigopro.app.ui.theme.AValider
+import com.frigopro.app.ui.theme.StyleChiffre
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
 
@@ -301,6 +303,22 @@ private fun BarreClotureIntervention(
         )
     }
     BarreActions {
+        // Le temps, en grand et à gauche des boutons qui le commandent : c'est
+        // le chiffre qu'on vient vérifier d'un coup d'œil, manifold en main. En
+        // ambre tant qu'il tourne — la couleur de « en cours » partout ailleurs.
+        if (!chrono.vierge) {
+            Text(
+                text = ecoule.enChrono(),
+                style = StyleChiffre.copy(fontSize = 26.sp, lineHeight = 32.sp),
+                color = if (chrono.enMarche) {
+                    MaterialTheme.colorScheme.tertiary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+        }
         // Une intervention close ne se relance pas : le bouton disparaît, et le
         // dépôt refuserait de toute façon (`basculerChrono`).
         if (!etat.intervention.statut.close) {

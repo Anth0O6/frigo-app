@@ -213,7 +213,7 @@ class AujourdhuiViewModel(
          * Deux mois, parce qu'un contrôle se case dans une tournée : l'annoncer
          * la semaine où il tombe obligerait à décaler un autre client.
          */
-        private const val HORIZON_ECHEANCES_MOIS = 2L
+        internal const val HORIZON_ECHEANCES_MOIS = 2L
 
         /**
          * L'intervention mise en avant : celle en cours, ou à défaut la prochaine

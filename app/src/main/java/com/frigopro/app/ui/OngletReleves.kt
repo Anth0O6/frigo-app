@@ -26,7 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.frigopro.app.data.CourbesSaturation
+import com.frigopro.app.data.Depannage
 import com.frigopro.app.data.Fluides
+import com.frigopro.app.data.enBarAbsolus
 import com.frigopro.app.data.MouvementFluide
 import com.frigopro.app.data.SensFluide
 import com.frigopro.app.data.arrondiDixieme
@@ -34,13 +37,17 @@ import com.frigopro.app.data.enDuree
 import com.frigopro.app.ui.composants.BoutonCarre
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonDiscret
+import com.frigopro.app.ui.composants.Cadran
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampTexte
 import com.frigopro.app.ui.composants.Encart
+import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.MargeEcran
+import com.frigopro.app.ui.composants.PlageMesure
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
+import com.frigopro.app.ui.composants.Reglette
 import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.AValider
@@ -77,17 +84,53 @@ fun OngletReleves(
         CarteTempsPasse(etat = etat, ecoule = ecoule, actions = actions)
 
         Section(intitule = "Relevés frigorifiques") {
+            val releve = etat.releve
+            // Les cadrans et les réglettes **lisent** ; la saisie reste dans les
+            // cases du dessous, sur place, comme elle l'a toujours été. Un relevé
+            // se lit contre une plage — un curseur à gauche de la zone habituelle
+            // se juge sans lire le chiffre —, mais il se tape dans une case.
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Cadran(
+                    libelle = "BP",
+                    valeur = releve?.bpBar,
+                    unite = "bar",
+                    plage = ECHELLE_BP,
+                    legende = legendeSaturation("T° évap.", etat.fluide, releve?.bpBar, CoteCircuit.ASPIRATION),
+                    modifier = Modifier.weight(1f),
+                )
+                Cadran(
+                    libelle = "HP",
+                    valeur = releve?.hpBar,
+                    unite = "bar",
+                    plage = ECHELLE_HP,
+                    legende = legendeSaturation("T° cond.", etat.fluide, releve?.hpBar, CoteCircuit.REFOULEMENT),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Reglette(
+                libelle = "Surchauffe",
+                valeur = releve?.surchauffeK,
+                unite = "K",
+                plage = PLAGE_SURCHAUFFE,
+            )
+            Reglette(
+                libelle = "Sous-refroidissement",
+                valeur = releve?.sousRefroidissementK,
+                unite = "K",
+                plage = PLAGE_SOUS_REFROIDISSEMENT,
+            )
+            IntituleSection(texte = "SAISIE")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ChampChiffre(
                     libelle = "BP",
-                    valeur = etat.releve?.bpBar,
+                    valeur = releve?.bpBar,
                     unite = "bar",
                     onValeur = actions.onBp,
                     modifier = Modifier.weight(1f),
                 )
                 ChampChiffre(
                     libelle = "HP",
-                    valeur = etat.releve?.hpBar,
+                    valeur = releve?.hpBar,
                     unite = "bar",
                     onValeur = actions.onHp,
                     modifier = Modifier.weight(1f),
@@ -96,22 +139,26 @@ fun OngletReleves(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ChampChiffre(
                     libelle = "Surchauffe",
-                    valeur = etat.releve?.surchauffeK,
+                    valeur = releve?.surchauffeK,
                     unite = "K",
                     onValeur = actions.onSurchauffe,
                     modifier = Modifier.weight(1f),
-                    couleur = teinteEcart(etat.releve?.surchauffeK, normalBas = 3.0, normalHaut = 8.0),
+                    couleur = teinteEcart(
+                        releve?.surchauffeK,
+                        normalBas = Depannage.SURCHAUFFE_FAIBLE_K,
+                        normalHaut = Depannage.SURCHAUFFE_ELEVEE_K,
+                    ),
                 )
                 ChampChiffre(
                     libelle = "Sous-refr.",
-                    valeur = etat.releve?.sousRefroidissementK,
+                    valeur = releve?.sousRefroidissementK,
                     unite = "K",
                     onValeur = actions.onSousRefroidissement,
                     modifier = Modifier.weight(1f),
                     couleur = teinteEcart(
-                        etat.releve?.sousRefroidissementK,
-                        normalBas = 2.0,
-                        normalHaut = 8.0,
+                        releve?.sousRefroidissementK,
+                        normalBas = Depannage.SOUS_REFROIDISSEMENT_FAIBLE_K,
+                        normalHaut = Depannage.SOUS_REFROIDISSEMENT_ELEVE_K,
                     ),
                 )
             }
@@ -573,6 +620,56 @@ private fun descriptionCharge(etat: EtatIntervention): String {
         }
     }
     return morceaux.joinToString(" · ").ifEmpty { "Fluide et charge non renseignés" }
+}
+
+/**
+ * Les échelles des deux cadrans, en bar relatifs. Ce sont des **échelles
+ * d'affichage**, pas des plages habituelles : elles ne jugent rien, elles disent
+ * jusqu'où l'arc se remplit. Au-delà — le CO₂ en haute pression —, l'arc est
+ * plein et le chiffre au centre reste exact.
+ */
+private val ECHELLE_BP = PlageMesure(min = 0.0, max = 10.0)
+private val ECHELLE_HP = PlageMesure(min = 0.0, max = 30.0)
+
+/**
+ * Les plages habituelles des deux écarts. Elles ne sont pas inventées ici :
+ * ce sont les seuils de l'aide au dépannage ([Depannage]), si bien que le
+ * curseur sort de la zone exactement quand une piste s'affiche. L'échelle de
+ * 0 à 12 K est celle de la maquette.
+ */
+private val PLAGE_SURCHAUFFE = PlageMesure(
+    min = 0.0,
+    max = 12.0,
+    habituelBas = Depannage.SURCHAUFFE_FAIBLE_K,
+    habituelHaut = Depannage.SURCHAUFFE_ELEVEE_K,
+)
+private val PLAGE_SOUS_REFROIDISSEMENT = PlageMesure(
+    min = 0.0,
+    max = 12.0,
+    habituelBas = Depannage.SOUS_REFROIDISSEMENT_FAIBLE_K,
+    habituelHaut = Depannage.SOUS_REFROIDISSEMENT_ELEVE_K,
+)
+
+/**
+ * « T° évap. −4,5 °C » sous un cadran : la saturation tirée des courbes
+ * calculées, rosée à l'aspiration et bulle au refoulement — la même colonne que
+ * la réglette ([CoteCircuit]). `null` sans fluide connu ou hors de la courbe :
+ * rien n'est extrapolé.
+ */
+private fun legendeSaturation(
+    intitule: String,
+    fluide: String,
+    pressionRelativeBar: Double?,
+    cote: CoteCircuit,
+): String? {
+    if (pressionRelativeBar == null || fluide.isBlank()) return null
+    val lecture = CourbesSaturation.temperatureA(fluide, pressionRelativeBar.enBarAbsolus())
+        ?: return null
+    val temperature = when (cote) {
+        CoteCircuit.ASPIRATION -> lecture.temperatureRoseeC
+        CoteCircuit.REFOULEMENT -> lecture.temperatureBulleC
+    }
+    return "$intitule ${Nombres.enTexte(temperature, decimales = 1).replace('-', '−')} °C"
 }
 
 /**

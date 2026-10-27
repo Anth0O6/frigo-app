@@ -1208,7 +1208,8 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   **mode gants** fait passer de 56 à 68 dp.
 - **`ui.composants`** — le vocabulaire visuel commun aux écrans : `Carte`,
   `Section`, `TuileChiffre`, `Puce`, `BoutonPlein`, `BoutonCarre`, `Encart`,
-  `ChampChiffre`, `ChampRecherche`, `RangeePastilles`, `RangeeOnglets`. La
+  `ChampChiffre`, `ChampRecherche`, `RangeePastilles`, `RangeeOnglets`,
+  `Cadran`, `Reglette`, `LigneAlerte`. La
   maquette répète partout les mêmes formes ;
   les nommer une fois évite qu'elles divergent écran par écran, ce qui est
   exactement ce qui arrive quand chacun recopie un `Box` et ses marges.
@@ -1233,6 +1234,26 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   texte, et `onFocusChanged` dit lequel des deux fait autorité. La resynchro-
   nisation hors focus reste nécessaire : c'est ce qui fait voir un intitulé
   nettoyé par le dépôt, ou le champ vidé après enregistrement.
+  **Les instruments** (`Instruments.kt`) : le `Cadran` — un arc de 240° ouvert
+  vers le bas, la valeur au centre en mono, la saturation dessous — et la
+  `Reglette` de plage — l'échelle, la zone habituelle, un curseur. Ils existent
+  parce qu'**un relevé se lit contre une plage, pas comme un nombre seul** :
+  « 4 K » ne dit rien à qui n'a pas la plage en tête, un curseur à gauche de la
+  zone se juge sans lire le chiffre. Ils **lisent** et ne saisissent pas : la
+  saisie reste dans les `ChampChiffre` du dessous, sur place. Les zones
+  habituelles de surchauffe et de sous-refroidissement ne sont pas inventées
+  là : ce sont les seuils de `Depannage`, si bien que le curseur sort de la zone
+  exactement quand une piste s'affiche. Les échelles des cadrans (0–10 et
+  0–30 bar) ne jugent rien, elles disent jusqu'où l'arc se remplit ; au-delà il
+  est plein et le chiffre reste exact. `PlageMesure` porte l'arithmétique du
+  curseur, qui **bute** au bord hors échelle plutôt que de disparaître.
+  `LigneAlerte` et `IconeAlerte` (`Alertes.kt`) disent le degré par la
+  **forme** autant que par la couleur — carré plein « ! » pour l'urgence,
+  triangle vide pour l'alerte —, parce qu'ambre et framboise se confondent au
+  soleil ou pour un œil daltonien. Le bouton cyan de la ligne nomme le geste et
+  ne fait que ce que la ligne faisait déjà : « Ouvrir » plutôt que
+  « Commander » ou « Planifier », tant qu'aucun écran ne commande ni ne
+  planifie depuis l'accueil.
 
 Les dépendances sont assemblées à la main dans `ConteneurApp`, porté par
 `FrigoProApplication` et atteint par `InterventionsViewModel.Factory`. Une
@@ -1495,6 +1516,7 @@ l'APK : un test rouge bloque la publication.
 | --- | --- |
 | `DemarrageTest` | Le minutage du démarrage : pas de clignotement, pas d'attente ajoutée, et une chorégraphie qui tient dans le temps affiché |
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
+| `PlageMesureTest` | Le curseur à sa valeur, qui bute au bord hors échelle, la zone habituelle prise à l'aide au dépannage, et rien de « normal » sans zone |
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature, ce qui manque nommé, urgence posée et retirée, adresse qui ne touche pas l'intervention |
 | `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée, chronomètre d'une intervention close qui ne repart pas |

@@ -1,6 +1,5 @@
 package com.frigopro.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +29,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +58,8 @@ import com.frigopro.app.ui.composants.BoutonPlein
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampRecherche
 import com.frigopro.app.ui.composants.Encart
+import com.frigopro.app.ui.composants.GraviteAlerte
+import com.frigopro.app.ui.composants.LigneAlerte
 import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
@@ -901,58 +901,40 @@ private fun CarteEnAvant(
 }
 
 /**
- * Une facture échue.
+ * Une facture échue : urgence, carré plein.
  *
  * Elle dit **depuis combien de jours**, et c'est le chiffre qui décide : une
- * facture de trois jours s'oublie, une de six semaines se réclame. Toucher la
- * ligne ouvre la facture, d'où elle se renvoie — et l'envoi vaut relance.
+ * facture de trois jours s'oublie, une de six semaines se réclame. « Relancer »
+ * ouvre la facture, d'où elle se renvoie — et l'envoi d'une facture échue vaut
+ * relance : c'est le geste qui existait, il est seulement nommé.
  */
 @Composable
 private fun LigneImpayee(chiffree: FactureChiffree, onClick: () -> Unit) {
     val facture = chiffree.facture
     val retard = facture.joursDeRetard(LocalDate.now()) ?: 0L
-
-    Carte(onClick = onClick, relief = true, liseré = LocalStatuts.current.urgence) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = facture.clientNom.ifBlank { "Client non renseigné" },
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = listOf(
-                        facture.numero,
-                        "échue depuis $retard jour${if (retard > 1) "s" else ""}",
-                    ).filter { it.isNotBlank() }.joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LocalStatuts.current.urgence,
-                )
-            }
-            // Ce qui reste dû et non le total : une facture qu'un avoir a corrigée
-            // en partie se réclame pour son reste.
-            Text(
-                text = Nombres.enEuros(chiffree.resteTtc),
-                style = MaterialTheme.typography.titleSmall,
-            )
-        }
-    }
+    LigneAlerte(
+        gravite = GraviteAlerte.URGENCE,
+        titre = "Facture en retard de $retard jour${if (retard > 1) "s" else ""}",
+        // Ce qui reste dû et non le total : une facture qu'un avoir a corrigée
+        // en partie se réclame pour son reste.
+        detail = listOf(
+            facture.clientNom.ifBlank { "Client non renseigné" },
+            facture.numero,
+            Nombres.enEuros(chiffree.resteTtc),
+        ).filter { it.isNotBlank() }.joinToString(" · "),
+        action = "Relancer",
+        onAction = onClick,
+    )
 }
 
 /**
- * Une visite due, sur l'accueil.
+ * Une visite due, sur l'accueil : urgence en retard, alerte dans son préavis.
  *
- * Toucher la ligne ouvre **sa feuille de visite**, sur place : la visite se
- * consigne d'ici, sans passer par la liste de l'Entretien où il fallait la
- * retrouver.
- *
- * Elle nomme la machine **et son client**, là où la ligne de l'Entretien peut se
- * contenter de la machine : on y est déjà dans le contexte d'un site, tandis que
- * l'accueil mélange tout ce qui attend. Le liseré prend la couleur du statut,
- * comme l'article en manque prend celle de l'urgence — l'ambre d'un préavis et le
- * rouge d'un retard ne disent pas la même chose, et c'est le seul signal qui les
- * sépare d'un coup d'œil.
+ * Le bouton ouvre **sa feuille de visite**, sur place : la visite se consigne
+ * d'ici, sans passer par la liste de l'Entretien où il fallait la retrouver.
+ * Elle nomme la machine **et son client**, la zone en premier : sur un site
+ * unique le nom du client se répète d'une ligne à l'autre, alors que la zone dit
+ * où aller.
  */
 @Composable
 private fun LignePreventif(
@@ -960,189 +942,87 @@ private fun LignePreventif(
     aujourdhui: LocalDate,
     onClick: () -> Unit,
 ) {
+    val enRetard = echeance.statut(aujourdhui) == StatutEcheance.EN_RETARD
     val statuts = LocalStatuts.current
-    val teinte = if (echeance.statut(aujourdhui) == StatutEcheance.EN_RETARD) {
-        statuts.urgence
-    } else {
-        statuts.aValider
-    }
-
-    Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 3.dp, height = 30.dp)
-                    .background(teinte, MaterialTheme.shapes.extraSmall),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = echeance.equipement.nom,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    // La zone en premier : sur un site unique le nom du client se
-                    // répète d'une ligne à l'autre et n'apprend rien, alors que la
-                    // zone dit où aller. Trois lignes au plus, donc la place est
-                    // comptée et l'ordre décide de ce qui survit à l'ellipse.
-                    text = listOf(
-                        echeance.equipement.zone,
-                        echeance.clientNom,
-                        echeance.gamme.libelle,
-                    )
-                        .filter { it.isNotBlank() }
-                        .joinToString("  ·  "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = libelleEcheance(echeance, aujourdhui),
-                style = MaterialTheme.typography.bodySmall,
-                color = teinte,
-            )
-        }
-    }
+    LigneAlerte(
+        gravite = if (enRetard) GraviteAlerte.URGENCE else GraviteAlerte.ALERTE,
+        titre = echeance.equipement.nom,
+        detail = listOf(
+            libelleEcheance(echeance, aujourdhui),
+            echeance.equipement.zone,
+            echeance.clientNom,
+            echeance.gamme.libelle,
+        )
+            .filter { it.isNotBlank() }
+            .joinToString(" · "),
+        couleurDetail = if (enRetard) statuts.urgence else MaterialTheme.colorScheme.onSurfaceVariant,
+        action = "Ouvrir",
+        onAction = onClick,
+    )
 }
 
 /**
- * Un article sous son seuil.
+ * Un article sous son seuil : alerte, triangle vide.
  *
  * Il dit **où** il manque, et c'est tout l'intérêt de tenir deux stocks : « 1 u
  * au camion, mini 3 » n'appelle pas le même geste que le même manque à
- * l'atelier — l'un se recharge le soir, l'autre se commande. Toucher la ligne
- * ouvre **la fiche de l'article** au magasin, où le stock se corrige et le
- * transfert se pose.
+ * l'atelier. Le bouton dit « Ouvrir » et non « Commander » : il mène à la fiche
+ * de l'article, où le stock se corrige et le transfert se pose, et l'application
+ * ne passe aucune commande — le promettre serait mentir.
  */
 @Composable
 private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
-    val urgence = LocalStatuts.current.urgence
-    Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 3.dp, height = 30.dp)
-                    .background(urgence, MaterialTheme.shapes.extraSmall),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entree.article.designation,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    // Le même vocabulaire que le magasin : « 1 u · mini 3 ».
-                    // Le seuil donne son sens au chiffre, et le chiffre seul ne
-                    // dirait pas de combien on est court.
-                    text = entree.aReapprovisionner.joinToString("  ·  ") { lieu ->
-                        val stock = entree.stocks[lieu]
-                        buildString {
-                            append(lieu.libelle)
-                            append(" : ")
-                            append(Nombres.enTexte(entree.quantite(lieu)))
-                            append(' ')
-                            append(entree.article.unite)
-                            if (stock != null) append(" · mini ${Nombres.enTexte(stock.minimum)}")
-                        }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = urgence,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (entree.article.fournisseurNom.isNotBlank()) {
-                Text(
-                    text = entree.article.fournisseurNom,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
+    LigneAlerte(
+        gravite = GraviteAlerte.ALERTE,
+        titre = entree.article.designation,
+        // Le même vocabulaire que le magasin : « 1 u · mini 3 ». Le seuil donne
+        // son sens au chiffre, et le chiffre seul ne dirait pas de combien on est
+        // court.
+        detail = (
+            entree.aReapprovisionner.map { lieu ->
+                val stock = entree.stocks[lieu]
+                buildString {
+                    append(lieu.libelle)
+                    append(" : ")
+                    append(Nombres.enTexte(entree.quantite(lieu)))
+                    append(' ')
+                    append(entree.article.unite)
+                    if (stock != null) append(" · mini ${Nombres.enTexte(stock.minimum)}")
+                }
+            } + entree.article.fournisseurNom
+            ).filter { it.isNotBlank() }.joinToString(" · "),
+        action = "Ouvrir",
+        onAction = onClick,
+    )
 }
 
 /**
- * Une échéance de contrôle d'étanchéité.
+ * Une échéance de contrôle d'étanchéité : urgence en retard, alerte sinon.
  *
- * Le retard est dit en rouge et en toutes lettres : c'est le seul élément de
- * l'accueil qui expose à une sanction, et une date seule ne se compare pas
- * d'un coup d'œil à celle du jour.
- *
- * Toucher la ligne ouvre **la fiche de la machine**, dans l'onglet Clients :
- * c'est là que se lisent le fluide, la charge, le dernier contrôle et ce qui a
- * doublé la périodicité, et là qu'on note le contrôle une fois fait. La ligne ne
- * menait nulle part, et une échéance qu'on ne peut que regarder s'oublie.
+ * Le retard est dit en toutes lettres : c'est le seul élément de l'accueil qui
+ * expose à une sanction, et une date seule ne se compare pas d'un coup d'œil à
+ * celle du jour. Le bouton ouvre **la fiche de la machine**, où se lisent le
+ * fluide, la charge et le dernier contrôle, et où l'on note le contrôle fait —
+ * « Ouvrir » et non « Planifier », faute d'un geste qui planifie depuis ici.
  */
 @Composable
 private fun LigneEcheance(echeance: EcheanceFgas, onClick: () -> Unit) {
-    val couleur = if (echeance.etat.enRetard) {
-        LocalStatuts.current.urgence
-    } else {
-        LocalStatuts.current.aValider
-    }
-    Carte(onClick = onClick, contour = true, forme = MaterialTheme.shapes.medium) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = couleur.copy(alpha = 0.16f),
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = "${echeance.echeance.dayOfMonth}",
-                        style = StyleChiffrePetit,
-                        color = couleur,
-                    )
-                    Text(
-                        text = moisCourt(echeance.echeance),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = couleur,
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = echeance.clientNom.ifBlank { echeance.equipement.nom },
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = buildString {
-                        append(if (echeance.etat.enRetard) "En retard" else "Contrôle d'étanchéité")
-                        append(" · ")
-                        append(echeance.equipement.nom)
-                        if (echeance.equipement.fluide.isNotBlank()) {
-                            append(" · ")
-                            append(echeance.equipement.fluide)
-                        }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (echeance.etat.enRetard) couleur else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
+    val enRetard = echeance.etat.enRetard
+    LigneAlerte(
+        gravite = if (enRetard) GraviteAlerte.URGENCE else GraviteAlerte.ALERTE,
+        titre = if (enRetard) {
+            "Contrôle F-Gas en retard depuis le ${jourCourt(echeance.echeance)}"
+        } else {
+            "Contrôle F-Gas dû le ${jourCourt(echeance.echeance)}"
+        },
+        detail = listOf(
+            echeance.equipement.nom,
+            echeance.clientNom,
+            echeance.equipement.fluide,
+        ).filter { it.isNotBlank() }.joinToString(" · "),
+        action = "Ouvrir",
+        onAction = onClick,
+    )
 }
 
 /**
