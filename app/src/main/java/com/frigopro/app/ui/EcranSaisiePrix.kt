@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,12 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -42,6 +39,7 @@ import com.frigopro.app.ui.composants.BarreActions
 import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonDiscret
 import com.frigopro.app.ui.composants.BoutonPlein
+import com.frigopro.app.ui.composants.CaseACocher
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampChiffre
 import com.frigopro.app.ui.composants.ChampRecherche
@@ -463,31 +461,6 @@ private fun LigneSaisiePrix(
     }
 }
 
-/** La case d'une ligne, à la taille de celle de la checklist — gants compris. */
-@Composable
-private fun CaseACocher(cochee: Boolean) {
-    Surface(
-        modifier = Modifier.size(LocalCibles.current.case),
-        shape = MaterialTheme.shapes.small,
-        color = if (cochee) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        },
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            if (cochee) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = "Cochée",
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-    }
-}
-
 /**
  * Le fournisseur des lignes cochées.
  *
@@ -553,7 +526,7 @@ private fun BilanLecture(lecture: LectureDevis, onFermer: () -> Unit) {
             val origine = buildString {
                 append("Devis")
                 lecture.fournisseur?.let { append(" ").append(it.nom) }
-                lecture.date?.let { append(" du ").append(it.format(FORMAT_DATE_DEVIS)) }
+                lecture.date?.let { append(" du ").append(it.format(FORMAT_DATE_COURTE)) }
             }
             val reste = lecture.aRapprocher.size
             Encart(
@@ -646,4 +619,3 @@ private fun DialogueChoixArticle(
     )
 }
 
-private val FORMAT_DATE_DEVIS = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")

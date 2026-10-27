@@ -11,6 +11,7 @@ import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Article
 import com.frigopro.app.data.ArticleEnStock
+import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.Devis
 import com.frigopro.app.data.DevisChiffre
@@ -19,6 +20,8 @@ import com.frigopro.app.data.DevisRepository
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.GroupeMachines
+import com.frigopro.app.data.LecteurTarif
+import com.frigopro.app.data.LectureTarif
 import com.frigopro.app.data.LigneDevis
 import com.frigopro.app.data.LignesDegressives
 import com.frigopro.app.data.MaterielRepository
@@ -32,6 +35,7 @@ import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.RaisonEchec
 import com.frigopro.app.data.ResultatItineraire
+import com.frigopro.app.data.ScansDevis
 import com.frigopro.app.data.ServiceItineraire
 import com.frigopro.app.data.StatutDevis
 import com.frigopro.app.data.TarifDegressif
@@ -47,6 +51,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -126,6 +131,9 @@ class DevisViewModel(
      * éprouver ce que l'écran en fait.
      */
     private val itineraires: ServiceItineraire,
+    /** La lecture d'un devis fournisseur, même chemin que la saisie des prix. */
+    private val lecteur: LecteurTarif = LecteurTarif { null },
+    private val scans: ScansDevis = ScansDevis.Aucun,
 ) : ViewModel() {
 
     /**
@@ -657,6 +665,119 @@ class DevisViewModel(
     }
 
     /** Retire le déplacement du devis, et les lignes qu'il avait posées. */
+    // — Un devis fournisseur repris sur le devis ————————————————————————
+
+    private val _import = MutableStateFlow<ImportFournisseur?>(null)
+
+    /**
+     * Le devis fournisseur lu, en attente d'être ajouté ; `null` quand la feuille
+     * est fermée. Rien n'en est écrit avant [onValiderImport].
+     */
+    val importFournisseur: StateFlow<ImportFournisseur?> = _import.asStateFlow()
+
+    /** Un PDF ou une image choisis : la même lecture que la saisie des prix. */
+    fun onLireFournisseur(adresse: String) {
+        _import.value = ImportFournisseur(enCours = true)
+        viewModelScope.launch { lireFournisseur(adresse) }
+    }
+
+    fun preparerScan(): Capture = scans.preparer()
+
+    /**
+     * La page photographiée se lit puis **s'efface, lue ou non** — voir
+     * [ScansDevis]. Une prise de vue abandonnée n'ouvre rien.
+     */
+    fun onScanFournisseur(nom: String, pris: Boolean) {
+        if (pris) _import.value = ImportFournisseur(enCours = true)
+        viewModelScope.launch {
+            try {
+                if (pris) lireFournisseur(scans.adresse(nom))
+            } finally {
+                scans.effacer(nom)
+            }
+        }
+    }
+
+    /**
+     * Rapproche chaque ligne du magasin **par la seule référence**, et reprend la
+     * quantité du fournisseur. Le coefficient des Réglages est proposé, mais la
+     * question « marger ou non » reste ouverte : voir [ChoixMarge]. Les réglages
+     * sont relus en base, et non dans [reglages] : `.value` sur un flux que
+     * personne ne collecte reste à sa valeur initiale.
+     */
+    private suspend fun lireFournisseur(adresse: String) {
+        val rangees = lecteur.lire(adresse)
+        if (rangees == null) {
+            _import.value = ImportFournisseur(echec = LectureTarif.ECHEC_OUVERTURE)
+            return
+        }
+        val tarif = LectureTarif.lire(rangees, materiel.fournisseurs.first())
+        if (tarif.lignes.isEmpty()) {
+            _import.value = ImportFournisseur(echec = LectureTarif.ECHEC_AUCUNE_LIGNE)
+            return
+        }
+        val magasin = materiel.articles()
+        val coefficient = parametres.parametres.first().coefficientMateriel.takeIf { it > 0.0 }
+        _import.value = ImportFournisseur(
+            fournisseur = tarif.fournisseur,
+            date = tarif.date,
+            coefficient = coefficient,
+            lignes = tarif.lignes.mapIndexed { i, ligne ->
+                LigneImport(
+                    rang = i,
+                    lue = ligne,
+                    article = LectureTarif.parReference(ligne.reference, magasin),
+                    quantite = ligne.quantite,
+                )
+            },
+        )
+    }
+
+    fun onMargeImport(choix: ChoixMarge) = modifierImport { it.copy(marge = choix) }
+
+    fun onCoefficientImport(coefficient: Double?) = modifierImport { it.copy(coefficient = coefficient) }
+
+    fun onMettreAJourPrixImport(oui: Boolean) = modifierImport { it.copy(mettreAJourPrix = oui) }
+
+    fun onRetenirLigneImport(rang: Int, retenue: Boolean) =
+        modifierImport { it.avecLigne(rang) { l -> l.copy(retenue = retenue) } }
+
+    fun onQuantiteImport(rang: Int, quantite: Double?) =
+        modifierImport { it.avecLigne(rang) { l -> l.copy(quantite = quantite) } }
+
+    /** Un coefficient propre à une ligne ; `null` — champ vidé — la rend au choix général. */
+    fun onCoefficientLigneImport(rang: Int, coefficient: Double?) =
+        modifierImport { it.avecLigne(rang) { l -> l.copy(coefficient = coefficient) } }
+
+    fun onFermerImport() {
+        _import.value = null
+    }
+
+    /**
+     * Écrit l'import : les lignes cochées sur le devis, en une écriture, et les
+     * prix d'achat lus sur les articles de même référence, en une autre.
+     *
+     * Les prix du magasin passent **après** les lignes et seulement si elles ont
+     * été posées : sur un devis facturé entre-temps, rien n'est écrit du tout,
+     * plutôt qu'un magasin mis à jour pour un ajout refusé.
+     */
+    fun onValiderImport() {
+        val etat = _import.value ?: return
+        if (etat.manque != null) return
+        val id = _ouvert.value ?: return
+        _import.value = null
+        viewModelScope.launch {
+            val posees = devis.ajouterLignes(id, etat.versLignes())
+            if (posees.isEmpty()) return@launch
+            val coefficient = parametres.parametres.first().coefficientMateriel
+            materiel.enregistrerPrix(etat.versPrix(coefficient))
+        }
+    }
+
+    private fun modifierImport(change: (ImportFournisseur) -> ImportFournisseur) {
+        _import.update { courant -> courant?.let(change) }
+    }
+
     fun onRetirerDeplacement() {
         val courant = trajet.value ?: return
         viewModelScope.launch { devis.supprimerDeplacement(courant.devisId) }
@@ -690,6 +811,8 @@ class DevisViewModel(
                     conteneur.materiel,
                     ProducteurPdfAndroid(conteneur.documents, conteneur.photos),
                     conteneur.itineraires,
+                    conteneur.lecteurDevis,
+                    conteneur.scansDevis,
                 )
             }
         }

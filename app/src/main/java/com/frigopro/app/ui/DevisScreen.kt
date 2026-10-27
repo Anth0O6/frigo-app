@@ -1,6 +1,9 @@
 package com.frigopro.app.ui
 
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -115,7 +118,19 @@ fun DevisRoute(
     val parc by viewModel.parc.collectAsStateWithLifecycle()
     val paliers by viewModel.paliers.collectAsStateWithLifecycle()
     val factureDuDevis by viewModel.facture.collectAsStateWithLifecycle()
+    val importFournisseur by viewModel.importFournisseur.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
+
+    // Un devis fournisseur, scanné ou choisi : les deux chemins de la saisie des
+    // prix. Le nom du scan survit à l'aller-retour vers l'appareil photo.
+    var scan by rememberSaveable { mutableStateOf<String?>(null) }
+    val appareilPhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { pris ->
+        scan?.let { viewModel.onScanFournisseur(it, pris) }
+        scan = null
+    }
+    val choisirDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.onLireFournisseur(it.toString()) }
+    }
 
     // Le devis dont on vient de demander la suppression, en attente de
     // confirmation. Tenu par la route et non par chaque écran : la liste et
@@ -212,6 +227,29 @@ fun DevisRoute(
                 onOffrir = viewModel::onOffrirDeplacement,
                 onRetirer = viewModel::onRetirerDeplacement,
                 onOublierEchec = viewModel::onOublierEchec,
+            ),
+            importFournisseur = importFournisseur,
+            actionsImport = ActionsImportFournisseur(
+                onScanner = {
+                    val prise = viewModel.preparerScan()
+                    scan = prise.nom
+                    try {
+                        appareilPhoto.launch(prise.uri)
+                    } catch (_: ActivityNotFoundException) {
+                        // Pas d'appareil photo : le fichier préparé ne servira pas.
+                        viewModel.onScanFournisseur(prise.nom, pris = false)
+                        scan = null
+                    }
+                },
+                onOuvrirFichier = { choisirDocument.launch(arrayOf("application/pdf", "image/*")) },
+                onMarge = viewModel::onMargeImport,
+                onCoefficient = viewModel::onCoefficientImport,
+                onMettreAJourPrix = viewModel::onMettreAJourPrixImport,
+                onRetenir = viewModel::onRetenirLigneImport,
+                onQuantite = viewModel::onQuantiteImport,
+                onCoefficientLigne = viewModel::onCoefficientLigneImport,
+                onValider = viewModel::onValiderImport,
+                onFermer = viewModel::onFermerImport,
             ),
             onSupprimer = { aSupprimer = ouvert.devis },
             onFermer = viewModel::onFermer,
@@ -665,6 +703,9 @@ fun EcranDevis(
     /** Le déplacement facturé, et ce qu'on peut en faire. */
     deplacement: EtatDeplacement,
     actionsDeplacement: ActionsDeplacement,
+    /** Un devis fournisseur lu et pas encore ajouté ; `null` quand rien n'est en cours. */
+    importFournisseur: ImportFournisseur? = null,
+    actionsImport: ActionsImportFournisseur = ActionsImportFournisseur(),
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -819,6 +860,26 @@ fun EcranDevis(
                     onClick = { magasinOuvert = true },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // Un devis fournisseur repris d'un trait : ses lignes, ses
+                // quantités, et la marge qu'on choisit d'y mettre. Le scan
+                // d'abord, pour le papier tendu au comptoir de l'agence.
+                Text(
+                    text = "Reprendre un devis fournisseur",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BoutonContour(
+                        texte = "Scanner",
+                        onClick = actionsImport.onScanner,
+                        modifier = Modifier.weight(1f),
+                    )
+                    BoutonContour(
+                        texte = "Ouvrir un fichier",
+                        onClick = actionsImport.onOuvrirFichier,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 BoutonContour(
                     texte = "+ Ligne libre",
                     onClick = { saisieOuverte = true },
@@ -921,6 +982,10 @@ fun EcranDevis(
             },
             onFermer = { ligneOuverte = null },
         )
+    }
+
+    importFournisseur?.let { etat ->
+        FeuilleImportFournisseur(etat = etat, actions = actionsImport)
     }
 
     if (magasinOuvert) {

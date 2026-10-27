@@ -152,6 +152,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── EcranFournisseurs.kt # le carnet, filtré, et le catalogue
 │       │       ├── EcranSaisiePrix.kt   # un tarif fournisseur, ligne après ligne
 │       │       ├── EtatSaisiePrix.kt    # ce qui est tapé, ce qui se propose
+│       │       ├── EtatImportFournisseur.kt # un devis fournisseur repris sur un devis
+│       │       ├── FeuilleImportFournisseur.kt # la marge demandée, ligne par ligne
 │       │       ├── SaisiePrixViewModel.kt
 │       │       ├── MaterielViewModel.kt
 │       │       ├── DialoguePaliers.kt  # le prix par rang d'unité
@@ -998,6 +1000,24 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   déjà reportés restent dans la saisie, mais les lignes de la page d'avant qui
   attendaient un rapprochement ne sont plus proposées — rapprocher avant de
   scanner la suivante.
+  **Un devis fournisseur se reprend aussi depuis un devis client**
+  (`ImportFournisseur`, `FeuilleImportFournisseur`) : « Scanner » ou « Ouvrir un
+  fichier », sous « Ajouter du matériel », passent par la même lecture. Chaque
+  ligne garde **sa quantité**, modifiable, et la référence rapproche la fiche du
+  magasin — seul rapprochement fait d'office. **La marge est demandée et jamais
+  supposée** (`ChoixMarge`) : rien ne s'ajoute avant d'avoir choisi de marger ou
+  non, parce qu'un devis repris tel quel est souvent une commande spéciale sur
+  laquelle on ne marge pas comme sur une goulotte. Elle se dit en
+  **coefficient**, proposé depuis les Réglages, avec le taux de marque écrit à
+  côté (voir `Marge`) ; un coefficient tapé sur une ligne l'emporte sur le
+  général, et vidé l'y rend. Les lignes posées portent le **prix d'achat lu**,
+  celui du jour du chiffrage. À l'ajout, et seulement si les lignes ont été
+  posées, les prix lus se reportent sur les articles de même référence — **même
+  décochés** du devis, la case « mettre à jour » restant au choix — par la règle
+  de la saisie des prix : une vente décidée sur la fiche est gardée, une simple
+  proposition du coefficient suit. Une ligne hors magasin ne crée pas d'article.
+  Les deux messages d'échec sont partagés (`LectureTarif.ECHEC_*`), et la case à
+  cocher des deux écrans est devenue `CaseACocher`, dans les composants.
   `DialoguePaliers` ne s'ouvre que sur une prestation **comptée par unité** : un
   forfait n'a pas de rangs, et proposer la boîte sur « déplacement zone 1 »
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
@@ -1557,8 +1577,9 @@ l'APK : un test rouge bloque la publication.
 | `PuissanceEchangeeTest` | Les deux règles de pouce (1 m³/h d'eau sur 5 K ≈ 5,8 kW), et les trois sens de la formule qui se retrouvent |
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
-| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
+| `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire, un devis fournisseur repris qui n'écrit rien avant le choix de la marge puis pose ses lignes et met le magasin à jour — ou pas, si on ne le demande pas —, et le scan illisible qui le dit et s'efface |
 | `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, l'abandon qui n'écrit rien, un devis lu reporté dans la saisie sans rien écrire, sa référence retenue au rapprochement, l'article créé sans prix, le document illisible qui le dit, et la page scannée effacée sitôt lue — illisible ou abandonnée comprise |
+| `EtatImportFournisseurTest` | La marge demandée et jamais supposée, le prix de vente tiré du prix lu au coefficient ou au coûtant, le coefficient d'une ligne qui l'emporte et vidé qui rend au général, la quantité retouchée et le prix d'achat lu sur la ligne posée, la quantité vidée qui empêche d'ajouter, les prix du magasin reportés même décochés selon la règle de la saisie des prix |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
 | `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée, une facture créditée qui ne s'annule plus |

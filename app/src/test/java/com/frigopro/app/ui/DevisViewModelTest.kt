@@ -2,6 +2,10 @@ package com.frigopro.app.ui
 
 import com.frigopro.app.data.Article
 import com.frigopro.app.data.CategoriePrestation
+import com.frigopro.app.data.Capture
+import com.frigopro.app.data.LecteurTarif
+import com.frigopro.app.data.LectureTarif
+import com.frigopro.app.data.ScansDevis
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.Devis
@@ -73,6 +77,21 @@ class DevisViewModelTest {
     /** Ce que le faux service d'itinéraire répondra. */
     private var itineraire: ResultatItineraire =
         ResultatItineraire.Echec(RaisonEchec.SERVICE_INDISPONIBLE)
+
+    /** Ce que le faux lecteur de devis fournisseur rendra. */
+    private var lecture: List<String>? = null
+
+    /** Les scans effacés après lecture. */
+    private val effaces = mutableListOf<String>()
+
+    /** Un article du magasin, au prix d'achat d'avant le devis fournisseur. Prix inventés. */
+    private val barre = Article(
+        id = "acc-01",
+        reference = "GOU-80-2M",
+        designation = "Goulotte clim 80x60 — barre 2 m",
+        unite = "barre",
+        prixAchat = 6.50,
+    )
 
     @After
     fun nettoyer() {
@@ -778,6 +797,93 @@ class DevisViewModelTest {
         unite = "u",
     )
 
+    // — Un devis fournisseur repris ————————————————————————————————————
+
+    /**
+     * Le parcours entier : la ligne dont la référence est au magasin y est
+     * rapprochée, la quantité est reprise, la marge est demandée, et à
+     * l'ajout les lignes se posent **et** le prix d'achat du magasin se met à
+     * jour. Rien n'est écrit avant. Les prix sont inventés.
+     */
+    @Test
+    fun `un devis fournisseur repris pose ses lignes et met le magasin a jour`() = runTest {
+        daoParametres.enregistrer(Parametres(coefficientMateriel = 1.4))
+        daoMateriel.enregistrerArticles(listOf(barre))
+        lecture = listOf(
+            "GOULOTTE BLANC 80X60MM  GOU-80-2M  6,00 U  7,15  42,90",
+            "POMPE RELEVAGE MINI  PR-500  1,00 U  80,00  80,00",
+        )
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+
+        viewModel.onLireFournisseur("content://devis.pdf")
+        advanceUntilIdle()
+
+        val lu = viewModel.importFournisseur.value!!
+        assertEquals(barre.id, lu.lignes[0].article?.id)
+        assertNull("hors magasin", lu.lignes[1].article)
+        assertEquals(6.0, lu.lignes[0].quantite!!, 0.0)
+        assertEquals("le coefficient des Réglages est proposé", 1.4, lu.coefficient!!, 0.0)
+        assertNull("la question n'est pas tranchée d'office", lu.marge)
+
+        // Rien ne part tant qu'on n'a pas choisi.
+        viewModel.onValiderImport()
+        advanceUntilIdle()
+        assertTrue(daoDevis.contenuLignes.isEmpty())
+        assertEquals(6.50, daoMateriel.tousLesArticles().single().prixAchat, 0.0)
+
+        viewModel.onMargeImport(ChoixMarge.MARGER)
+        viewModel.onQuantiteImport(0, 4.0)
+        viewModel.onCoefficientLigneImport(1, 1.2)
+        viewModel.onValiderImport()
+        advanceUntilIdle()
+
+        val lignes = daoDevis.contenuLignes.sortedBy { it.rang }
+        assertEquals(2, lignes.size)
+        assertEquals(4.0, lignes[0].quantite, 0.0)
+        assertEquals(10.01, lignes[0].prixUnitaire, 0.001) // 7,15 × 1,4
+        assertEquals(7.15, lignes[0].prixAchat, 0.001)
+        assertEquals(96.0, lignes[1].prixUnitaire, 0.001)
+        assertEquals("prix d'achat du magasin mis à jour", 7.15, daoMateriel.tousLesArticles().single().prixAchat, 0.001)
+        assertNull("la feuille se referme", viewModel.importFournisseur.value)
+    }
+
+    /** Sans la case « mettre à jour », le magasin ne bouge pas, et les lignes se posent quand même. */
+    @Test
+    fun `le magasin ne bouge pas si on ne le demande pas`() = runTest {
+        daoMateriel.enregistrerArticles(listOf(barre))
+        lecture = listOf("GOULOTTE BLANC 80X60MM  GOU-80-2M  6,00 U  7,15  42,90")
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+        viewModel.onLireFournisseur("content://devis.pdf")
+        advanceUntilIdle()
+
+        viewModel.onMargeImport(ChoixMarge.COUTANT)
+        viewModel.onMettreAJourPrixImport(false)
+        viewModel.onValiderImport()
+        advanceUntilIdle()
+
+        assertEquals(7.15, daoDevis.contenuLignes.single().prixUnitaire, 0.001)
+        assertEquals(6.50, daoMateriel.tousLesArticles().single().prixAchat, 0.0)
+    }
+
+    /** Une page scannée illisible le dit, et s'efface. */
+    @Test
+    fun `un scan illisible depuis le devis le dit et s'efface`() = runTest {
+        lecture = listOf("Bonjour", "TOTAL TTC 12,00")
+        val viewModel = creerViewModel()
+        viewModel.onNouveau(null)
+        advanceUntilIdle()
+
+        viewModel.onScanFournisseur("page.jpg", pris = true)
+        advanceUntilIdle()
+
+        assertEquals(LectureTarif.ECHEC_AUCUNE_LIGNE, viewModel.importFournisseur.value!!.echec)
+        assertEquals(listOf("page.jpg"), effaces)
+    }
+
     /** Même raison que dans [InterventionsViewModelTest] pour `Dispatchers.Main`. */
     /**
      * @param collecter `false` pour un ViewModel dont **aucun** flux n'est
@@ -803,6 +909,14 @@ class DevisViewModelTest {
             // Le réseau ne se joint pas depuis un test : le faux service rend ce
             // que la classe du test a posé dans [itineraire].
             ServiceItineraire { _, _ -> itineraire },
+            LecteurTarif { lecture },
+            object : ScansDevis {
+                override fun preparer(): Capture = throw UnsupportedOperationException()
+                override fun adresse(nom: String): String = "scan://$nom"
+                override suspend fun effacer(nom: String) {
+                    effaces += nom
+                }
+            },
         )
         listOf(
             viewModel.liste,

@@ -175,15 +175,12 @@ class SaisiePrixViewModel(
     private suspend fun lire(adresse: String) {
         val rangees = lecteur.lire(adresse)
         if (rangees == null) {
-            _lecture.value = LectureDevis(echec = "Le document n'a pas pu être ouvert.")
+            _lecture.value = LectureDevis(echec = LectureTarif.ECHEC_OUVERTURE)
             return
         }
         val tarif = LectureTarif.lire(rangees, materiel.fournisseurs.first())
         if (tarif.lignes.isEmpty()) {
-            _lecture.value = LectureDevis(
-                echec = "Aucune ligne de prix reconnue. Un PDF reçu par courriel se lit le " +
-                    "mieux ; une photo doit être nette, droite et prise de près.",
-            )
+            _lecture.value = LectureDevis(echec = LectureTarif.ECHEC_AUCUNE_LIGNE)
             return
         }
         val magasin = materiel.articles()

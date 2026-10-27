@@ -10,6 +10,9 @@ import java.util.Locale
 /** Format d'heure partagé par la liste et le formulaire. */
 internal val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
+/** « 26/10/2026 » : la date telle qu'un devis fournisseur l'imprime. */
+internal val FORMAT_DATE_COURTE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
 private val FORMAT_JOUR: DateTimeFormatter =
     DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRENCH)
 
