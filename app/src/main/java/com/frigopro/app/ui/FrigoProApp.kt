@@ -112,6 +112,7 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
     val detail: InterventionViewModel = viewModel(factory = InterventionViewModel.Factory)
     val plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory)
     val machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory)
+    val carnet: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory)
     val factures: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory)
     val devis: DevisViewModel = viewModel(factory = DevisViewModel.Factory)
     val materiel: MaterielViewModel = viewModel(factory = MaterielViewModel.Factory)
@@ -147,7 +148,10 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                 plan.onFermerGamme()
             }
 
-            Onglet.CLIENTS -> machines.onRevenirAuCarnet()
+            Onglet.CLIENTS -> {
+                machines.onRevenirAuCarnet()
+                carnet.onFermerClient()
+            }
 
             Onglet.FACTURES -> {
                 facturation = VueFacturation.FACTURES
@@ -245,7 +249,26 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                         onAllerAAujourdhui = { onglet = Onglet.AUJOURDHUI },
                     )
 
-                    Onglet.CLIENTS -> ClientsRoute()
+                    // La page d'un client ouvre ses objets dans leur onglet :
+                    // le ViewModel partagé reçoit l'objet, la coquille change
+                    // d'onglet — le chemin de l'accueil vers une facture à
+                    // relancer et du Planning vers une intervention.
+                    Onglet.CLIENTS -> ClientsRoute(
+                        onOuvrirIntervention = { intervention ->
+                            detail.onOuvrir(intervention)
+                            onglet = Onglet.AUJOURDHUI
+                        },
+                        onOuvrirFacture = { facture ->
+                            factures.onOuvrir(facture)
+                            facturation = VueFacturation.FACTURES
+                            onglet = Onglet.FACTURES
+                        },
+                        onOuvrirDevis = { document ->
+                            devis.onOuvrir(document)
+                            facturation = VueFacturation.DEVIS
+                            onglet = Onglet.FACTURES
+                        },
+                    )
 
                     Onglet.FACTURES -> FacturationRoute(
                         vue = facturation,

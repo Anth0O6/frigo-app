@@ -66,6 +66,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.Devis
+import com.frigopro.app.data.Facture
+import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.GroupeClients
@@ -93,6 +96,15 @@ import com.frigopro.app.ui.theme.StyleChiffrePetit
  */
 @Composable
 fun ClientsRoute(
+    /**
+     * Les trois objets que la page d'un client ouvre **ailleurs** : c'est la
+     * coquille qui change d'onglet, et le ViewModel partagé de l'onglet visé qui
+     * reçoit l'objet — même mécanisme que l'accueil ouvrant une facture à
+     * relancer, ou le Planning une intervention.
+     */
+    onOuvrirIntervention: (Intervention) -> Unit = {},
+    onOuvrirFacture: (Facture) -> Unit = {},
+    onOuvrirDevis: (Devis) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
@@ -108,6 +120,7 @@ fun ClientsRoute(
 ) {
     val carnet by viewModel.groupes.collectAsStateWithLifecycle()
     val fiche by viewModel.fiche.collectAsStateWithLifecycle()
+    val dossier by viewModel.dossier.collectAsStateWithLifecycle()
     val recherche by viewModel.recherche.collectAsStateWithLifecycle()
     val deplies by viewModel.deplies.collectAsStateWithLifecycle()
     val parcsComplets by viewModel.parcsComplets.collectAsStateWithLifecycle()
@@ -215,6 +228,26 @@ fun ClientsRoute(
     // prêtes à recevoir un geste qui ne leur était pas destiné.
     BackHandler(enabled = ouverte == null && selection != null) { machines.onQuitterSelection() }
 
+    // La page d'un client se referme au retour — sur son enseigne s'il s'agit
+    // d'un site. Ni machine ouverte ni sélection : chacune a son rappel, et les
+    // conditions s'excluent plutôt que de compter sur l'ordre des rappels.
+    BackHandler(enabled = ouverte == null && selection == null && dossier != null) {
+        viewModel.onRetourClient()
+    }
+
+    // Les années ne sont proposées que si le parc de ce client suit vraiment une
+    // gamme : un bouton qui ne produirait qu'un document blanc vaut moins que pas
+    // de bouton, et c'est la même règle que la section de plan absente d'une
+    // fiche machine tant qu'aucune gamme n'existe.
+    fun attestationDe(client: Client): ActionsAttestation {
+        val siennes = parc.filter { it.clientId == client.id }.map { it.id }.toSet()
+        val suivi = affectations.any { it.equipementId in siennes }
+        return ActionsAttestation(
+            annees = if (suivi) SuiviMaintenance.anneesDe(setOf(client.id), parc, visites) else emptyList(),
+            onExporter = { annee -> maintenance.onExporterAttestation(client, annee) },
+        )
+    }
+
     val machineOuverte = ouverte
     if (machineOuverte != null) {
         EcranEquipement(
@@ -304,6 +337,28 @@ fun ClientsRoute(
                 onFermer = { ficheOuverte = false },
             )
         }
+    } else if (selection == null && dossier != null) {
+        val ouvert = dossier!!
+        val client = ouvert.client
+        EcranClient(
+            dossier = ouvert,
+            machines = groupes.filter { it.groupe.clientId == client.id },
+            attestation = attestationDe(client),
+            actions = ActionsEcranClient(
+                onFermer = viewModel::onRetourClient,
+                onModifier = { viewModel.onOuvrirFiche(client) },
+                onOuvrirFacture = onOuvrirFacture,
+                onOuvrirIntervention = onOuvrirIntervention,
+                onOuvrirDevis = onOuvrirDevis,
+                onOuvrirMachine = machines::onOuvrir,
+                onAjouterMachine = { machines.onAjouterMachine(client.id) },
+                onSelectionner = { machines.onSelectionner(client.id) },
+                onSelectionnerDepuis = machines::onSelectionnerDepuis,
+                onOuvrirSite = { site -> viewModel.onOuvrirClient(site.id) },
+                onNouveauSite = { viewModel.onNouveauSite(client) }.takeUnless { client.estSite },
+            ),
+            modifier = modifier,
+        )
     } else {
         ClientsScreen(
             carnet = carnet,
@@ -320,7 +375,7 @@ fun ClientsRoute(
             ),
             etatListe = etatListe,
             onNouveauClient = viewModel::onNouveauClient,
-            onOuvrirFiche = viewModel::onOuvrirFiche,
+            onOuvrirClient = { client -> viewModel.onOuvrirClient(client.id) },
             onNouveauSite = viewModel::onNouveauSite,
             onOuvrirMachine = machines::onOuvrir,
             onAjouterMachine = machines::onAjouterMachine,
@@ -379,30 +434,18 @@ fun ClientsRoute(
                 null -> Unit
             }
         }
+    }
 
+    // La boîte d'édition se pose sur le carnet comme sur la page d'un client,
+    // d'où « Modifier » l'ouvre ; jamais sur une machine ouverte.
+    if (ouverte == null) {
         fiche?.let { etat ->
-            val client = etat.versClient()
-            // Les années ne sont proposées que si le parc de ce client suit
-            // vraiment une gamme : un bouton qui ne produirait qu'un document
-            // blanc vaut moins que pas de bouton, et c'est la même règle que la
-            // section de plan absente d'une fiche machine tant qu'aucune gamme
-            // n'existe.
-            val siennes = parc.filter { it.clientId == client.id }.map { it.id }.toSet()
-            val suivi = affectations.any { it.equipementId in siennes }
             FicheClient(
                 etat = etat,
                 onEtatChange = viewModel::onFicheChange,
                 onEnregistrer = viewModel::onEnregistrerFiche,
                 onFermer = viewModel::onFermerFiche,
-                onSupprimer = { aSupprimer = client },
-                attestation = ActionsAttestation(
-                    annees = if (suivi) {
-                        SuiviMaintenance.anneesDe(setOf(client.id), parc, visites)
-                    } else {
-                        emptyList()
-                    },
-                    onExporter = { annee -> maintenance.onExporterAttestation(client, annee) },
-                ),
+                onSupprimer = { aSupprimer = etat.versClient() },
             )
         }
     }
@@ -664,7 +707,7 @@ fun ClientsScreen(
     lecture: LectureCarnet,
     actionsLecture: ActionsLectureCarnet,
     onNouveauClient: () -> Unit,
-    onOuvrirFiche: (Client) -> Unit,
+    onOuvrirClient: (Client) -> Unit,
     onNouveauSite: (Client) -> Unit,
     onOuvrirMachine: (Equipement) -> Unit,
     onAjouterMachine: (String) -> Unit,
@@ -699,7 +742,7 @@ fun ClientsScreen(
             deplie = trouvees != null || client.id in lecture.deplies,
             onBasculerParc = { actionsLecture.onBasculerParc(client.id) },
             onVoirToutLeParc = { actionsLecture.onVoirToutLeParc(client.id) },
-            onClick = { onOuvrirFiche(client) },
+            onClick = { onOuvrirClient(client) },
             onOuvrirMachine = onOuvrirMachine,
             onAjouterMachine = { onAjouterMachine(client.id) },
             onNouveauSite = ajoutSite,
@@ -839,7 +882,7 @@ private fun initiale(nom: String): String {
 }
 
 /**
- * Fiche résumée d'un client. Le corps ouvre la fiche complète ; les deux icônes
+ * Fiche résumée d'un client. Le corps ouvre sa page ([EcranClient]) ; les deux icônes
  * de droite appellent et ouvrent l'itinéraire sans passer par elle — depuis le
  * carnet comme depuis la tournée, agir doit tenir en un geste.
  *
@@ -999,7 +1042,7 @@ private val RETRAIT_SITE = 20.dp
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SectionMachines(
+internal fun SectionMachines(
     client: Client,
     machines: List<GroupeMachines>,
     trouvees: List<GroupeMachines>?,
@@ -1011,6 +1054,12 @@ private fun SectionMachines(
     onSelectionner: () -> Unit,
     onSelectionnerDepuis: (Equipement) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Faux sur la page du client, où le parc est toujours montré : il y est la
+     * raison d'être de la section, et un en-tête qui le replierait n'y
+     * cacherait que ce qu'on est venu voir.
+     */
+    repliable: Boolean = true,
 ) {
     // L'état déplié vient du ViewModel, par identifiant de client : la liste
     // recycle ses cartes, et il ne doit ni sauter d'un client à l'autre au
@@ -1027,7 +1076,7 @@ private fun SectionMachines(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !filtre, onClick = onBasculerParc)
+                .clickable(enabled = !filtre && repliable, onClick = onBasculerParc)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1066,7 +1115,7 @@ private fun SectionMachines(
                     Text(text = "Sélectionner")
                 }
             }
-            if (!filtre) {
+            if (!filtre && repliable) {
                 Icon(
                     imageVector = if (deplie) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                     contentDescription = if (deplie) "Replier le parc" else "Déplier le parc",
@@ -1217,7 +1266,7 @@ private fun ClientsScreenPreview() {
                 lecture = LectureCarnet(deplies = setOf("1")),
                 actionsLecture = ActionsLectureCarnet(),
                 onNouveauClient = {},
-                onOuvrirFiche = {},
+                onOuvrirClient = {},
                 onNouveauSite = {},
                 onOuvrirMachine = {},
                 onAjouterMachine = {},

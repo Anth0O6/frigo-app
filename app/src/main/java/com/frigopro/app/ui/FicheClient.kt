@@ -77,18 +77,6 @@ fun FicheClient(
      * l'affaire de la route : c'est elle qui sait compter ce qui disparaît.
      */
     onSupprimer: (() -> Unit)? = null,
-    /**
-     * L'attestation d'entretien de ce client : les années à proposer, et
-     * l'export.
-     *
-     * Elle vit sur la fiche du client parce que c'est **la seule surface qui
-     * désigne un client** : le registre des fluides est tenu par l'entreprise et
-     * va donc aux Réglages, une attestation se remet à quelqu'un et se cherche
-     * là où ce quelqu'un est fiché. Le défaut vide la rend absente, ce qui est le
-     * cas de tout parc qui ne suit aucune gamme — un bouton qui ne produirait
-     * qu'un document blanc vaut moins que pas de bouton.
-     */
-    attestation: ActionsAttestation = ActionsAttestation(),
 ) {
     val contexte = LocalContext.current
     val client = etat.versClient()
@@ -184,10 +172,6 @@ fun FicheClient(
                 }
             }
 
-            if (!etat.estCreation && attestation.annees.isNotEmpty()) {
-                SectionAttestation(attestation = attestation)
-            }
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -230,7 +214,12 @@ data class ActionsAttestation(
 )
 
 /**
- * L'attestation d'entretien, sur la fiche du client.
+ * L'attestation d'entretien, sur la page du client ([EcranClient]).
+ *
+ * Elle y vit parce que c'est **la seule surface qui désigne un client** : le
+ * registre des fluides est tenu par l'entreprise et va donc aux Réglages, une
+ * attestation se remet à quelqu'un et se cherche là où ce quelqu'un est fiché.
+ * Elle a quitté la boîte d'édition, qui sert à corriger des coordonnées.
  *
  * Les années sont **dérivées des visites** de son parc, comme celles du registre
  * le sont des mouvements : proposer trois années dont deux sont vides ferait
@@ -243,7 +232,7 @@ data class ActionsAttestation(
  * « elle rapporte des dates » est ce qui permet de le faire sans relire le PDF.
  */
 @Composable
-private fun SectionAttestation(attestation: ActionsAttestation) {
+internal fun SectionAttestation(attestation: ActionsAttestation) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text = "Attestation d'entretien", style = MaterialTheme.typography.titleSmall)
         Text(

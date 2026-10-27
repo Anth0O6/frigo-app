@@ -140,7 +140,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── PlanningRoute.kt     # Semaine | Entretien
 │       │       ├── InterventionsViewModel.kt
 │       │       ├── EtatFicheClient.kt
-│       │       ├── FicheClient.kt
+│       │       ├── FicheClient.kt      # l'édition des coordonnées, en feuille
+│       │       ├── EcranClient.kt      # la page d'un client : le pivot de l'onglet
 │       │       ├── ClientsScreen.kt
 │       │       ├── ClientsViewModel.kt
 │       │       ├── SelectionMachines.kt # cocher un parc : zone et gamme en lot
@@ -622,6 +623,28 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   suite. Les dates d'une machine — mise en service, dernier contrôle — se
   choisissent **au calendrier**, avec « Effacer » : tapées en AAAA-MM-JJ, une
   saisie mal formée devenait `null` sans un mot, et l'échéance F-Gas disparaissait.
+  **La page d'un client est le pivot de l'onglet Clients** (`EcranClient`).
+  Toucher une carte du carnet ne l'édite plus : elle ouvre en plein onglet ce
+  qu'on veut savoir en arrivant chez lui ou en décrochant quand il appelle — ce
+  qu'il doit, ses interventions à venir puis passées, ses devis en cours, son
+  parc, ses sites, l'attestation d'entretien. Cela demandait de traverser trois
+  onglets. L'ordre suit l'urgence : l'argent d'abord, parce qu'une facture échue
+  change la conversation. La page **remplace** le carnet, une seule profondeur et
+  un `BackHandler` ; ce qu'elle ouvre — facture, devis, intervention — change
+  d'onglet par le ViewModel partagé de l'onglet visé, le chemin de l'accueil vers
+  une facture à relancer. L'édition des coordonnées reste la feuille
+  `FicheClient`, derrière « Modifier », et l'attestation l'a quittée pour la
+  page. `ClientsViewModel` tient le client **par son identifiant**, comme la
+  machine ouverte : une suppression referme la page d'elle-même, et un site
+  revient à son enseigne. Le `DossierClient` filtre en mémoire les flux de
+  toutes les interventions, factures et devis, et ne les fait couler **que page
+  ouverte** (`flatMapLatest`), même règle que la recherche de la journée. Il ne
+  retient que **ce client** — ses sites ont chacun leur page, et les mêler
+  montrerait deux fois la même intervention et ferait lire à l'enseigne une dette
+  qu'un site règle lui-même —, mais il compte les interventions **qu'on lui
+  facture** en sous-traitance, parce que c'est à lui qu'on en parle. Le parc
+  garde son pliage sur la carte du carnet, et se montre toujours déplié sur la
+  page, où il est ce qu'on est venu voir.
 - **`ui`** — `FrigoProApp` est la coquille : cinq onglets, **`Aujourd'hui`,
   `Planning`, `Clients`, `Factures` et `Atelier`**, et les **Réglages en plein
   écran derrière une roue crantée**, qui masquent la barre du bas. C'est l'état
@@ -1451,7 +1474,7 @@ l'APK : un test rouge bloque la publication.
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées, suppression qui emporte le plan du parc — et celui du parc de chaque site — en gardant les visites, fiche complétée là où elle est vide, jamais écrasée, rien d'écrit sans nouveauté |
 | `TypeInterventionRepositoryTest` | Tri français, absence de doublon, propagation d'un renommage, suppression qui laisse l'intitulé |
 | `EtatFicheClientTest` | Validation de la fiche, identifiant stable d'une création |
-| `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée, recherche et parcs dépliés tenus hors de l'écran, « voir tout le parc » oublié à la recherche suivante |
+| `ClientsViewModelTest` | Ouverture et enregistrement d'une fiche, saisie incomplète refusée, recherche et parcs dépliés tenus hors de l'écran, « voir tout le parc » oublié à la recherche suivante, la page ouverte par identifiant qui suit un renommage et se referme quand le client est supprimé, le site qui revient à son enseigne, interventions — sous-traitées comprises —, factures dues et devis en cours filtrés sur ce seul client et non sur ses sites, et rien d'observé page fermée |
 | `ReglagesViewModelTest` | Création, renommage propagé, suppression confirmée qui laisse l'intitulé, prix du catalogue renseigné et prix négatif refusé, coût horaire interne enfin saisissable et jamais confondu avec le taux facturé |
 | `SauvegardeRepositoryTest` | Aller-retour export/restauration sans perte, refus d'un fichier douteux, relecture d'un fichier du format 1, statut retiré depuis qui reste lisible, machine d'avant le format 15 relue sans zone, machine d'avant le format 16 relue sans détecteur, une facture et son avoir qui reviennent identiques, une facture d'avant le format 17 relue en facture, une nature inconnue qui fait refuser le fichier |
 | `EquipementRepositoryTest` | Tri français, parcs distincts entre clients, renommage propagé, suppression qui emporte les fichiers et le plan mais garde les visites, duplication qui recopie le matériel — zone et détecteur de fuite compris — et jamais ce qui a été fait, le nom de copie qui prend le rang suivant, les zones dérivées du parc et triées sans les vides, une zone donnée à une sélection et à elle seule — ni au reste du parc ni au voisin —, vidée qui ramène « Sans zone », nettoyée, et un grand parc rangé entier malgré le découpage en paquets |
