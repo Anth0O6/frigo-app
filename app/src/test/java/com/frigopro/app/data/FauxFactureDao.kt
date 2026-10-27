@@ -85,6 +85,8 @@ class FauxFactureDao : FactureDao() {
 
     override suspend fun toutesLesLignes(): List<LigneFacture> = lignes.value
 
+    override fun observerToutesLesLignes(): Flow<List<LigneFacture>> = lignes
+
     override fun observerTotaux(): Flow<List<TotalFacture>> = lignes.map { liste ->
         liste.groupBy { it.factureId }
             .map { (factureId, lignesDeLaFacture) ->

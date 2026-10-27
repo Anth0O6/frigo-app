@@ -86,6 +86,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── FactureDao.kt
 │       │   │   ├── FactureRepository.kt    # numérote, fige, et refuse d'effacer
 │       │   │   ├── RappelsFactures.kt      # le rappel du matin, et rien d'autre
+│       │   │   ├── Benefice.kt            # ce qui reste dans la poche, par période
 │       │   │   ├── Deplacement.kt         # tarif, trajet, et ce qu'il facture
 │       │   │   ├── ServiceItineraire.kt   # le contrat, et la lecture de la réponse
 │       │   │   ├── ItineraireRelais.kt    # la seule classe qui ouvre une connexion
@@ -183,6 +184,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── DocumentRegistre.kt  # ce que le registre des fluides dit
 │       │       ├── EcranFactures.kt     # la liste, la facture, et ses gestes
 │       │       ├── FacturesViewModel.kt
+│       │       ├── CarteBenefice.kt     # le bénéfice du jour à « depuis le début »
 │       │       ├── MiseEnPageDevis.kt   # l'arithmétique de la page A4
 │       │       ├── PdfDevis.kt          # le seul à connaître Canvas
 │       │       ├── EtatReglette.kt      # pression ↔ température, et le côté
@@ -1619,6 +1621,7 @@ l'APK : un test rouge bloque la publication.
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
 | `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée, une facture créditée qui ne s'annule plus |
+| `BeneficeTest` | La marge du matériel et le montant de la main-d'œuvre, le matériel offert qui retire son coût, la TVA offerte retirée, chaque période — semaine du lundi — qui compte ce qui la contient, facturé ou encaissé, brouillon et annulée jamais comptés, l'avoir qui retire son montant, la période vide qui ne compte aucun document |
 | `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture, l'avoir qui porte la référence d'origine et aucune mention de paiement, son total positif et nommé, son propre nom de fichier, aucune note technique — SIRET, Réglages — sur le document du client |
 | `FacturesViewModelTest` | La facture imprimée qui porte logo, en-tête et adresse ; l'émission qui fige les vrais réglages ; l'avoir qui s'ouvre une fois créé, et la facture d'origine qui se sait couverte; un brouillon qui se complète et une facture émise non, une facture pointée payée à la date donnée |
 | `FacturerInterventionTest` | Facturer ouvre la facture et mène aux factures une fois, sans passer par les devis ; facturer deux fois rouvre la même |
@@ -2160,6 +2163,24 @@ au lendemain. C'est un défaut qui ne se voit qu'en attendant plusieurs matins, 
 Sur une facture échue, « Envoyer » devient **« Relancer »**, et le message dit le
 reste dû et l'échéance — il était identique à l'envoi initial. « Payée » demande
 la date du règlement, aujourd'hui par défaut.
+
+### Le bénéfice
+
+La liste des factures s'ouvre sur **ce qui reste dans la poche** (`CalculBenefice`,
+`CarteBenefice`) : aujourd'hui, cette semaine — du lundi —, ce mois, cette année et
+depuis le début, les cinq **ensemble** pour se comparer d'un coup d'œil, chacun se
+dépliant sur ce qui le compose. Une ligne de matériel — elle a un prix d'achat —
+rapporte sa **marge**, et offerte elle retire **son coût** ; toute autre ligne
+rapporte son montant, offerte rien ; la **TVA offerte** et les **avoirs émis** se
+retirent, ces derniers sans rien rendre en coût faute de savoir si le matériel est
+revenu. Tout est **HT**. Le déplacement compte avec la main-d'œuvre : une ligne de
+facture ne le distingue pas, faute du marqueur qu'a la ligne de devis. Deux bases
+répondent à deux questions, au choix sur la carte : **facturé**, à la date
+d'émission, et **encaissé**, à la date de règlement des seules factures payées ;
+brouillons et factures annulées ne comptent jamais. Ce **n'est pas un résultat** —
+ni véhicule, ni charges, ni coût horaire interne, une ligne de facture ne disant pas
+ses heures — et la carte l'écrit. Rien n'est stocké : le flux des factures et de
+toutes leurs lignes le recompose, la date du jour étant relue à chaque émission.
 
 ### Là où elles vivent
 
