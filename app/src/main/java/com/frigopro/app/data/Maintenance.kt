@@ -3,9 +3,11 @@ package com.frigopro.app.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.text.Collator
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -347,6 +349,39 @@ data class EcheanceMaintenance(
 
     /** Jamais visitée : l'écran le dit, parce que c'est une information. */
     val jamaisVisitee: Boolean get() = derniereVisite == null
+
+    /**
+     * Le couple machine / gamme qui désigne l'échéance. Ni l'un ni l'autre seul
+     * ne suffit : une machine suit plusieurs gammes, une gamme couvre plusieurs
+     * machines.
+     */
+    val cle: Pair<String, String> get() = equipement.id to gamme.id
+}
+
+/**
+ * Une zone d'un site et ses échéances, dans l'ordre où l'écran les montre.
+ *
+ * [zone] vide veut dire **non rangée**, et l'écran l'intitule « Sans zone » : ce
+ * n'est pas une zone sans nom, c'est un rangement qui n'a pas été fait.
+ */
+data class ZoneEcheances(
+    val zone: String,
+    val echeances: List<EcheanceMaintenance>,
+)
+
+/**
+ * Un site qui doit des visites : de quoi le choisir avant d'y faire sa tournée.
+ *
+ * Les deux comptes sont séparés parce qu'ils ne pèsent pas pareil au moment de
+ * choisir où aller : « 4 en retard » décide d'une matinée, « 4 à faire » non.
+ */
+data class SiteDu(
+    val clientId: String,
+    val clientNom: String,
+    val enRetard: Int,
+    val aFaire: Int,
+) {
+    val total: Int get() = enRetard + aFaire
 }
 
 /**
@@ -436,6 +471,79 @@ object PlanMaintenance {
             .map { it.equipementId }
             .toSet()
     }
+
+    /**
+     * Des échéances rangées **par zone, dans l'ordre des zones** : les zones
+     * nommées triées à la française — « Étuve » n'est pas après « Zone 2 » —, et
+     * les non rangées en dernier, sous « Sans zone ». Elles appellent un
+     * rangement, pas un détour en tête de liste.
+     *
+     * L'ordre des échéances à l'intérieur d'une zone est celui reçu : l'Entretien
+     * y garde l'urgence, la tournée d'un site l'ordre des noms. C'est la seule
+     * règle de rangement par zone de l'application, et l'Entretien comme la
+     * tournée y passent — deux copies du même tri finiraient par ne plus ranger
+     * « toiture » au même endroit.
+     */
+    fun parZone(echeances: List<EcheanceMaintenance>): List<ZoneEcheances> {
+        val groupes = echeances.groupBy { it.equipement.zone.trim() }
+        val nommees = groupes.keys.filter { it.isNotEmpty() }.sortedWith(collateur)
+        val ordre = if ("" in groupes) nommees + "" else nommees
+        return ordre.map { zone -> ZoneEcheances(zone, groupes.getValue(zone)) }
+    }
+
+    /**
+     * Les sites qui doivent des visites — en retard ou dans leur préavis —, dans
+     * l'ordre du carnet.
+     *
+     * L'ordre alphabétique et non celui du retard : on choisit le site **où l'on
+     * se trouve**, et on le cherche par son nom. Un site dont tout est à venir
+     * n'y paraît pas : une tournée qui n'aurait rien à cocher n'est pas une
+     * tournée.
+     */
+    fun sitesDus(echeances: List<EcheanceMaintenance>, aujourdhui: LocalDate): List<SiteDu> =
+        echeances
+            .filter { it.statut(aujourdhui).appelleUneAction }
+            .groupBy { it.equipement.clientId }
+            .map { (clientId, siennes) ->
+                val enRetard = siennes.count { it.statut(aujourdhui) == StatutEcheance.EN_RETARD }
+                SiteDu(
+                    clientId = clientId,
+                    clientNom = siennes.first().clientNom,
+                    enRetard = enRetard,
+                    aFaire = siennes.size - enRetard,
+                )
+            }
+            .sortedWith { a, b -> collateur.compare(a.clientNom, b.clientNom) }
+
+    /**
+     * La tournée d'un site : ses échéances dues, **et celles de ce seul site**,
+     * rangées par zone.
+     *
+     * Le site est un client — un site est un client du carnet —, et ses
+     * enseignes sœurs n'y entrent pas : on fait la tournée d'un endroit, pas d'un
+     * donneur d'ordre. À l'intérieur d'une zone, l'ordre est celui des noms de
+     * machine et non celui des échéances : on marche le long d'un linéaire, et
+     * « VIT-03 » se cherche après « VIT-02 », quelle que soit la date où chacune
+     * tombait.
+     */
+    fun tournee(
+        echeances: List<EcheanceMaintenance>,
+        clientId: String,
+        aujourdhui: LocalDate,
+    ): List<ZoneEcheances> = parZone(
+        echeances
+            .filter { it.equipement.clientId == clientId && it.statut(aujourdhui).appelleUneAction }
+            .sortedWith { a, b ->
+                collateur.compare(a.equipement.nom, b.equipement.nom).takeIf { it != 0 }
+                    ?: collateur.compare(a.gamme.libelle, b.gamme.libelle)
+            },
+    )
+
+    /** Le tri français des zones et des noms : `Collator` replie les accents. */
+    private val collateur: Comparator<String> =
+        Collator.getInstance(Locale.FRENCH).let { francais ->
+            Comparator { a, b -> francais.compare(a, b) }
+        }
 
     /**
      * Ce qu'une gamme a produit sur une fenêtre, tout le parc confondu.

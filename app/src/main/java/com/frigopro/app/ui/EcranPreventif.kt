@@ -26,7 +26,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.EcheanceMaintenance
+import com.frigopro.app.data.PlanMaintenance
+import com.frigopro.app.data.SiteDu
 import com.frigopro.app.data.StatutEcheance
+import com.frigopro.app.ui.composants.BoutonContour
 import com.frigopro.app.ui.composants.BoutonDiscret
 import com.frigopro.app.ui.composants.Carte
 import com.frigopro.app.ui.composants.ChampRecherche
@@ -36,9 +39,7 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.TuileChiffre
 import com.frigopro.app.ui.theme.LocalStatuts
-import java.text.Collator
 import java.time.LocalDate
-import java.util.Locale
 
 /**
  * L'Entretien : ce que le calendrier doit. La seconde vue du Planning.
@@ -80,9 +81,14 @@ fun EcranPreventif(
      * une page parmi dix.
      */
     onNouvelleGamme: () -> Unit = onVoirGammes,
+    /** Les sites qui doivent des visites : ceux qu'on peut choisir pour une tournée. */
+    sitesDus: List<SiteDu> = emptyList(),
+    /** Ouvre la tournée d'un site, qui remplace cette vue. */
+    onTourneeSite: (String) -> Unit = {},
 ) {
     var recherche by rememberSaveable { mutableStateOf("") }
     var aVenirDeplie by rememberSaveable { mutableStateOf(false) }
+    var choixSiteOuvert by rememberSaveable { mutableStateOf(false) }
 
     val trouvees = echeances.filter { it.correspondA(recherche) }
     val parStatut = trouvees.groupBy { it.statut(aujourdhui) }
@@ -169,6 +175,20 @@ fun EcranPreventif(
                 )
             }
 
+            // La tournée d'un site : cocher ce qu'on a vu en marchant, et le
+            // consigner d'un geste. Absent tant qu'aucun site ne doit rien — un
+            // bouton qui ouvrirait une liste vide n'est pas un geste.
+            if (sitesDus.isNotEmpty()) {
+                BoutonContour(
+                    texte = "Tournée sur un site",
+                    onClick = { choixSiteOuvert = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = MargeEcran)
+                        .padding(bottom = 14.dp),
+                )
+            }
+
             ChampRecherche(
                 valeur = recherche,
                 onValeur = { recherche = it },
@@ -239,6 +259,17 @@ fun EcranPreventif(
             }
         }
     }
+
+    if (choixSiteOuvert) {
+        DialogueChoixSite(
+            sites = sitesDus,
+            onChoisir = { clientId ->
+                choixSiteOuvert = false
+                onTourneeSite(clientId)
+            },
+            onFermer = { choixSiteOuvert = false },
+        )
+    }
 }
 
 /**
@@ -273,7 +304,7 @@ private fun LazyListScope.groupe(
     if (echeances.isEmpty()) return
     item(key = "entete-$intitule") { IntituleSection(texte = "$intitule · ${echeances.size}") }
 
-    val parZone = echeances.groupBy { it.equipement.zone.trim() }
+    val parZone = PlanMaintenance.parZone(echeances)
     if (parZone.size <= 1) {
         items(items = echeances, key = { cle(it) }) { echeance ->
             LigneEcheanceMaintenance(
@@ -285,12 +316,9 @@ private fun LazyListScope.groupe(
         return
     }
 
-    // Les zones nommées d'abord, triées ; les non rangées en dernier — elles
-    // appellent un rangement, pas un détour en tête de liste.
-    val ordre = parZone.keys.filter { it.isNotEmpty() }.sortedWith(collateurZones) +
-        listOf("").filter { it in parZone }
-    ordre.forEach { zone ->
-        val siennes = parZone.getValue(zone)
+    // L'ordre des zones est celui de `PlanMaintenance.parZone`, que la tournée
+    // d'un site suit aussi : les zones nommées triées, « Sans zone » en dernier.
+    parZone.forEach { (zone, siennes) ->
         item(key = "zone-$intitule-$zone") {
             SousTitreZone(
                 zone = zone.ifEmpty { "Sans zone" },
@@ -331,12 +359,6 @@ private fun SousTitreZone(zone: String, nombre: Int) {
         Puce(texte = "$nombre", chiffre = true)
     }
 }
-
-/** Même tri que `zonesDe` : « Étuve » n'est pas après « Zone 2 ». */
-private val collateurZones: Comparator<String> =
-    Collator.getInstance(Locale.FRENCH).let { collateur ->
-        Comparator { a, b -> collateur.compare(a, b) }
-    }
 
 /**
  * La clé d'une ligne : le couple machine / gamme.

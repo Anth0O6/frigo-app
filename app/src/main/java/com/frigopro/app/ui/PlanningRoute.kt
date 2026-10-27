@@ -96,6 +96,8 @@ fun PlanningRoute(
     // La visite ouverte vit ici et non dans le ViewModel : c'est une feuille de
     // saisie, pas un état du plan — même motif que le sélecteur de date.
     var visite by remember { mutableStateOf<EcheanceMaintenance?>(null) }
+    // La feuille commune d'une tournée : même raison, c'est une saisie.
+    var feuilleTournee by remember { mutableStateOf(false) }
 
     // L'écran des gammes est la seule profondeur de l'onglet.
     BackHandler(enabled = vue == VuePlanning.ENTRETIEN && gammesOuvertes) { onGammes(false) }
@@ -157,19 +159,53 @@ fun PlanningRoute(
                 modifier = modifier,
             )
         } else {
-            val echeances by plan.echeances.collectAsStateWithLifecycle()
-            EcranPreventif(
-                echeances = echeances,
-                vue = vue,
-                onVue = onVue,
-                onOuvrir = { visite = it },
-                onVoirGammes = { onGammes(true) },
-                onNouvelleGamme = {
-                    onGammes(true)
-                    plan.onOuvrirGamme(NOUVELLE_GAMME)
-                },
-                modifier = modifier,
-            )
+            val tournee by plan.tournee.collectAsStateWithLifecycle()
+            val enCours = tournee
+            if (enCours != null) {
+                // La tournée d'un site remplace l'Entretien : une profondeur de
+                // plus, défaite par le retour système.
+                BackHandler { plan.onFermerTournee() }
+                EcranTourneeSite(
+                    tournee = enCours,
+                    onBasculer = plan::onBasculerVisite,
+                    onCocherTout = plan::onCocherTout,
+                    onConsigner = { feuilleTournee = true },
+                    onFermer = plan::onFermerTournee,
+                    modifier = modifier,
+                )
+                if (feuilleTournee) {
+                    val techniciens by plan.techniciensConnus.collectAsStateWithLifecycle()
+                    val auteurPropose by plan.auteurPropose.collectAsStateWithLifecycle()
+                    FeuilleVisitesTournee(
+                        nombre = enCours.nombreCochees,
+                        clientNom = enCours.clientNom,
+                        techniciens = techniciens,
+                        auteurPropose = auteurPropose,
+                        onConsigner = { faitLe, auteur, notes ->
+                            plan.onConsignerTournee(faitLe, auteur, notes)
+                            feuilleTournee = false
+                        },
+                        onFermer = { feuilleTournee = false },
+                    )
+                }
+            } else {
+                val echeances by plan.echeances.collectAsStateWithLifecycle()
+                val sitesDus by plan.sitesDus.collectAsStateWithLifecycle()
+                EcranPreventif(
+                    echeances = echeances,
+                    vue = vue,
+                    onVue = onVue,
+                    onOuvrir = { visite = it },
+                    onVoirGammes = { onGammes(true) },
+                    onNouvelleGamme = {
+                        onGammes(true)
+                        plan.onOuvrirGamme(NOUVELLE_GAMME)
+                    },
+                    sitesDus = sitesDus,
+                    onTourneeSite = plan::onOuvrirTournee,
+                    modifier = modifier,
+                )
+            }
         }
     }
 

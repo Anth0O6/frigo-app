@@ -21,9 +21,11 @@ import com.frigopro.app.data.PlanMaintenance
 import com.frigopro.app.data.PointGamme
 import com.frigopro.app.data.RealisationGamme
 import com.frigopro.app.data.ReleveGamme
+import com.frigopro.app.data.SiteDu
 import com.frigopro.app.data.SuiviMaintenance
 import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TechnicienRepository
+import com.frigopro.app.data.ZoneEcheances
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -318,10 +320,7 @@ class MaintenanceViewModel(
         notes: String = "",
     ) {
         viewModelScope.launch {
-            val nom = parametres.lire().technicien
-            val connus = techniciens.techniciens.first()
-            val auteur = connus.firstOrNull { it.nom == nom }
-                ?: nom.takeIf { it.isNotBlank() }?.let { Technicien(nom = it) }
+            val auteur = auteurDe(parametres.lire().technicien, techniciens.techniciens.first())
             maintenance.consigner(
                 equipement = equipement,
                 gamme = gamme,
@@ -334,6 +333,136 @@ class MaintenanceViewModel(
 
     fun onRetirerVisite(releve: ReleveGamme) {
         viewModelScope.launch { maintenance.retirerReleve(releve.id) }
+    }
+
+    // — La tournée d'un site ———————————————————————————————————————————————
+
+    /**
+     * Les sites qui doivent des visites, pour choisir celui où l'on arrive.
+     * Dérivé des échéances, comme tout le plan.
+     */
+    val sitesDus: StateFlow<List<SiteDu>> = echeances
+        .map { liste -> PlanMaintenance.sitesDus(liste, aujourdhui()) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+            emptyList(),
+        )
+
+    private val _siteEnTournee = MutableStateFlow<String?>(null)
+
+    private val _cochees = MutableStateFlow<Set<Pair<String, String>>>(emptySet())
+
+    /**
+     * La tournée en cours sur un site, `null` hors tournée.
+     *
+     * Le site est retenu **par son identifiant**, et les échéances viennent du
+     * plan observé : une visite consignée ailleurs pendant la tournée en fait
+     * sortir sa ligne d'elle-même. Les cases cochées sont recoupées avec ce qui
+     * est encore dû, si bien qu'une ligne sortie ne compte plus dans « Consigner
+     * N visites » — le compteur annoncé est celui qu'on écrira.
+     */
+    val tournee: StateFlow<TourneeSite?> = combine(
+        echeances,
+        _siteEnTournee,
+        _cochees,
+        clients.clients,
+    ) { liste, site, cochees, carnet ->
+        site?.let { clientId ->
+            val zones = PlanMaintenance.tournee(liste, clientId, aujourdhui())
+            val dues = zones.flatMap { zone -> zone.echeances.map { it.cle } }.toSet()
+            TourneeSite(
+                clientId = clientId,
+                clientNom = carnet.firstOrNull { it.id == clientId }?.nom.orEmpty(),
+                zones = zones,
+                cochees = cochees intersect dues,
+            )
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS),
+        null,
+    )
+
+    /** Les techniciens connus, pour dire qui a fait la tournée. */
+    val techniciensConnus: StateFlow<List<Technicien>> = techniciens.techniciens
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
+    /**
+     * L'auteur proposé par défaut : le technicien des Réglages, comme pour une
+     * visite consignée seule. Par le même [auteurDe], pour que les deux chemins
+     * ne proposent pas deux personnes différentes.
+     */
+    val auteurPropose: StateFlow<Technicien?> = combine(
+        parametres.parametres,
+        techniciens.techniciens,
+    ) { reglages, connus -> auteurDe(reglages.technicien, connus) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), null)
+
+    /** Ouvre la tournée d'un site, rien de coché : chaque tournée repart de zéro. */
+    fun onOuvrirTournee(clientId: String) {
+        _cochees.value = emptySet()
+        _siteEnTournee.value = clientId
+    }
+
+    fun onFermerTournee() {
+        _siteEnTournee.value = null
+        _cochees.value = emptySet()
+    }
+
+    fun onBasculerVisite(echeance: EcheanceMaintenance) {
+        val cle = echeance.cle
+        _cochees.value = if (cle in _cochees.value) _cochees.value - cle else _cochees.value + cle
+    }
+
+    /**
+     * « Tout cocher » sur une zone ou sur tout le site : coche ce qui ne l'est
+     * pas, et décoche le tout quand tout l'était déjà — le même bouton défait ce
+     * qu'il vient de faire.
+     */
+    fun onCocherTout(echeances: List<EcheanceMaintenance>) {
+        val cles = echeances.map { it.cle }.toSet()
+        if (cles.isEmpty()) return
+        _cochees.value = if (_cochees.value.containsAll(cles)) {
+            _cochees.value - cles
+        } else {
+            _cochees.value + cles
+        }
+    }
+
+    /**
+     * Consigne une visite par échéance cochée, en une écriture, puis referme la
+     * tournée.
+     *
+     * Les machines et les gammes sont relues **dans la base** au moment d'écrire,
+     * et non dans [tournee] : `.value` d'un flux que personne ne collecte reste à
+     * sa valeur initiale, et c'est ce défaut qui avait fait partir des factures
+     * sans logo. Seule la sélection, un état tenu ici, se lit directement.
+     *
+     * Rien ne s'écrit quand rien n'est coché. Les échéances se recalculent
+     * d'elles-mêmes ensuite, puisqu'elles se déduisent du journal.
+     *
+     * [faitLe] est modifiable pour la raison de la visite seule : une tournée se
+     * consigne souvent le soir, et la dater du jour de la saisie décalerait tout
+     * le plan du site.
+     */
+    fun onConsignerTournee(faitLe: LocalDate?, auteur: Technicien?, notes: String = "") {
+        val clientId = _siteEnTournee.value ?: return
+        val cochees = _cochees.value
+        if (cochees.isEmpty()) return
+        viewModelScope.launch {
+            val parEquipement = equipements.equipements.first()
+                .filter { it.clientId == clientId }
+                .associateBy { it.id }
+            val parGamme = maintenance.gammes.first().associateBy { it.id }
+            val visites = cochees.mapNotNull { (equipementId, gammeId) ->
+                val equipement = parEquipement[equipementId] ?: return@mapNotNull null
+                val gamme = parGamme[gammeId] ?: return@mapNotNull null
+                equipement to gamme
+            }
+            maintenance.consignerGroupe(visites, faitLe ?: aujourdhui(), auteur, notes)
+            onFermerTournee()
+        }
     }
 
     // — L'attestation d'entretien ————————————————————————————————————————————
@@ -397,6 +526,17 @@ class MaintenanceViewModel(
 
     companion object {
 
+        /**
+         * Le technicien qui signe une visite : celui des Réglages, retrouvé dans
+         * la liste quand il y est — pour en garder le lien —, et recopié par son
+         * seul nom sinon. C'est le seul nom que l'application connaisse avec
+         * certitude, et une visite sans auteur perdrait la moitié de sa valeur de
+         * preuve.
+         */
+        internal fun auteurDe(nom: String, connus: List<Technicien>): Technicien? =
+            connus.firstOrNull { it.nom == nom }
+                ?: nom.takeIf { it.isNotBlank() }?.let { Technicien(nom = it) }
+
         /** Même raison que dans [InterventionsViewModel]. */
         private const val TEMPS_ARRET_COLLECTE_MS = 5_000L
 
@@ -415,4 +555,24 @@ class MaintenanceViewModel(
             }
         }
     }
+}
+
+/**
+ * La tournée d'un site telle que l'écran la montre : ses échéances dues, par
+ * zone, et ce qui est coché.
+ */
+data class TourneeSite(
+    val clientId: String,
+    val clientNom: String,
+    val zones: List<ZoneEcheances>,
+    val cochees: Set<Pair<String, String>>,
+) {
+    val echeances: List<EcheanceMaintenance> get() = zones.flatMap { it.echeances }
+
+    val nombreCochees: Int get() = cochees.size
+
+    fun cochee(echeance: EcheanceMaintenance): Boolean = echeance.cle in cochees
+
+    fun toutCoche(echeances: List<EcheanceMaintenance>): Boolean =
+        echeances.isNotEmpty() && echeances.all { it.cle in cochees }
 }

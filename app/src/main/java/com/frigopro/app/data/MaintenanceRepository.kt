@@ -144,21 +144,66 @@ class MaintenanceRepository(private val dao: MaintenanceDao) {
         technicien: Technicien? = null,
         notes: String = "",
     ) {
-        dao.enregistrerReleve(
-            ReleveGamme(
-                equipementId = equipement.id,
-                equipementNom = equipement.nom,
-                gammeId = gamme.id,
-                gammeLibelle = gamme.libelle,
-                periodicite = gamme.periodicite,
-                faitLe = faitLe,
-                technicienId = technicien?.id,
-                technicienNom = technicien?.nom.orEmpty(),
-                notes = notes.trim(),
-                modifieLe = Instant.now(),
-            ),
-        )
+        dao.enregistrerReleve(visite(equipement, gamme, faitLe, technicien, notes, Instant.now()))
     }
+
+    /**
+     * Consigne **une visite par échéance** d'une tournée, en une seule écriture,
+     * et rend combien ont été écrites.
+     *
+     * Chaque ligne est celle qu'aurait écrite [consigner] — même recopie, même
+     * nettoyage des remarques —, parce qu'elle passe par le même [visite] : une
+     * visite saisie en lot n'est pas une preuve d'une autre nature qu'une visite
+     * saisie seule, et deux constructions de la même ligne finiraient par ne plus
+     * recopier les mêmes champs.
+     *
+     * **Une seule écriture**, que Room passe dans une transaction : cinquante
+     * meubles consignés à moitié feraient une ronde dont le journal dirait que le
+     * bout du linéaire n'a pas été vu. Aucun `IN (...)` n'est en jeu — c'est un
+     * `@Upsert` d'une liste, lié ligne à ligne —, si bien que la limite de 999
+     * paramètres de SQLite ne s'y pose pas et qu'il n'y a rien à découper en
+     * paquets, à la différence de [MaintenanceDao.retirerDe].
+     *
+     * Un couple machine / gamme présent deux fois ne fait qu'une visite : deux
+     * lignes pour le même passage gonfleraient le taux de réalisation.
+     */
+    suspend fun consignerGroupe(
+        visites: List<Pair<Equipement, GammeMaintenance>>,
+        faitLe: LocalDate,
+        technicien: Technicien?,
+        notes: String = "",
+    ): Int {
+        val distinctes = visites.distinctBy { (equipement, gamme) -> equipement.id to gamme.id }
+        if (distinctes.isEmpty()) return 0
+        val maintenant = Instant.now()
+        dao.enregistrerReleves(
+            distinctes.map { (equipement, gamme) ->
+                visite(equipement, gamme, faitLe, technicien, notes, maintenant)
+            },
+        )
+        return distinctes.size
+    }
+
+    /** La ligne du journal, recopies comprises : voir [consigner]. */
+    private fun visite(
+        equipement: Equipement,
+        gamme: GammeMaintenance,
+        faitLe: LocalDate,
+        technicien: Technicien?,
+        notes: String,
+        modifieLe: Instant,
+    ) = ReleveGamme(
+        equipementId = equipement.id,
+        equipementNom = equipement.nom,
+        gammeId = gamme.id,
+        gammeLibelle = gamme.libelle,
+        periodicite = gamme.periodicite,
+        faitLe = faitLe,
+        technicienId = technicien?.id,
+        technicienNom = technicien?.nom.orEmpty(),
+        notes = notes.trim(),
+        modifieLe = modifieLe,
+    )
 
     /**
      * Retire une visite consignée par erreur.

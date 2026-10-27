@@ -11,11 +11,13 @@ import com.frigopro.app.data.FauxMaintenanceDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.FauxTechnicienDao
+import com.frigopro.app.data.GammeMaintenance
 import com.frigopro.app.data.MaintenanceRepository
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Periodicite
 import com.frigopro.app.data.PlanMaintenance
 import com.frigopro.app.data.StatutEcheance
+import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TechnicienRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,6 +30,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -624,6 +627,168 @@ class MaintenanceViewModelTest {
         assertEquals(mensuelle.id, visite.gammeId)
     }
 
+    // — La tournée d'un site ————————————————————————————————————————————————
+
+    /**
+     * Le cas d'usage entier : on coche trois machines d'un site, et une seule
+     * validation écrit trois visites — chacune avec les copies d'une visite
+     * consignée seule, et à la date choisie et non à celle de la saisie.
+     */
+    @Test
+    fun `une tournee consigne une visite par echeance cochee, aux bonnes copies et a la date choisie`() = runTest {
+        val viewModel = creerViewModel(jour = JOUR_TOURNEE)
+        collecter(viewModel)
+        val gamme = preparerSite(viewModel)
+
+        viewModel.onOuvrirTournee(SITE.id)
+        advanceUntilIdle()
+        val tournee = checkNotNull(viewModel.tournee.value)
+        val lineaire = tournee.zones.first { it.zone == "Linéaire" }
+        viewModel.onCocherTout(lineaire.echeances)
+        viewModel.onBasculerVisite(tournee.echeances.first { it.equipement.id == "toit" })
+        advanceUntilIdle()
+        assertEquals(3, viewModel.tournee.value?.nombreCochees)
+
+        val hier = JOUR_TOURNEE.minusDays(1)
+        val karim = Technicien(nom = "Karim Benali")
+        viewModel.onConsignerTournee(hier, karim, "  Ronde faite avec le gérant  ")
+        advanceUntilIdle()
+
+        val visites = daoMaintenance.releves
+        assertEquals(3, visites.size)
+        assertEquals(setOf("vit-1", "vit-2", "toit"), visites.map { it.equipementId }.toSet())
+        visites.forEach { visite ->
+            assertEquals(hier, visite.faitLe)
+            assertEquals(gamme.id, visite.gammeId)
+            assertEquals("Visite mensuelle", visite.gammeLibelle)
+            assertEquals(Periodicite.MENSUEL, visite.periodicite)
+            assertEquals(karim.id, visite.technicienId)
+            assertEquals("Karim Benali", visite.technicienNom)
+            assertEquals("Ronde faite avec le gérant", visite.notes)
+        }
+        assertEquals("VIT-02", visites.single { it.equipementId == "vit-2" }.equipementNom)
+    }
+
+    /**
+     * Après la validation, le mode se referme, et les échéances se recalculent
+     * d'elles-mêmes : rien n'est stocké d'autre que le journal.
+     */
+    @Test
+    fun `la tournee consignee repousse les echeances et se referme`() = runTest {
+        val viewModel = creerViewModel(jour = JOUR_TOURNEE)
+        collecter(viewModel)
+        preparerSite(viewModel)
+        viewModel.onOuvrirTournee(SITE.id)
+        advanceUntilIdle()
+        viewModel.onCocherTout(checkNotNull(viewModel.tournee.value).echeances)
+        advanceUntilIdle()
+
+        viewModel.onConsignerTournee(JOUR_TOURNEE, null)
+        advanceUntilIdle()
+
+        assertNull("la tournée se referme", viewModel.tournee.value)
+        val duSite = viewModel.echeances.value.filter { it.equipement.clientId == SITE.id }
+        assertEquals(4, duSite.size)
+        duSite.forEach { echeance ->
+            assertEquals(JOUR_TOURNEE.plusMonths(1), echeance.echeance)
+            assertEquals(StatutEcheance.A_VENIR, echeance.statut(JOUR_TOURNEE))
+        }
+        // Le site voisin n'a pas bougé, et il est désormais le seul à devoir.
+        assertEquals(listOf(VOISIN.id), viewModel.sitesDus.value.map { it.clientId })
+    }
+
+    /** Valider sans rien de coché n'écrit rien, et ne referme pas la tournée. */
+    @Test
+    fun `une tournee sans rien de coche n'ecrit rien`() = runTest {
+        val viewModel = creerViewModel(jour = JOUR_TOURNEE)
+        collecter(viewModel)
+        preparerSite(viewModel)
+        viewModel.onOuvrirTournee(SITE.id)
+        advanceUntilIdle()
+
+        viewModel.onConsignerTournee(JOUR_TOURNEE, null)
+        advanceUntilIdle()
+
+        assertTrue(daoMaintenance.releves.isEmpty())
+        assertNotNull(viewModel.tournee.value)
+
+        // Cocher puis décocher la même zone revient au même.
+        val zone = checkNotNull(viewModel.tournee.value).zones.first()
+        viewModel.onCocherTout(zone.echeances)
+        viewModel.onCocherTout(zone.echeances)
+        viewModel.onConsignerTournee(JOUR_TOURNEE, null)
+        advanceUntilIdle()
+        assertTrue(daoMaintenance.releves.isEmpty())
+    }
+
+    /**
+     * Une tournée est un endroit : les machines du voisin, dues elles aussi,
+     * n'y paraissent pas — mais le voisin est proposé parmi les sites.
+     */
+    @Test
+    fun `la tournee ne montre que le site choisi`() = runTest {
+        val viewModel = creerViewModel(jour = JOUR_TOURNEE)
+        collecter(viewModel)
+        preparerSite(viewModel)
+
+        assertEquals(
+            listOf("Hyper Nord", "Supérette Sud"),
+            viewModel.sitesDus.value.map { it.clientNom },
+        )
+
+        viewModel.onOuvrirTournee(SITE.id)
+        advanceUntilIdle()
+
+        val tournee = checkNotNull(viewModel.tournee.value)
+        assertEquals("Hyper Nord", tournee.clientNom)
+        assertEquals(4, tournee.echeances.size)
+        assertTrue(tournee.echeances.all { it.equipement.clientId == SITE.id })
+    }
+
+    /**
+     * L'ordre des pieds : les zones triées à la française, « Sans zone » en
+     * dernier, et les machines d'une zone dans l'ordre de leurs noms.
+     */
+    @Test
+    fun `la tournee range par zone dans l'ordre des zones`() = runTest {
+        val viewModel = creerViewModel(jour = JOUR_TOURNEE)
+        collecter(viewModel)
+        preparerSite(viewModel)
+
+        viewModel.onOuvrirTournee(SITE.id)
+        advanceUntilIdle()
+
+        val zones = checkNotNull(viewModel.tournee.value).zones
+        assertEquals(listOf("Linéaire", "Toiture", ""), zones.map { it.zone })
+        assertEquals(listOf("VIT-01", "VIT-02"), zones.first().echeances.map { it.equipement.nom })
+    }
+
+    /**
+     * Un site de quatre machines — deux au linéaire, une en toiture, une non
+     * rangée — et un voisin d'une machine, tous sous une gamme mensuelle entrée
+     * au plan le 1ᵉʳ avril : tout est en retard le 15 juin.
+     */
+    private suspend fun TestScope.preparerSite(
+        viewModel: MaintenanceViewModel,
+    ): GammeMaintenance {
+        daoClients.enregistrer(SITE)
+        daoClients.enregistrer(VOISIN)
+        val parc = listOf(
+            MACHINE.copy(id = "vit-2", clientId = SITE.id, nom = "VIT-02", zone = "Linéaire"),
+            MACHINE.copy(id = "toit", clientId = SITE.id, nom = "Groupe toit", zone = "Toiture"),
+            MACHINE.copy(id = "vit-1", clientId = SITE.id, nom = "VIT-01", zone = "Linéaire"),
+            MACHINE.copy(id = "centrale", clientId = SITE.id, nom = "Centrale", zone = ""),
+            MACHINE.copy(id = "voisine", clientId = VOISIN.id, nom = "Chambre froide", zone = "Réserve"),
+        )
+        parc.forEach { daoEquipements.enregistrer(it) }
+        viewModel.onCreerGamme("Visite mensuelle", Periodicite.MENSUEL)
+        advanceUntilIdle()
+        val gamme = daoMaintenance.gammes.single()
+        viewModel.onAffecterSelection(parc.map { it.id }, gamme.id, LocalDate.of(2026, 4, 1))
+        advanceUntilIdle()
+        return gamme
+    }
+
     /**
      * Les flux passent par `stateIn(WhileSubscribed)` : ils n'observent la base
      * que tant que quelqu'un écoute, et `.value` sur un flux que personne ne
@@ -646,6 +811,9 @@ class MaintenanceViewModelTest {
         }
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.aFaire.collect { }
+        }
+        listOf(viewModel.tournee, viewModel.sitesDus, viewModel.auteurPropose).forEach { flux ->
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { flux.collect { } }
         }
     }
 
@@ -682,5 +850,11 @@ class MaintenanceViewModelTest {
             fluide = "R-449A",
             chargeKg = 42.0,
         )
+
+        val JOUR_TOURNEE: LocalDate = LocalDate.of(2026, 6, 15)
+
+        val SITE = Client(id = "cl-site", nom = "Hyper Nord", ville = "Lille")
+
+        val VOISIN = Client(id = "cl-voisin", nom = "Supérette Sud", ville = "Arras")
     }
 }

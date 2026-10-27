@@ -185,6 +185,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── FeuilleReglette.kt   # la réglette, curseur et avertissement
 │       │       ├── EcranPreventif.kt     # l'Entretien : ce que le calendrier doit, par statut
 │       │       ├── FeuilleVisite.kt      # consigner une visite, et ses points
+│       │       ├── EcranTourneeSite.kt   # la tournée d'un site : cocher, consigner en lot
 │       │       ├── SectionPlanMachine.kt # le plan d'une machine, sur sa fiche
 │       │       ├── SectionGammes.kt      # créer et tenir une gamme
 │       │       ├── MaintenanceViewModel.kt
@@ -1536,7 +1537,7 @@ l'APK : un test rouge bloque la publication.
 | `SubstitutionTest` | Toute piste au catalogue, l'ordre par GWP croissant, le passage en A2L signalé, la hausse de GWP jamais tue, rien d'inventé hors table |
 | `ChampMagnetiqueTest` | Le champ terrestre qui ne déclenche rien, la main qui bouge qui n'est pas un champ, le champ qui s'oppose et se détecte quand même, la saturation jugée contre la plage de l'appareil, et le tremblement qui ne fait pas passer un aimant pour une bobine |
 | `MaintenanceTest` | L'arithmétique du plan : un trimestre qui n'a pas quatre-vingt-dix jours, l'échéance tirée de la dernière visite ou de l'entrée au plan, le retard en jours, les occurrences attendues d'une machine arrivée en cours de route, le taux qui n'existe pas quand rien n'était attendu |
-| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui, l'affectation d'une sélection qui ne remet pas à zéro l'entrée au plan d'une machine déjà suivie, la date choisie qui ne vaut que pour les nouvelles, le compte annoncé égal au compte rendu, et le retrait d'une sélection qui laisse le reste du plan et le journal |
+| `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui, l'affectation d'une sélection qui ne remet pas à zéro l'entrée au plan d'une machine déjà suivie, la date choisie qui ne vaut que pour les nouvelles, le compte annoncé égal au compte rendu, le retrait d'une sélection qui laisse le reste du plan et le journal, et la tournée d'un site : N cochées font N visites aux copies d'une visite seule et à la date choisie, l'échéance repoussée et le mode refermé, rien d'écrit sans case cochée, le seul site choisi, les zones dans leur ordre |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, le rangement par zone puis machine puis cadence, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
 | `RechercheGlobaleTest` | Rien de cherché ni de compté à vide, chaque famille aux règles de `Recherche`, la machine trouvée par sa zone et par son client, le plafond qui dit le compte complet |
@@ -2304,6 +2305,26 @@ seconde touche, et laisse le journal intact, lien compris. C'est aussi pour cela
 que **dupliquer une machine** ne recopie pas son plan : l'affectation en lot est
 la bonne réponse, là où une recopie machine par machine aurait fait dépendre le
 résultat de l'ordre des saisies.
+
+**La tournée d'un site consigne en lot** (`EcranTourneeSite`), et c'est le cas
+qui rendait le plan intenable : cinquante machines sous une ronde journalière,
+consignées une feuille à la fois. « Tournée sur un site » propose les seuls
+sites qui doivent quelque chose (`PlanMaintenance.sitesDus`) — un site dont tout
+est à venir ouvrirait une liste sans une case —, puis **remplace** l'Entretien
+par ce que ce site doit, **et ce site seul** : une tournée est un endroit, pas un
+donneur d'ordre. Les lignes s'y rangent par zone dans l'ordre des zones, « Sans
+zone » en dernier, par `PlanMaintenance.parZone`, que l'Entretien emprunte
+désormais aussi : deux copies du même tri ne rangeraient plus « toiture » au même
+endroit. On coche en marchant, par ligne, par zone ou pour tout le site, et une
+seule feuille donne la date — modifiable, pour la raison de la visite seule —,
+l'auteur et des remarques communes. `MaintenanceRepository.consignerGroupe` écrit
+alors une visite par case en **une** écriture, chacune construite par la même
+fonction que la visite unitaire : une preuve saisie en lot n'est pas d'une autre
+nature. Aucun `IN (...)` n'y est en jeu — un `@Upsert` de liste, que Room passe
+en transaction —, si bien qu'il n'y a pas de paquets à découper. Les machines et
+les gammes sont relues en base au moment d'écrire, jamais dans un `.value` non
+collecté. La feuille dit que les points des gammes ne s'y cochent pas : ils ne
+sont pas enregistrés, même pour une visite seule.
 
 **Retirer une visite et ne plus suivre une gamme demandent confirmation**, et la
 boîte nomme ce qui part et ce qui reste : la visite du 12/03 et sa gamme ; ou
