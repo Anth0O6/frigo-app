@@ -189,7 +189,7 @@ class ClientsViewModelTest {
     @Test
     fun `la page s'ouvre par identifiant et suit un renommage`() = runTest {
         val viewModel = creerViewModel()
-        backgroundScope.launch { viewModel.ouvert.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.ouvert.collect {} }
         dao.enregistrer(Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen"))
 
         viewModel.onOuvrirClient("cl-1")
@@ -202,8 +202,8 @@ class ClientsViewModelTest {
     @Test
     fun `la page se referme d'elle-meme quand le client est supprime`() = runTest {
         val viewModel = creerViewModel()
-        backgroundScope.launch { viewModel.ouvert.collect {} }
-        backgroundScope.launch { viewModel.dossier.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.ouvert.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.dossier.collect {} }
         val client = Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen")
         dao.enregistrer(client)
         viewModel.onOuvrirClient("cl-1")
@@ -218,7 +218,7 @@ class ClientsViewModelTest {
     @Test
     fun `un site revient a son enseigne et l'enseigne au carnet`() = runTest {
         val viewModel = creerViewModel()
-        backgroundScope.launch { viewModel.ouvert.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.ouvert.collect {} }
         dao.enregistrer(Client(id = "ens", nom = "Carrefour", ville = "Lyon"))
         dao.enregistrer(Client(id = "site", nom = "Carrefour Vaise", ville = "Lyon", parentId = "ens"))
 
@@ -233,7 +233,7 @@ class ClientsViewModelTest {
     @Test
     fun `le dossier ne retient que les interventions de ce client, a venir puis passees`() = runTest {
         val viewModel = creerViewModel()
-        backgroundScope.launch { viewModel.dossier.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.dossier.collect {} }
         dao.enregistrer(Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen"))
         dao.enregistrer(Client(id = "site", nom = "Lemoine Halles", ville = "Rouen", parentId = "cl-1"))
         dao.enregistrer(Client(id = "autre", nom = "Fromagerie Hardy", ville = "Caudebec"))
@@ -262,7 +262,7 @@ class ClientsViewModelTest {
     @Test
     fun `le dossier ne retient que les factures dues et les devis en cours de ce client`() = runTest {
         val viewModel = creerViewModel()
-        backgroundScope.launch { viewModel.dossier.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.dossier.collect {} }
         dao.enregistrer(Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen"))
         listOf(
             Facture(id = "due", numero = "FAC-2026-0001", clientId = "cl-1", statut = StatutFacture.EMISE),
@@ -306,7 +306,7 @@ class ClientsViewModelTest {
     @Test
     fun `aucune page ouverte, aucun dossier`() = runTest {
         val viewModel = creerViewModel()
-        backgroundScope.launch { viewModel.dossier.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.dossier.collect {} }
         dao.enregistrer(Client(id = "cl-1", nom = "Boucherie Lemoine", ville = "Rouen"))
 
         viewModel.onOuvrirClient("cl-1")
