@@ -1,6 +1,8 @@
 package com.frigopro.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -81,6 +84,8 @@ import com.frigopro.app.ui.theme.LocalStatuts
 fun EcranSaisiePrix(
     etat: EtatSaisiePrix,
     fournisseurs: List<Fournisseur>,
+    lecture: LectureDevis?,
+    articles: List<Article>,
     onRecherche: (String) -> Unit,
     onFiltre: (FiltrePrix) -> Unit,
     onReference: (Article, String) -> Unit,
@@ -93,9 +98,20 @@ fun EcranSaisiePrix(
     onEnregistrerEtFermer: () -> Unit,
     onAbandonner: () -> Unit,
     onReglerCoefficient: () -> Unit,
+    onLireDevis: (String) -> Unit,
+    onRapprocher: (LigneARapprocher, Article) -> Unit,
+    onCreerArticle: (LigneARapprocher) -> Unit,
+    onIgnorer: (LigneARapprocher) -> Unit,
+    onFermerLecture: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val statuts = LocalStatuts.current
+    var choixArticle by remember { mutableStateOf<LigneARapprocher?>(null) }
+    // Le sélecteur du système, et non une permission de stockage : PDF reçu par
+    // courriel ou photo de l'écran de l'agence, l'un comme l'autre.
+    val choisirDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { onLireDevis(it.toString()) }
+    }
     var confirmerFermeture by remember { mutableStateOf(false) }
     var choixFournisseur by remember { mutableStateOf(false) }
 
@@ -156,6 +172,29 @@ fun EcranSaisiePrix(
                 }
             }
 
+            item(key = "lire") {
+                BoutonContour(
+                    texte = "Lire un devis fournisseur",
+                    onClick = { choisirDocument.launch(arrayOf("application/pdf", "image/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            if (lecture != null) {
+                item(key = "lecture") {
+                    BilanLecture(lecture = lecture, onFermer = onFermerLecture)
+                }
+                items(items = lecture.aRapprocher, key = { "lu-${it.rang}" }) { ligne ->
+                    LigneLue(
+                        ligne = ligne,
+                        onRapprocher = { onRapprocher(ligne, it) },
+                        onChoisir = { choixArticle = ligne },
+                        onCreer = { onCreerArticle(ligne) },
+                        onIgnorer = { onIgnorer(ligne) },
+                    )
+                }
+            }
+
             item(key = "recherche") {
                 ChampRecherche(
                     valeur = etat.recherche,
@@ -177,6 +216,7 @@ fun EcranSaisiePrix(
                             when (it) {
                                 FiltrePrix.TOUS -> it.libelle
                                 FiltrePrix.SANS_PRIX -> "${it.libelle} · ${etat.sansPrix}"
+                                FiltrePrix.A_ENREGISTRER -> "${it.libelle} · ${etat.aEnregistrer}"
                             }
                         },
                         onChoisir = onFiltre,
@@ -204,6 +244,8 @@ fun EcranSaisiePrix(
                                 "Aucun article ne correspond à « ${etat.recherche.trim()} »."
                             etat.filtre == FiltrePrix.SANS_PRIX ->
                                 "Tous les articles ont un prix d'achat."
+                            etat.filtre == FiltrePrix.A_ENREGISTRER ->
+                                "Rien à enregistrer pour l'instant."
                             else -> "Le magasin est vide."
                         },
                     )
@@ -241,6 +283,18 @@ fun EcranSaisiePrix(
                 actif = etat.aEnregistrer > 0,
             )
         }
+    }
+
+    choixArticle?.let { ligne ->
+        DialogueChoixArticle(
+            ligne = ligne,
+            articles = articles,
+            onChoisir = { article ->
+                choixArticle = null
+                onRapprocher(ligne, article)
+            },
+            onAnnuler = { choixArticle = null },
+        )
     }
 
     if (confirmerFermeture) {
@@ -467,3 +521,118 @@ private fun DialogueFournisseurLot(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
 }
+
+/**
+ * Ce que la lecture a donné, en une phrase : combien de lignes, combien déjà
+ * reportées, et ce qui reste à rapprocher. Un échec dit pourquoi et ce qui
+ * marche mieux — jamais seulement « erreur ».
+ */
+@Composable
+private fun BilanLecture(lecture: LectureDevis, onFermer: () -> Unit) {
+    when {
+        lecture.enCours -> Encart(texte = "Lecture du document…", icone = Icons.Filled.DocumentScanner)
+        lecture.echec != null -> Encart(
+            texte = lecture.echec,
+            icone = Icons.Filled.Warning,
+            alerte = true,
+            onClick = onFermer,
+            complement = "Fermer",
+        )
+        else -> {
+            val origine = buildString {
+                append("Devis")
+                lecture.fournisseur?.let { append(" ").append(it.nom) }
+                lecture.date?.let { append(" du ").append(it.format(FORMAT_DATE_DEVIS)) }
+            }
+            val reste = lecture.aRapprocher.size
+            Encart(
+                texte = "$origine : ${lecture.lues} ligne${if (lecture.lues > 1) "s" else ""} lue" +
+                    "${if (lecture.lues > 1) "s" else ""}, ${lecture.reportees} reportée" +
+                    "${if (lecture.reportees > 1) "s" else ""} dans la saisie" +
+                    (if (reste > 0) ", $reste à rapprocher d'un article." else ".") +
+                    " Rien n'est écrit avant « Enregistrer » : relisez, puis enregistrez.",
+                icone = Icons.Filled.DocumentScanner,
+                onClick = onFermer,
+                complement = "Fermer le bilan",
+            )
+        }
+    }
+}
+
+/**
+ * Une ligne lue qu'aucune référence du magasin ne désigne.
+ *
+ * La suggestion est un bouton et non un choix fait d'office : deux goulottes
+ * 80x60 se ressemblent assez pour qu'un rapprochement automatique se trompe, et
+ * un prix d'angle posé sur une barre partirait ensuite sur un devis.
+ */
+@Composable
+private fun LigneLue(
+    ligne: LigneARapprocher,
+    onRapprocher: (Article) -> Unit,
+    onChoisir: () -> Unit,
+    onCreer: () -> Unit,
+    onIgnorer: () -> Unit,
+) {
+    Carte(contour = true) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text = ligne.ligne.designation, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = buildString {
+                    if (ligne.ligne.reference.isNotBlank()) append("Réf. ${ligne.ligne.reference} · ")
+                    append("${Nombres.enTexte(ligne.ligne.prixNet)} € HT")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ligne.suggestion?.let { suggestion ->
+                BoutonPlein(
+                    texte = "→ ${suggestion.designation}",
+                    onClick = { onRapprocher(suggestion) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BoutonContour(texte = "Autre article", onClick = onChoisir, modifier = Modifier.weight(1f))
+                BoutonContour(texte = "Créer", onClick = onCreer, modifier = Modifier.weight(1f))
+                BoutonDiscret(texte = "Ignorer", onClick = onIgnorer, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** Choisir à la main l'article d'une ligne lue, dans tout le magasin. */
+@Composable
+private fun DialogueChoixArticle(
+    ligne: LigneARapprocher,
+    articles: List<Article>,
+    onChoisir: (Article) -> Unit,
+    onAnnuler: () -> Unit,
+) {
+    var recherche by remember { mutableStateOf("") }
+    val trouves = articles.filter { Recherche.correspond(recherche, it.designation, it.reference) }
+    AlertDialog(
+        onDismissRequest = onAnnuler,
+        title = { Text(text = ligne.ligne.designation) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChampRecherche(valeur = recherche, onValeur = { recherche = it }, indication = "Article du magasin…")
+                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                    items(items = trouves, key = { it.id }) { article ->
+                        Text(
+                            text = article.designation,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChoisir(article) }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onAnnuler) { Text(text = "Annuler") } },
+    )
+}
+
+private val FORMAT_DATE_DEVIS = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")

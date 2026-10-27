@@ -5,6 +5,7 @@ import com.frigopro.app.data.FauxMaterielDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxRangementPhotos
 import com.frigopro.app.data.Fournisseur
+import com.frigopro.app.data.LecteurTarif
 import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
@@ -252,6 +253,84 @@ class SaisiePrixViewModelTest {
         assertEquals(0.0, daoMateriel.contenuArticles.single().prixAchat, 0.0001)
     }
 
+    // — La lecture d'un devis fournisseur —————————————————————————————————
+
+    /**
+     * Lire un devis **remplit la saisie et n'écrit rien** : la ligne dont la
+     * référence est au magasin s'y reporte avec le fournisseur du devis, l'autre
+     * attend qu'on la rapproche, et la base ne bouge qu'à « Enregistrer ».
+     */
+    @Test
+    fun `un devis lu se reporte dans la saisie sans rien ecrire`() = runTest {
+        val richardson = Fournisseur(id = "four-richardson", nom = "Richardson")
+        daoMateriel.enregistrerFournisseur(richardson)
+        val barre = goulotte.copy(reference = "WHITE-80BCANA-2M")
+        val devis = listOf(
+            "RICHARDSON",
+            "PROPOSITION N.: 135-3770 DU 26/10/2026",
+            "GOULOTTE BLANC 80X60MM  WHITE-80BCANA-2M  6,00 U  7,15  42,90",
+            "ANGLE A PLAT BLANC 60X45MM  WHITE-60CPIAN  2,00 U  1,90  3,80",
+        )
+        val viewModel = creerViewModel(0.0, barre, angle, pompe, lecteur = LecteurTarif { devis })
+        backgroundScope.launch { viewModel.lecture.collect { } }
+
+        viewModel.onLireDevis("content://devis.pdf")
+        advanceUntilIdle()
+
+        val lecture = viewModel.lecture.value!!
+        assertEquals(2, lecture.lues)
+        assertEquals(1, lecture.reportees)
+        assertEquals(richardson, lecture.fournisseur)
+        val aRapprocher = lecture.aRapprocher.single()
+        assertEquals("la suggestion vient de la désignation", angle.id, aRapprocher.suggestion?.id)
+
+        val saisie = ligne(viewModel, barre.id).saisie
+        assertEquals(7.15, saisie.prixAchat!!, 0.001)
+        assertEquals("four-richardson", saisie.fournisseurId)
+        assertEquals("rien n'est écrit avant « Enregistrer »", 0.0, daoMateriel.tousLesArticles().single { it.id == barre.id }.prixAchat, 0.0)
+
+        // Rapprochée à la main : sa référence est retenue, le devis suivant passera seul.
+        viewModel.onRapprocher(aRapprocher, angle)
+        assertEquals("WHITE-60CPIAN", ligne(viewModel, angle.id).saisie.reference)
+        assertTrue(viewModel.lecture.value!!.aRapprocher.isEmpty())
+        assertEquals(FiltrePrix.A_ENREGISTRER, etatDe(viewModel).filtre)
+        assertEquals(2, etatDe(viewModel).aEnregistrer)
+
+        viewModel.onEnregistrer()
+        advanceUntilIdle()
+        assertEquals(1.90, daoMateriel.tousLesArticles().single { it.id == angle.id }.prixAchat, 0.001)
+    }
+
+    /** Un article créé depuis une ligne lue naît sans prix : le prix attend « Enregistrer » comme les autres. */
+    @Test
+    fun `un article cree depuis une ligne lue nait sans prix`() = runTest {
+        val devis = listOf("MOUSSE GEBSOMOUSSE AEROSOL 500ML  813266  1,00 U  9,90  9,90")
+        val viewModel = creerViewModel(0.0, pompe, lecteur = LecteurTarif { devis })
+        backgroundScope.launch { viewModel.lecture.collect { } }
+        viewModel.onLireDevis("content://photo.jpg")
+        advanceUntilIdle()
+
+        viewModel.onCreerArticle(viewModel.lecture.value!!.aRapprocher.single())
+        advanceUntilIdle()
+
+        val cree = daoMateriel.tousLesArticles().single { it.id != pompe.id }
+        assertEquals("Mousse gebsomousse aerosol 500ML", cree.designation)
+        assertEquals(0.0, cree.prixAchat, 0.0)
+        assertEquals(9.90, ligne(viewModel, cree.id).saisie.prixAchat!!, 0.001)
+    }
+
+    /** Un document illisible le dit, et n'ouvre rien à rapprocher. */
+    @Test
+    fun `un document sans ligne de prix le dit`() = runTest {
+        val viewModel = creerViewModel(0.0, pompe, lecteur = LecteurTarif { listOf("Bonjour", "MONTANT TTC 12,00") })
+        backgroundScope.launch { viewModel.lecture.collect { } }
+        viewModel.onLireDevis("content://photo.jpg")
+        advanceUntilIdle()
+
+        assertTrue(viewModel.lecture.value!!.echec!!.startsWith("Aucune ligne de prix"))
+        assertEquals(0, etatDe(viewModel).aEnregistrer)
+    }
+
     /** L'état de l'écran, une fois que tout ce qui était en cours a abouti. */
     private fun TestScope.etatDe(viewModel: SaisiePrixViewModel): EtatSaisiePrix {
         advanceUntilIdle()
@@ -264,6 +343,7 @@ class SaisiePrixViewModelTest {
     private suspend fun TestScope.creerViewModel(
         coefficient: Double,
         vararg articles: Article,
+        lecteur: LecteurTarif = LecteurTarif { null },
     ): SaisiePrixViewModel {
         val ordonnanceur = UnconfinedTestDispatcher(testScheduler)
         Dispatchers.setMain(ordonnanceur)
@@ -272,6 +352,7 @@ class SaisiePrixViewModelTest {
         val viewModel = SaisiePrixViewModel(
             MaterielRepository(daoMateriel),
             ParametresRepository(daoParametres, FauxRangementPhotos()),
+            lecteur,
         )
         // `etat` est un `stateIn(WhileSubscribed)` : sans collecteur il resterait
         // à sa valeur initiale, et les assertions liraient une liste vide.

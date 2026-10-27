@@ -276,10 +276,14 @@ private fun SaisiePrixRoute(
 ) {
     val etat by viewModel.etat.collectAsStateWithLifecycle()
     val fournisseurs by viewModel.fournisseurs.collectAsStateWithLifecycle()
+    val lecture by viewModel.lecture.collectAsStateWithLifecycle()
+    val articles by viewModel.tousLesArticles.collectAsStateWithLifecycle()
 
     EcranSaisiePrix(
         etat = etat,
         fournisseurs = fournisseurs,
+        lecture = lecture,
+        articles = articles,
         onRecherche = viewModel::onRecherche,
         onFiltre = viewModel::onFiltre,
         onReference = viewModel::onReference,
@@ -292,6 +296,11 @@ private fun SaisiePrixRoute(
         onEnregistrerEtFermer = viewModel::onEnregistrerEtFermer,
         onAbandonner = viewModel::onAbandonner,
         onReglerCoefficient = { onReglage(ReglageManquant.COEFFICIENT_MATERIEL.page) },
+        onLireDevis = viewModel::onLireDevis,
+        onRapprocher = viewModel::onRapprocher,
+        onCreerArticle = viewModel::onCreerArticle,
+        onIgnorer = viewModel::onIgnorer,
+        onFermerLecture = viewModel::onFermerLecture,
         modifier = modifier.fillMaxSize(),
     )
 }

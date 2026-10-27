@@ -12,6 +12,7 @@ robolectric = "4.16.1"
 work = "2.9.1"
 serialization = "1.9.0"
 room = "2.7.2"
+mlkitTexte = "16.0.1"
 
 [libraries]
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -36,6 +37,7 @@ androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTexte" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

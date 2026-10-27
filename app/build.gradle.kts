@@ -119,6 +119,9 @@ dependencies {
 
     // Le rappel quotidien des factures échues : voir `RappelsFactures`.
     implementation(libs.androidx.work.runtime)
+    // La lecture des devis fournisseurs : reconnaissance de caractères sur
+    // l'appareil, le modèle embarqué dans l'APK plutôt que téléchargé.
+    implementation(libs.mlkit.text.recognition)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

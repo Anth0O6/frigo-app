@@ -8,6 +8,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
 import com.frigopro.app.data.Article
 import com.frigopro.app.data.Fournisseur
+import com.frigopro.app.data.LecteurTarif
+import com.frigopro.app.data.LectureTarif
+import com.frigopro.app.data.LigneTarif
 import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.ParametresRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -44,6 +48,7 @@ import kotlinx.coroutines.launch
 class SaisiePrixViewModel(
     private val materiel: MaterielRepository,
     private val parametres: ParametresRepository,
+    private val lecteur: LecteurTarif = LecteurTarif { null },
 ) : ViewModel() {
 
     private val _ouverte = MutableStateFlow(false)
@@ -86,6 +91,15 @@ class SaisiePrixViewModel(
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), EtatSaisiePrix())
 
+    private val _lecture = MutableStateFlow<LectureDevis?>(null)
+
+    /** Le devis fournisseur en cours de lecture ou lu, `null` hors lecture. */
+    val lecture: StateFlow<LectureDevis?> = _lecture.asStateFlow()
+
+    /** Tout le magasin, pour rapprocher une ligne lue d'un article choisi à la main. */
+    val tousLesArticles: StateFlow<List<Article>> = articles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
+
     /** Le carnet, pour attribuer un fournisseur aux lignes cochées. */
     val fournisseurs: StateFlow<List<Fournisseur>> = materiel.fournisseurs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_COLLECTE_MS), emptyList())
@@ -107,8 +121,115 @@ class SaisiePrixViewModel(
         _cochees.value = emptySet()
         _recherche.value = ""
         _filtre.value = FiltrePrix.TOUS
+        _lecture.value = null
         _ouverte.value = false
     }
+
+    // — Lire un devis fournisseur ———————————————————————————————————————
+
+    /**
+     * Lit un devis ou une proposition — photo ou PDF — et **reporte dans la
+     * saisie**, sans rien écrire.
+     *
+     * C'est tout le parti pris : la lecture ne fait que remplir les champs
+     * qu'on aurait tapés, si bien que tout ce que la saisie garantit vaut aussi
+     * pour elle — relire avant d'écrire, une vente proposée au coefficient,
+     * l'abandon qui n'écrit rien. Une ligne dont la référence est déjà au
+     * magasin s'y reporte d'elle-même ; les autres attendent qu'on dise à quel
+     * article elles vont, et c'est en le disant qu'on apprend sa référence au
+     * magasin — le devis suivant se reportera seul.
+     *
+     * Le filtre passe sur « À enregistrer » : après une lecture, la question
+     * n'est plus « qu'est-ce qui manque ? » mais « qu'est-ce qui a été lu ? ».
+     */
+    fun onLireDevis(adresse: String) {
+        _lecture.value = LectureDevis(enCours = true)
+        viewModelScope.launch {
+            val rangees = lecteur.lire(adresse)
+            if (rangees == null) {
+                _lecture.value = LectureDevis(echec = "Le document n'a pas pu être ouvert.")
+                return@launch
+            }
+            val tarif = LectureTarif.lire(rangees, materiel.fournisseurs.first())
+            if (tarif.lignes.isEmpty()) {
+                _lecture.value = LectureDevis(
+                    echec = "Aucune ligne de prix reconnue. Un PDF reçu par courriel se lit le " +
+                        "mieux ; une photo doit être nette, droite et prise de près.",
+                )
+                return@launch
+            }
+            val magasin = materiel.articles()
+            var reportees = 0
+            val aRapprocher = mutableListOf<LigneARapprocher>()
+            tarif.lignes.forEachIndexed { i, ligne ->
+                val article = LectureTarif.parReference(ligne.reference, magasin)
+                if (article != null) {
+                    reporter(article, ligne, tarif.fournisseur)
+                    reportees++
+                } else {
+                    aRapprocher += LigneARapprocher(i, ligne, LectureTarif.suggestion(ligne.designation, magasin))
+                }
+            }
+            _filtre.value = FiltrePrix.A_ENREGISTRER
+            _lecture.value = LectureDevis(
+                fournisseur = tarif.fournisseur,
+                date = tarif.date,
+                lues = tarif.lignes.size,
+                reportees = reportees,
+                aRapprocher = aRapprocher,
+            )
+        }
+    }
+
+    /** La ligne lue va à cet article : son prix, sa référence et le fournisseur du devis. */
+    fun onRapprocher(ligne: LigneARapprocher, article: Article) {
+        reporter(article, ligne.ligne, _lecture.value?.fournisseur)
+        retirer(ligne, reportee = true)
+    }
+
+    /**
+     * La ligne lue n'a pas d'article : on le crée, **sans prix**, et le prix part
+     * dans la saisie comme les autres — il ne s'écrit qu'à « Enregistrer ».
+     */
+    fun onCreerArticle(ligne: LigneARapprocher) {
+        val fournisseur = _lecture.value?.fournisseur
+        retirer(ligne, reportee = true)
+        viewModelScope.launch {
+            val article = materiel.enregistrerArticle(
+                Article(
+                    designation = designationLisible(ligne.ligne.designation),
+                    fournisseurId = fournisseur?.id,
+                    fournisseurNom = fournisseur?.nom ?: "",
+                ),
+            )
+            reporter(article, ligne.ligne, fournisseur)
+        }
+    }
+
+    fun onIgnorer(ligne: LigneARapprocher) = retirer(ligne, reportee = false)
+
+    fun onFermerLecture() {
+        _lecture.value = null
+    }
+
+    private fun retirer(ligne: LigneARapprocher, reportee: Boolean) {
+        _lecture.update { lecture ->
+            lecture?.copy(
+                aRapprocher = lecture.aRapprocher.filter { it.rang != ligne.rang },
+                reportees = lecture.reportees + if (reportee) 1 else 0,
+            )
+        }
+    }
+
+    private fun reporter(article: Article, ligne: LigneTarif, fournisseur: Fournisseur?) =
+        modifier(article) { saisie ->
+            saisie.copy(
+                reference = ligne.reference.ifBlank { saisie.reference },
+                prixAchat = ligne.prixNet,
+                fournisseurId = fournisseur?.id ?: saisie.fournisseurId,
+                fournisseurNom = fournisseur?.nom ?: saisie.fournisseurNom,
+            )
+        }
 
     // — La saisie ———————————————————————————————————————————————————————
 
@@ -243,7 +364,7 @@ class SaisiePrixViewModel(
             initializer {
                 val application = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                 val conteneur = (application as FrigoProApplication).conteneur
-                SaisiePrixViewModel(conteneur.materiel, conteneur.parametres)
+                SaisiePrixViewModel(conteneur.materiel, conteneur.parametres, conteneur.lecteurDevis)
             }
         }
     }

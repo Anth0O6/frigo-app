@@ -1,6 +1,8 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.Article
+import com.frigopro.app.data.Fournisseur
+import com.frigopro.app.data.LigneTarif
 import com.frigopro.app.data.PrixArticle
 import com.frigopro.app.data.auCentime
 
@@ -148,7 +150,43 @@ enum class OrigineVente {
 enum class FiltrePrix(val libelle: String) {
     TOUS("Tous"),
     SANS_PRIX("Sans prix"),
+
+    /** Ce qui s'écrira — après la lecture d'un devis, ce qui a été lu. */
+    A_ENREGISTRER("À enregistrer"),
 }
+
+/**
+ * Un devis fournisseur lu, ou en train de l'être.
+ *
+ * @param lues les lignes de prix reconnues dans le document.
+ * @param reportees celles qui sont passées dans la saisie, d'elles-mêmes ou à la main.
+ */
+data class LectureDevis(
+    val enCours: Boolean = false,
+    val echec: String? = null,
+    val fournisseur: Fournisseur? = null,
+    val date: java.time.LocalDate? = null,
+    val lues: Int = 0,
+    val reportees: Int = 0,
+    val aRapprocher: List<LigneARapprocher> = emptyList(),
+)
+
+/** Une ligne lue qu'aucune référence du magasin ne désigne, et l'article qu'elle évoque peut-être. */
+data class LigneARapprocher(
+    val rang: Int,
+    val ligne: LigneTarif,
+    val suggestion: Article?,
+)
+
+/**
+ * « GOULOTTE BLANC 80X60MM » devient « Goulotte blanc 80X60MM » : les tarifs
+ * écrivent en capitales, le magasin non. Les mots qui portent un chiffre gardent
+ * leur casse — une section ou un code se lisent mieux tels quels.
+ */
+internal fun designationLisible(designation: String): String =
+    designation.trim().split(Regex("\\s+"))
+        .joinToString(" ") { mot -> if (mot.any(Char::isDigit)) mot else mot.lowercase() }
+        .replaceFirstChar { it.uppercase() }
 
 /**
  * Une ligne de la saisie, prête à afficher : l'article, ce qu'on y a tapé, et ce
@@ -225,7 +263,13 @@ internal fun composerSaisiePrix(
     }
 
     val visibles = toutes
-        .filter { filtre == FiltrePrix.TOUS || it.sansPrix }
+        .filter {
+            when (filtre) {
+                FiltrePrix.TOUS -> true
+                FiltrePrix.SANS_PRIX -> it.sansPrix
+                FiltrePrix.A_ENREGISTRER -> it.modifiee
+            }
+        }
         .filter {
             Recherche.correspond(
                 recherche,

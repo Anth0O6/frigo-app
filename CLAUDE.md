@@ -95,6 +95,8 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │   │   ├── Materiel.kt            # fournisseurs, articles, deux stocks
 │       │   │   ├── MaterielDao.kt
 │       │   │   ├── MaterielRepository.kt
+│       │   │   ├── LectureTarif.kt        # un devis fournisseur lu, par son arithmétique
+│       │   │   ├── LecteurDevis.kt        # la seule classe qui reconnaît du texte
 │       │   │   ├── Substitution.kt        # par quoi remplacer un fluide
 │       │   │   ├── Maintenance.kt         # gammes, cadences, échéances dérivées
 │       │   │   ├── MaintenanceDao.kt
@@ -921,6 +923,27 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   L'enregistrement implicite aurait écrit un tarif à moitié relu, qui part
   ensuite sur des devis ; l'abandon silencieux aurait perdu une demi-heure sur un
   geste réflexe.
+  **Un devis fournisseur se lit** (`LectureTarif`, `LecteurDevis`), depuis la
+  saisie des prix : une photo de l'écran de l'agence ou un PDF reçu par courriel.
+  Les prix nets d'un compte changent d'une semaine à l'autre et ne sont ceux de
+  personne d'autre — ils ne vont donc **jamais dans le code, dans une migration
+  ni dans un test**, le dépôt étant public : ils se lisent sur le téléphone, où
+  ils restent, et les tests portent des chiffres inventés. Trois décisions.
+  **Aucun format par enseigne** : une ligne de tarif se reconnaît à son
+  arithmétique — une quantité fois un prix redonne le montant au centime —, ce
+  qui vaut chez Richardson, chez GFF et ailleurs, avec ou sans remise, et écarte
+  d'office les totaux, les adresses et un chiffre mal lu. **La lecture remplit la
+  saisie et n'écrit rien** : tout ce que la saisie garantit vaut alors pour elle,
+  relire avant « Enregistrer » compris, et le filtre passe sur « À enregistrer »
+  pour montrer ce qui a été lu. **Le rapprochement ne se fait que par la
+  référence** ; une ligne sans référence connue est proposée, avec au mieux une
+  suggestion tirée de la désignation, et rapprochée d'un geste — ce qui pose la
+  référence sur l'article, si bien que le devis suivant du même fournisseur passe
+  seul. Créer un article depuis une ligne le fait naître **sans prix** : le prix
+  attend « Enregistrer » comme les autres. La reconnaissance de caractères est
+  celle de ML Kit, **modèle embarqué** et sur l'appareil : un PDF est dessiné page
+  à page puis lu comme une photo, un seul chemin pour les deux. Elle alourdit
+  l'APK de quelques mégaoctets, prix d'une lecture qui marche sans réseau.
   `DialoguePaliers` ne s'ouvre que sur une prestation **comptée par unité** : un
   forfait n'a pas de rangs, et proposer la boîte sur « déplacement zone 1 »
   aurait invité à saisir des paliers qui ne serviraient jamais. Elle montre le
@@ -1449,7 +1472,7 @@ l'APK : un test rouge bloque la publication.
 | `CourbesSaturationTest` | Cohérence interne des courbes calculées : pression croissante, bulle jamais sous la rosée, corps purs sans glissement, rien d'extrapolé |
 | `EtatRegletteTest` | La bonne colonne de chaque côté du circuit, et le report fermé tant qu'il n'y a pas d'écart à reporter |
 | `DevisViewModelTest` | Devis facturé rangé sans disparaître, quantité pré-remplie par unité, régime recopié, prestation créée depuis le devis, ligne modifiée qui garde son coût et s'offre sans perdre son prix, prestation dégressive devenue ses lignes par rang, machine choisie qui fait proposer ses unités, réglages lus en base sans écran ouvert, devis facturé qui ne se supprime ni ne se retouche, itinéraire devenu lignes, recalcul qui garde l'aller-retour et n'emporte pas les lignes saisies, échec rapporté sans rien écrire |
-| `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, et l'abandon qui n'écrit rien |
+| `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, l'abandon qui n'écrit rien, un devis lu reporté dans la saisie sans rien écrire, sa référence retenue au rapprochement, l'article créé sans prix, et le document illisible qui le dit |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
 | `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée |
@@ -1464,6 +1487,7 @@ l'APK : un test rouge bloque la publication.
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
 | `MaterielRepositoryTest` | Les trois façons de dire une marge et leur non-confusion, le manque jugé endroit par endroit, le seuil à zéro qui n'alerte pas, un mouvement qui additionne, un transfert qui ne prend que le disponible, la saisie de prix en lot écrite en une fois et seulement sur ce qui a changé, reportée sur l'article du moment sans réécrire sa désignation, le prix négatif ramené à zéro, et la copie du fournisseur qui suit le lien |
+| `LectureTarifTest` | Une ligne reconnue à sa multiplication et à rien d'autre, la décimale coupée recollée, le prix net d'une ligne à remise, les milliers recollés, le chiffre mal lu qui fait écarter la ligne, la référence tirée de sa colonne, les morceaux d'une même hauteur remis en ligne, le rapprochement par la seule référence et la suggestion qui n'en dit pas plus que le tarif |
 | `MaterielViewModelTest` | Article et fournisseur créés qui s'ouvrent, l'ordre français gardé sous le manquant, le filtre de ville qui replie les accents |
 | `DegressifTest` | Le prix par rang et non par tranche, le total qui ne décroît jamais quand on ajoute une unité, les rangs au même prix regroupés, la dégression devenue lignes de devis |
 | `RentabiliteTest` | Le coût direct qui additionne temps, pièces et fluide, le fluide repris qui ne coûte rien, le calcul qui se tait faute de coût horaire, la perte qui se voit, et le coût interne jamais confondu avec le taux facturé |
@@ -2599,12 +2623,9 @@ place » venant en tête :
   préalable — les valeurs sont calculées, et le report est ouvert —, mais un
   frigoriste qui travaille sur les tables d'une marque a intérêt à savoir
   lesquelles il a confrontées aux siennes.
-- **Importer un tarif fournisseur.** La saisie groupée des prix et le prix de
-  vente dérivé du coefficient sont là (voir « Architecture ») ; ce qui manque
-  est de ne pas recopier du tout, en lisant le tableau que l'enseigne envoie. Ce
-  n'est pas un import de catalogue, refusé pour de bonnes raisons, mais celui
-  d'un tarif **daté et propre au compte**, qui demanderait un format par enseigne
-  et une règle pour rapprocher une ligne du tarif d'un article par sa référence.
+- **Éprouver la lecture des devis sur de vrais documents** de chaque
+  fournisseur, photo et PDF : l'arithmétique est éprouvée, la reconnaissance de
+  caractères ne l'est que sur le téléphone.
 - **Bloquer l'annulation d'une facture qui a reçu un avoir.** `annuler` ne le
   vérifie pas encore : une facture créditée puis annulée laisserait un avoir
   émis qui ne corrige plus rien.
