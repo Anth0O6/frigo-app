@@ -50,6 +50,11 @@ class InterventionRepository(private val dao: InterventionDao) {
      * le technicien qui lance son chrono est arrivé, et lui demander de le dire
      * une seconde fois serait du travail pour rien.
      *
+     * Une intervention **close ne se relance pas** : la clôture a arrêté le
+     * temps et attribué la référence, et un chronomètre reparti derrière elle
+     * ferait diverger le temps du compte-rendu signé de celui qu'on facturerait.
+     * Le dépôt refuse plutôt que de compter sur l'écran pour cacher le bouton.
+     *
      * @param maintenant passé en paramètre plutôt que lu de l'horloge, pour que
      *   le comportement soit éprouvable seconde par seconde.
      */
@@ -57,6 +62,7 @@ class InterventionRepository(private val dao: InterventionDao) {
         intervention: Intervention,
         maintenant: Instant = Instant.now(),
     ): Intervention {
+        if (intervention.statut.close) return intervention
         val chrono = intervention.chrono.basculer(maintenant)
         val statut = if (chrono.enMarche && intervention.statut == StatutIntervention.PLANIFIEE) {
             StatutIntervention.EN_COURS

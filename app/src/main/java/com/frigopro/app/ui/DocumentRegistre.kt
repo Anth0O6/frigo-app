@@ -62,7 +62,7 @@ object DocumentRegistre {
         objet = "Mouvements de fluides frigorigènes",
         machine = "",
         blocs = blocs(registre),
-        mentions = mentions(registre, parametres),
+        mentions = mentions(registre),
         logoFichier = parametres.logoFichier,
         // Le nom du fichier porte l'année, lui : « 2026.pdf » dans un dossier
         // de téléchargements ne dit rien, et c'est là qu'un inspecteur le
@@ -151,18 +151,15 @@ object DocumentRegistre {
             },
     )
 
-    private fun mentions(registre: Registre, parametres: Parametres): List<String> = buildList {
+    private fun mentions(registre: Registre): List<String> = buildList {
         add(
             "Registre des mouvements de fluides frigorigènes, tenu au titre de " +
                 "l'article 6 du règlement (UE) n° 517/2014.",
         )
         add("Masses exprimées en kilogrammes de fluide.")
-        if (parametres.attestation.isBlank()) {
-            // Dit à l'utilisateur, pas à l'inspecteur : le numéro d'attestation
-            // est la première chose qu'un contrôle rapproche du registre, et
-            // l'export est le dernier moment pour s'apercevoir qu'il manque.
-            add("(Attestation de capacité non renseignée dans les Réglages)")
-        }
+        // Une attestation non renseignée se dit à l'écran, avant l'export
+        // (`SectionRegistre`), et jamais sur le document : un inspecteur n'a pas
+        // à lire une note qui renvoie aux Réglages d'une application.
         if (registre.vide) {
             add("Aucun mouvement n'a été consigné sur cette période.")
         }

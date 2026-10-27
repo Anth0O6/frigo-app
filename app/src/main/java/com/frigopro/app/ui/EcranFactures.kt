@@ -610,6 +610,8 @@ fun EcranFacture(
             ActionsFacture(
                 facture = document,
                 enRetard = enRetard,
+                // Une facture créditée ne s'annule plus : voir `FactureRepository.annuler`.
+                annulable = solde?.chiffree?.creditee != true,
                 onEmettre = { confirmation = ConfirmationFacture.EMETTRE },
                 onEnvoyer = onEnvoyer,
                 onPayee = { paiementOuvert = true },
@@ -1221,6 +1223,8 @@ private fun ActionsFacture(
      * un nom qui ne disait pas ce qu'il faisait.
      */
     enRetard: Boolean = false,
+    /** Faux sur une facture qui a reçu un avoir émis : elle se crédite, elle ne s'annule plus. */
+    annulable: Boolean = true,
     onEmettre: () -> Unit,
     onEnvoyer: () -> Unit,
     onPayee: () -> Unit,
@@ -1270,7 +1274,7 @@ private fun ActionsFacture(
                 )
             }
         }
-        if (facture.statut == StatutFacture.EMISE) {
+        if (facture.statut == StatutFacture.EMISE && annulable) {
             BoutonContour(
                 texte = "Annuler",
                 onClick = onAnnuler,

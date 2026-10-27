@@ -295,17 +295,21 @@ private fun BarreClotureIntervention(
         )
     }
     BarreActions {
-        BoutonPlein(
-            texte = if (chrono.enMarche) "Pause" else if (chrono.vierge) "Démarrer" else "Reprendre",
-            onClick = actions.onBasculerChrono,
-            modifier = Modifier.weight(1f),
-            couleur = if (chrono.enMarche) {
-                MaterialTheme.colorScheme.surfaceContainerHighest
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
-            surCouleur = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onPrimary,
-        )
+        // Une intervention close ne se relance pas : le bouton disparaît, et le
+        // dépôt refuserait de toute façon (`basculerChrono`).
+        if (!etat.intervention.statut.close) {
+            BoutonPlein(
+                texte = if (chrono.enMarche) "Pause" else if (chrono.vierge) "Démarrer" else "Reprendre",
+                onClick = actions.onBasculerChrono,
+                modifier = Modifier.weight(1f),
+                couleur = if (chrono.enMarche) {
+                    MaterialTheme.colorScheme.surfaceContainerHighest
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                surCouleur = if (chrono.enMarche) Urgence else MaterialTheme.colorScheme.onPrimary,
+            )
+        }
         BoutonPlein(
             texte = when {
                 etat.intervention.numero.isNotEmpty() -> "Compte-rendu"

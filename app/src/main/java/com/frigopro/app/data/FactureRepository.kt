@@ -382,8 +382,20 @@ class FactureRepository(private val dao: FactureDao) {
         return rouverte
     }
 
-    /** Annule la facture, **en gardant son numéro** : voir [StatutFacture.ANNULEE]. */
+    /**
+     * Annule la facture, **en gardant son numéro** : voir [StatutFacture.ANNULEE].
+     *
+     * Une facture qui a reçu un **avoir émis** ne s'annule plus, et la facture
+     * est rendue telle quelle : l'avoir resterait sinon un document numéroté qui
+     * ne corrige plus rien, et l'entreprise devrait au client un crédit sur une
+     * facture qui ne réclame plus rien. Ce qui reste dû se crédite par un autre
+     * avoir — c'est le seul chemin, et il garde les deux séquences cohérentes.
+     */
     suspend fun annuler(facture: Facture): Facture {
+        val creditee = dao.avoirsDe(facture.id).any {
+            it.statut == StatutFacture.EMISE || it.statut == StatutFacture.PAYEE
+        }
+        if (creditee) return facture
         val annulee = facture.copy(statut = StatutFacture.ANNULEE, modifieLe = Instant.now())
         dao.enregistrer(annulee)
         return annulee

@@ -40,6 +40,9 @@ import com.frigopro.app.ui.composants.IntituleSection
 import com.frigopro.app.ui.composants.Puce
 import com.frigopro.app.ui.composants.RangeePastilles
 import com.frigopro.app.ui.theme.StyleChiffrePetit
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import com.frigopro.app.ui.composants.Encart
 
 /**
  * Ce que les Réglages règlent, au-delà des types d'intervention.
@@ -871,6 +874,12 @@ data class ActionsRegistre(
     val onExporter: (Int) -> Unit = {},
     /** L'année en cours, toujours proposée : voir [SectionRegistre]. */
     val anneeCourante: Int = java.time.LocalDate.now().year,
+    /**
+     * L'attestation de capacité est réglée. Son absence se dit **ici**, avant
+     * l'export, et non sur le document : un registre tendu à un inspecteur ne
+     * porte pas de note qui renvoie aux Réglages d'une application.
+     */
+    val attestationRenseignee: Boolean = true,
 )
 
 /**
@@ -903,6 +912,15 @@ fun SectionRegistre(actions: ActionsRegistre) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (!actions.attestationRenseignee) {
+                Encart(
+                    texte = "Votre attestation de capacité n'est pas renseignée (page " +
+                        "Technicien) : le registre sortira sans elle, et c'est le premier " +
+                        "numéro qu'un contrôle y cherche.",
+                    icone = Icons.Filled.Warning,
+                    alerte = true,
+                )
+            }
             if (actions.annees.isEmpty()) {
                 Text(
                     text = "Aucun mouvement consigné pour l'instant : le registre de " +

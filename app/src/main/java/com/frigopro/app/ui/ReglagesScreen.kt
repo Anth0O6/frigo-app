@@ -207,6 +207,7 @@ fun ReglagesRoute(
         registre = ActionsRegistre(
             annees = anneesRegistre,
             onExporter = viewModel::onExporterRegistre,
+            attestationRenseignee = parametres.attestation.isNotBlank(),
         ),
         // La sauvegarde tient ses propres lanceurs et son propre ViewModel :
         // l'écran l'héberge sans la connaître, exactement comme la barre de la

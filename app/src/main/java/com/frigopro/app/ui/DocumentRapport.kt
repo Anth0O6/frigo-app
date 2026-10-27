@@ -258,12 +258,9 @@ object DocumentRapport {
                     "règlement (UE) 517/2014.",
             )
         }
-        if (etat.parametres.attestation.isBlank() && etat.mouvements.isNotEmpty()) {
-            // Dit à l'utilisateur, pas au client : manipuler du fluide sans
-            // attestation renseignée sur le document est un manque qui se voit
-            // au contrôle, et l'export est le dernier moment pour s'en aviser.
-            add("(Attestation de capacité non renseignée dans les Réglages)")
-        }
+        // Une attestation non renseignée se dit sur le volet Rapport, avant
+        // l'envoi, et jamais sur le document : le client n'a pas à lire une note
+        // qui renvoie aux Réglages d'une application.
         if (etat.intervention.numero.isBlank()) {
             add("(Référence attribuée à la clôture de l'intervention)")
         }

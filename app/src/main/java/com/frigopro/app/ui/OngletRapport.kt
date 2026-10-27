@@ -45,6 +45,8 @@ import com.frigopro.app.ui.composants.Section
 import com.frigopro.app.ui.theme.Pointille
 import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 
 /**
  * Le compte-rendu : ce qu'on remet au client.
@@ -169,6 +171,17 @@ fun OngletRapport(
         if (etat.intervention.numero.isEmpty()) {
             Encart(
                 texte = "Le compte-rendu recevra sa référence à la clôture de l'intervention.",
+            )
+        }
+
+        // Du fluide a bougé sans attestation renseignée : un manque qui se voit
+        // au contrôle. Dit ici, au technicien, et non sur le document du client.
+        if (etat.parametres.attestation.isBlank() && etat.mouvements.isNotEmpty()) {
+            Encart(
+                texte = "Votre attestation de capacité n'est pas renseignée (Réglages, page " +
+                    "Technicien) : le compte-rendu sortira sans elle.",
+                icone = Icons.Filled.Warning,
+                alerte = true,
             )
         }
 

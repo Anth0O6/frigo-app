@@ -271,7 +271,7 @@ class DocumentRapportTest {
     }
 
     @Test
-    fun `l'attestation manquante est signalee des qu'on touche au fluide`() {
+    fun `l'attestation manquante ne s'imprime jamais chez le client`() {
         val sansAttestation = entreprise.copy(attestation = "")
         val mouvement = MouvementFluide(
             interventionId = "i",
@@ -280,14 +280,10 @@ class DocumentRapportTest {
             masseKg = 1.0,
         )
 
+        // Le manque se dit au technicien sur le volet Rapport, avant l'envoi :
+        // le client n'a pas à lire une note qui renvoie aux Réglages.
         val avecFluide = document(etat(mouvements = listOf(mouvement), parametres = sansAttestation))
-        assertTrue(avecFluide.mentions.any { it.contains("Attestation de capacité non renseignée") })
-
-        // Sans mouvement de fluide, l'attestation n'est pas en cause : un
-        // avertissement qui se déclenche toujours est un avertissement qu'on
-        // cesse de lire.
-        val sansFluide = document(etat(parametres = sansAttestation))
-        assertFalse(sansFluide.mentions.any { it.contains("Attestation") })
+        assertFalse(avecFluide.mentions.any { it.contains("Réglages") || it.contains("non renseignée") })
     }
 
     @Test

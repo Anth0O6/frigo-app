@@ -385,6 +385,22 @@ class FactureRepositoryTest {
     }
 
     /**
+     * Une facture qui a reçu un avoir émis **ne s'annule plus** : l'avoir
+     * resterait un document numéroté qui ne corrige plus rien.
+     */
+    @Test
+    fun `une facture creditee ne s'annule plus`() = runTest {
+        val emise = depot.emettre(
+            depot.creerDepuisIntervention(intervention(), pieces(), emptyList(), reglages),
+            reglages,
+            LE_12_MARS,
+        )
+        depot.emettre(depot.creerAvoir(emise)!!, reglages, LE_12_MARS)
+
+        assertEquals(StatutFacture.EMISE, depot.annuler(emise).statut)
+    }
+
+    /**
      * Ce qui réclame encore quelque chose est rouvert, jamais doublé : une
      * facture créditée **en partie** — on en réclame le reste —, un avoir
      * seulement en brouillon — il n'a encore rien crédité —, une facture payée.

@@ -148,16 +148,15 @@ class DocumentRegistreTest {
     }
 
     @Test
-    fun `l'attestation manquante est signalee`() {
+    fun `l'attestation manquante ne s'imprime pas sur le registre`() {
         val sans = DocumentRegistre.de(
             registre = registre(),
             parametres = entreprise.copy(attestation = ""),
             aujourdhui = jour,
         )
 
-        // C'est la première chose qu'un contrôle rapproche du registre, et
-        // l'export est le dernier moment pour s'apercevoir qu'elle manque.
-        assertTrue(sans.mentions.any { it.contains("Attestation de capacité non renseignée") })
-        assertFalse(document().mentions.any { it.contains("Attestation") })
+        // Le manque se dit à l'écran avant l'export (`SectionRegistre`) : un
+        // inspecteur n'a pas à lire une note qui renvoie aux Réglages.
+        assertFalse(sans.mentions.any { it.contains("Réglages") || it.contains("non renseignée") })
     }
 }

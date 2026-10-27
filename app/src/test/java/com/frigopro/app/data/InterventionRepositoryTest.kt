@@ -29,6 +29,22 @@ class InterventionRepositoryTest {
         assertEquals("Rouen", enregistree.ville)
     }
 
+    /**
+     * Une intervention close ne se relance pas : un chronomètre reparti derrière
+     * la clôture ferait diverger le temps du compte-rendu signé de celui qu'on
+     * facturerait. Le dépôt refuse, et n'écrit rien.
+     */
+    @Test
+    fun `une intervention close ne relance pas son chronometre`() = runTest {
+        val close = intervention(client = "Boucherie Lemoine", ville = "Rouen")
+            .copy(statut = StatutIntervention.TERMINEE)
+
+        val apres = repository.basculerChrono(close, Instant.parse("2026-03-09T10:00:00Z"))
+
+        assertEquals(close, apres)
+        assertTrue("rien n'est écrit", dao.contenu.isEmpty())
+    }
+
     @Test
     fun `l'horodatage de modification est pose par le depot`() = runTest {
         val avant = Instant.now()

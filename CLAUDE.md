@@ -763,7 +763,8 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   `basculerChrono`, comme « Démarrer », et **mène au volet Rapport** toutes les
   autres, où l'on fait signer puis où l'on clôture ; « Terminer » sur la carte en
   cours fait de même. La feuille ne propose plus « Terminé » et ne rouvre pas une
-  intervention close. La clôture est le seul chemin vers « terminé », et elle
+  intervention close, et le chronomètre d'une intervention close ne se relance
+  plus — `basculerChrono` la rend telle quelle. La clôture est le seul chemin vers « terminé », et elle
   **demande confirmation** en disant ce qu'elle fait : le temps s'arrête, la
   référence est définitive. « Facturer » est sur le volet Rapport, où la clôture
   mène, et passe par `facturerIntervention` et `onAllerAuxFactures` — et non plus
@@ -1444,7 +1445,7 @@ l'APK : un test rouge bloque la publication.
 | `DatesTest` | La conversion vers le sélecteur Material 3 ne doit pas dériver d'un jour selon le fuseau |
 | `NombresTest` | Le montant abrégé des tuiles, et la forme longue exacte au centime |
 | `EtatFormulaireTest` | Validation de la saisie, distinction création/édition par l'`id`, édition qui n'efface ni chrono ni numéro ni signature, ce qui manque nommé, urgence posée et retirée, adresse qui ne touche pas l'intervention |
-| `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée |
+| `InterventionRepositoryTest` | Nettoyage des saisies, horodatage, filtre et tri par journée, chronomètre d'une intervention close qui ne repart pas |
 | `InterventionsViewModelTest` | Navigation entre les jours, pastille qui démarre par le chrono et ne rouvre ni ne termine rien, chronoAuto qui lance le temps d'un passage en cours par la feuille et rien sans lui, urgence enregistrée, adresse et téléphone qui complètent la fiche sans écraser, formulaire retenu sur saisie incomplète, rapprochement avec le carnet, technicien inscrit au passage, recherche qui traverse les dates et n'observe rien à vide, refermer la recherche qui l'efface, revenir à aujourd'hui |
 | `ClientTest` | Ce qui rend un client appelable ou localisable, et son adresse complète |
 | `ClientRepositoryTest` | Tri français du carnet, absence de doublon à la casse près, nettoyage des coordonnées, suppression qui emporte le plan du parc — et celui du parc de chaque site — en gardant les visites, fiche complétée là où elle est vide, jamais écrasée, rien d'écrit sans nouveauté |
@@ -1475,14 +1476,14 @@ l'APK : un test rouge bloque la publication.
 | `SaisiePrixViewModelTest` | La vente proposée au coefficient et arrondie au centime, rien de proposé sans coefficient, la vente tapée jamais écrasée et le champ vidé qui rend la main au calcul, la vente de la fiche gardée quand elle n'était pas une proposition, seules les lignes modifiées écrites en une fois, le fournisseur en lot avec son lien et sa copie — ligne masquée comprise —, le filtre « sans prix » qui ne lâche pas la ligne en cours de saisie, l'abandon qui n'écrit rien, un devis lu reporté dans la saisie sans rien écrire, sa référence retenue au rapprochement, l'article créé sans prix, et le document illisible qui le dit |
 | `MiseEnPageDevisTest` | Pagination du PDF : rien de perdu, totaux jamais coupés, « Page 2 / 3 » juste, tableau au-dessus du pied |
 | `DocumentDevisTest` | Ce que le devis imprimé dit : en-tête, mentions légales, TVA offerte en remise, nom de fichier assaini, aucune note technique sur le document du client |
-| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée |
+| `FactureRepositoryTest` | Le brouillon qui ne consomme aucun rang, les numéros qui se suivent, l'émission qui n'attribue qu'un numéro, la facture émise qui s'annule au lieu de s'effacer, les lignes qui ne bougent plus, l'échéance qui ne se déplace pas, ce qu'une intervention et un devis deviennent, les pénalités calculées et jamais devinées, l'avoir qui ne naît que d'une facture émise et ne passe pas pour la facture de l'intervention, le brouillon d'avoir qui ne consomme aucun rang, la séquence AV distincte et continue, l'avoir émis qui ne se supprime pas et ne bouge plus, l'avoir total qui retombe au centime, la garde qui refuse de créditer plus que la facture, la facture couverte qui ne se relance plus et la partiellement couverte qui se relance pour son reste, le centime d'arrondi qui ne laisse ni facture due ni reste négatif, une facture annulée ou entièrement créditée qui laisse refacturer, une facture vivante rouverte et non doublée, une facture créditée qui ne s'annule plus |
 | `DocumentFactureTest` | Ce que la facture imprimée dit : les mentions obligatoires, le taux légal quand aucun taux n'est fixé, l'adresse du jour de la facture, l'avoir qui porte la référence d'origine et aucune mention de paiement, son total positif et nommé, son propre nom de fichier, aucune note technique — SIRET, Réglages — sur le document du client |
 | `FacturesViewModelTest` | La facture imprimée qui porte logo, en-tête et adresse ; l'émission qui fige les vrais réglages ; l'avoir qui s'ouvre une fois créé, et la facture d'origine qui se sait couverte; un brouillon qui se complète et une facture émise non, une facture pointée payée à la date donnée |
 | `FacturerInterventionTest` | Facturer ouvre la facture et mène aux factures une fois, sans passer par les devis ; facturer deux fois rouvre la même |
-| `DocumentRapportTest` | Ce que le compte-rendu imprimé dit : le relevé non pris qui ne s'invente pas, le prix d'achat qui ne sort jamais, chaque mouvement de fluide détaillé, le point non fait qui se voit, l'export avant clôture qui dit ce qui lui manque |
+| `DocumentRapportTest` | Ce que le compte-rendu imprimé dit : le relevé non pris qui ne s'invente pas, le prix d'achat qui ne sort jamais, chaque mouvement de fluide détaillé, le point non fait qui se voit, l'export avant clôture qui dit ce qui lui manque, l'attestation manquante jamais imprimée chez le client |
 | `MiseEnPageRapportTest` | La page du compte-rendu : rien de perdu, un bloc coupé qui reprend son titre, aucun titre orphelin, la signature jamais séparée de ce qu'elle signe, le texte libre enveloppé sur les mots |
 | `RegistreFluidesTest` | Le registre : la date du chantier et non celle de la saisie, un mouvement orphelin qui ne disparaît pas, le net négatif d'un démantèlement, l'équivalent CO₂ calculé sur l'ajouté et jamais deviné |
-| `DocumentRegistreTest` | Ce que le registre imprimé dit : le bilan avant le détail, le sens en toutes lettres, l'année sans mouvement qui produit quand même un document |
+| `DocumentRegistreTest` | Ce que le registre imprimé dit : le bilan avant le détail, le sens en toutes lettres, l'année sans mouvement qui produit quand même un document, l'attestation manquante jamais imprimée |
 | `RappelsFacturesTest` | Le rappel vise le matin et jamais un délai négatif ; une facture est nommée, plusieurs se comptent, une facture créditée en partie qui se rappelle pour son reste |
 | `DeplacementTest` | Ce qui double en aller-retour, la ligne qui retombe sur sa propre quantité, le plancher qui ne mange pas les péages, le forfait plutôt qu'un tarif inventé |
 | `AnalyseItineraireRelaisTest` | La lecture d'une réponse du relais : un trajet nul qui est un échec et non un déplacement gratuit, chaque échec qui garde son sens, et aucun message qui renvoie à une configuration |
@@ -1868,8 +1869,9 @@ renonciation au recours.
 « (SIRET non renseigné dans les Réglages) » : ce qui manque à l'en-tête — raison
 sociale, adresse, SIRET (`manquesEmetteur`) — est désormais nommé par la
 confirmation d'émission, qui laisse émettre quand même, et par un encart sur le
-devis. Le compte-rendu et le registre portent encore une mention de ce genre sur
-l'attestation de capacité, à traiter de la même façon.
+devis. L'attestation de capacité suit la même règle : son absence se dit sur le
+volet Rapport et sur la page du registre, avant l'export, et plus sur les
+documents.
 
 ### Ce qu'un devis devient
 
@@ -1921,7 +1923,9 @@ celui qui le saisit.
 
 **Un avoir est une facture de sens inverse, et il en a les trois règles** :
 numéroté à l'émission seulement, insupprimable une fois numéroté, figé passé
-l'émission. C'est ce qui l'a fait entrer **dans la table `factures`**, sous une
+l'émission. Une facture qui a reçu un avoir émis **ne s'annule plus** — l'avoir
+resterait un document qui ne corrige plus rien — : ce qui reste se crédite par
+un autre avoir, et le bouton « Annuler » disparaît. C'est ce qui l'a fait entrer **dans la table `factures`**, sous une
 nature (`NatureFacture`), plutôt que dans des tables à lui : les lignes, les
 totaux arrondis ligne à ligne, l'émission, le gel, la sauvegarde et l'impression
 fonctionnent alors sans retouche, là où deux copies des trois règles auraient
@@ -2626,9 +2630,6 @@ place » venant en tête :
 - **Éprouver la lecture des devis sur de vrais documents** de chaque
   fournisseur, photo et PDF : l'arithmétique est éprouvée, la reconnaissance de
   caractères ne l'est que sur le téléphone.
-- **Bloquer l'annulation d'une facture qui a reçu un avoir.** `annuler` ne le
-  vérifie pas encore : une facture créditée puis annulée laisserait un avoir
-  émis qui ne corrige plus rien.
 - **La ponctualité, et non seulement le compte.** `RealisationGamme` dit combien
   de visites ont été faites, pas si elles l'ont été à l'heure : une visite
   mensuelle faite trois fois en janvier puis plus rien jusqu'en mars compte trois
