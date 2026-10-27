@@ -46,6 +46,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.ArticleEnStock
 import com.frigopro.app.data.Client
+import com.frigopro.app.data.Devis
 import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.Facture
@@ -82,13 +83,23 @@ data class RechercheJournee(
     val ouverte: Boolean = false,
     val saisie: String = "",
     val trouvees: List<LigneTournee> = emptyList(),
+    /** Ce qu'elle trouve hors des interventions : voir [ResultatsGlobaux]. */
+    val ailleurs: ResultatsGlobaux = ResultatsGlobaux(),
 )
 
-/** Les gestes de la recherche, en un objet : voir [RechercheJournee]. */
+/**
+ * Les gestes de la recherche, en un objet : voir [RechercheJournee]. Chaque
+ * objet trouvé s'ouvre dans son onglet — c'est la coquille qui bascule.
+ */
 data class ActionsRecherche(
     val onOuvrir: () -> Unit = {},
     val onSaisie: (String) -> Unit = {},
     val onFermer: () -> Unit = {},
+    val onOuvrirClient: (Client) -> Unit = {},
+    val onOuvrirMachine: (Equipement) -> Unit = {},
+    val onOuvrirFacture: (Facture) -> Unit = {},
+    val onOuvrirDevis: (Devis) -> Unit = {},
+    val onOuvrirArticle: (ArticleEnStock) -> Unit = {},
 )
 
 /**
@@ -245,6 +256,7 @@ fun EcranAujourdhui(
             if (recherche.ouverte) {
                 ResultatsRecherche(
                     recherche = recherche,
+                    actions = actionsRecherche,
                     onOuvrir = onOuvrirIntervention,
                     onModifier = onModifierIntervention,
                     onChangerStatut = onChangerStatut,
@@ -557,6 +569,7 @@ private fun CarteJourneeLibre(journeeVide: Boolean) {
 @Composable
 private fun ResultatsRecherche(
     recherche: RechercheJournee,
+    actions: ActionsRecherche,
     onOuvrir: (Intervention) -> Unit,
     onModifier: (Intervention) -> Unit,
     onChangerStatut: (Intervention) -> Unit,
@@ -574,16 +587,21 @@ private fun ResultatsRecherche(
         when {
             recherche.saisie.isBlank() -> item {
                 Encart(
-                    texte = "La recherche traverse toutes les dates : un client, une ville, " +
-                        "une machine, un numéro de compte-rendu.",
+                    texte = "Un seul champ pour tout : un client, une ville, une machine, une " +
+                        "zone, un numéro de facture ou de devis, un article — toutes dates " +
+                        "confondues.",
                 )
             }
 
-            recherche.trouvees.isEmpty() -> item {
+            recherche.trouvees.isEmpty() && recherche.ailleurs.vide -> item {
                 Encart(
-                    texte = "Aucune intervention ne correspond à « ${recherche.saisie.trim()} ».",
+                    texte = "Rien ne correspond à « ${recherche.saisie.trim()} ».",
                 )
             }
+        }
+        blocAilleurs(recherche.ailleurs, actions)
+        if (recherche.trouvees.isNotEmpty() && !recherche.ailleurs.vide) {
+            item(key = "titre-interventions") { IntituleSection(texte = "Interventions") }
         }
         // `groupBy` garde l'ordre d'arrivée, et la liste vient déjà
         // antichronologique : les dates se suivent donc de la plus récente à la
@@ -1192,5 +1210,84 @@ private fun ApercuAujourdhui() {
             onOuvrirReglages = {},
             aTraiter = ATraiter(reglages = listOf(ReglageManquant.TAUX_HORAIRE)),
         )
+    }
+}
+
+/**
+ * Les clients, machines, factures, devis et articles trouvés, **avant** les
+ * interventions : on cherche plus souvent une fiche qu'un passage, et la liste
+ * des interventions peut être longue. Chaque famille dit son compte complet
+ * quand le plafond l'a coupée — l'onglet tient la suite.
+ */
+private fun LazyListScope.blocAilleurs(resultats: ResultatsGlobaux, actions: ActionsRecherche) {
+    fun titre(famille: FamilleTrouvee, affiches: Int) {
+        val total = resultats.totaux[famille] ?: affiches
+        item(key = "titre-${famille.name}") {
+            IntituleSection(
+                texte = if (total > affiches) "${famille.libelle} · $affiches sur $total" else famille.libelle,
+            )
+        }
+    }
+    if (resultats.clients.isNotEmpty()) {
+        titre(FamilleTrouvee.CLIENTS, resultats.clients.size)
+        items(items = resultats.clients, key = { "cl-${it.id}" }) { client ->
+            LigneTrouvee(client.nom, client.adresseComplete) { actions.onOuvrirClient(client) }
+        }
+    }
+    if (resultats.machines.isNotEmpty()) {
+        titre(FamilleTrouvee.MACHINES, resultats.machines.size)
+        items(items = resultats.machines, key = { "eq-${it.equipement.id}" }) { trouvee ->
+            LigneTrouvee(
+                trouvee.equipement.nom,
+                listOf(trouvee.clientNom, trouvee.equipement.zone).filter { it.isNotBlank() }.joinToString(" · "),
+            ) { actions.onOuvrirMachine(trouvee.equipement) }
+        }
+    }
+    if (resultats.factures.isNotEmpty()) {
+        titre(FamilleTrouvee.FACTURES, resultats.factures.size)
+        items(items = resultats.factures, key = { "fa-${it.facture.id}" }) { chiffree ->
+            val facture = chiffree.facture
+            LigneTrouvee(
+                facture.numero.ifBlank { "Brouillon" },
+                "${facture.clientNom} · ${facture.statut.libelle}",
+            ) { actions.onOuvrirFacture(facture) }
+        }
+    }
+    if (resultats.devis.isNotEmpty()) {
+        titre(FamilleTrouvee.DEVIS, resultats.devis.size)
+        items(items = resultats.devis, key = { "de-${it.devis.id}" }) { chiffre ->
+            val devis = chiffre.devis
+            LigneTrouvee(
+                devis.numero,
+                listOf(devis.clientNom, devis.objet).filter { it.isNotBlank() }.joinToString(" · "),
+            ) { actions.onOuvrirDevis(devis) }
+        }
+    }
+    if (resultats.articles.isNotEmpty()) {
+        titre(FamilleTrouvee.ARTICLES, resultats.articles.size)
+        items(items = resultats.articles, key = { "ar-${it.article.id}" }) { entree ->
+            LigneTrouvee(
+                entree.article.designation,
+                listOf(entree.article.reference, entree.article.fournisseurNom)
+                    .filter { it.isNotBlank() }.joinToString(" · "),
+            ) { actions.onOuvrirArticle(entree) }
+        }
+    }
+}
+
+/** Une ligne de résultat : ce qu'on cherchait, et de quoi la reconnaître. */
+@Composable
+private fun LigneTrouvee(titre: String, detail: String, onClick: () -> Unit) {
+    Carte(onClick = onClick) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(text = titre, style = MaterialTheme.typography.titleSmall)
+            if (detail.isNotBlank()) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }

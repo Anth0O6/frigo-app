@@ -2,6 +2,7 @@ package com.frigopro.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +71,7 @@ fun AujourdhuiRoute(
      */
     plan: MaintenanceViewModel = viewModel(factory = MaintenanceViewModel.Factory),
     machines: EquipementsViewModel = viewModel(factory = EquipementsViewModel.Factory),
+    globale: RechercheGlobaleViewModel = viewModel(factory = RechercheGlobaleViewModel.Factory),
 ) {
     val ouverte by detail.ouverte.collectAsStateWithLifecycle()
     val jour by tournee.jour.collectAsStateWithLifecycle()
@@ -77,6 +79,10 @@ fun AujourdhuiRoute(
     val frise by tournee.frise.collectAsStateWithLifecycle()
     val recherche by tournee.recherche.collectAsStateWithLifecycle()
     val rechercheOuverte by tournee.rechercheOuverte.collectAsStateWithLifecycle()
+    // La même saisie cherche aussi hors des interventions : le champ est celui
+    // de la tournée, la recherche globale le suit.
+    LaunchedEffect(recherche) { globale.onRecherche(recherche) }
+    val ailleurs by globale.resultats.collectAsStateWithLifecycle()
     val trouvees by tournee.trouvees.collectAsStateWithLifecycle()
     val etat by accueil.etat.collectAsStateWithLifecycle()
     val impayees by factures.aRelancer.collectAsStateWithLifecycle()
@@ -147,11 +153,32 @@ fun AujourdhuiRoute(
                 ouverte = rechercheOuverte,
                 saisie = recherche,
                 trouvees = trouvees,
+                ailleurs = ailleurs,
             ),
+            // Chaque objet trouvé s'ouvre comme depuis « À traiter » : son
+            // ViewModel partagé le reçoit, la coquille montre son onglet. La
+            // recherche reste ouverte, et le retour la retrouve telle quelle.
             actionsRecherche = ActionsRecherche(
                 onOuvrir = tournee::onOuvrirRecherche,
                 onSaisie = tournee::onRecherche,
                 onFermer = tournee::onFermerRecherche,
+                onOuvrirClient = onOuvrirClient,
+                onOuvrirMachine = { machine ->
+                    machines.onOuvrir(machine)
+                    onVoirClients()
+                },
+                onOuvrirFacture = { facture ->
+                    factures.onOuvrir(facture)
+                    onAllerAuxFactures()
+                },
+                onOuvrirDevis = { document ->
+                    devis.onOuvrir(document)
+                    onAllerAuxDevis()
+                },
+                onOuvrirArticle = { entree ->
+                    materiel.onOuvrirArticle(entree.article.id)
+                    onVoirMagasin()
+                },
             ),
             aTraiter = ATraiter(
                 impayees = impayees,

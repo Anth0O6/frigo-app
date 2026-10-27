@@ -139,6 +139,7 @@ nécessaire pour `LocalDate` et `LocalTime`.
 │       │       ├── InterventionsScreen.kt # les morceaux d'une journée, et la feuille de saisie
 │       │       ├── PlanningRoute.kt     # Semaine | Entretien
 │       │       ├── InterventionsViewModel.kt
+│       │       ├── RechercheGlobaleViewModel.kt # le même champ, hors des interventions
 │       │       ├── EtatFicheClient.kt
 │       │       ├── FicheClient.kt      # l'édition des coordonnées, en feuille
 │       │       ├── EcranClient.kt      # la page d'un client : le pivot de l'onglet
@@ -743,6 +744,15 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   plus ouvert de l'application observerait la table entière en permanence pour
   n'afficher qu'une journée. Le retour système défait la recherche avant la vue,
   et changer de vue l'abandonne.
+  **Le même champ cherche partout** (`RechercheGlobaleViewModel`) : clients,
+  machines — par leur zone et par le nom de leur client, « carrefour toiture » —,
+  factures, devis et articles paraissent au-dessus des interventions, chaque
+  famille plafonnée à cinq et disant son compte complet. Un seul champ plutôt
+  qu'un par onglet : on cherche une chose qu'on a en tête, pas un onglet. Chaque
+  résultat s'ouvre dans son onglet par le chemin habituel — le `ViewModel`
+  partagé reçoit l'objet, la coquille bascule —, et ses cinq flux ne coulent
+  que tant que la saisie n'est pas vide, pour la même raison que celui des
+  interventions.
   Le titre d'un écran nomme **la vue ouverte et non l'onglet** — « Devis », pas
   « Facturation » —, comme celui des carnets le faisait déjà : répéter le nom du
   groupe au-dessus d'une bascule laissait l'écran sans dire lequel des deux
@@ -1529,6 +1539,7 @@ l'APK : un test rouge bloque la publication.
 | `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui, l'affectation d'une sélection qui ne remet pas à zéro l'entrée au plan d'une machine déjà suivie, la date choisie qui ne vaut que pour les nouvelles, le compte annoncé égal au compte rendu, et le retrait d'une sélection qui laisse le reste du plan et le journal |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, le rangement par zone puis machine puis cadence, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
+| `RechercheGlobaleTest` | Rien de cherché ni de compté à vide, chaque famille aux règles de `Recherche`, la machine trouvée par sa zone et par son client, le plafond qui dit le compte complet |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste, un avoir trouvé par son numéro et par celui de sa facture, le carnet trouvé par la zone, le parc filtré sur les seules machines désignées, l'unité qui ramène son groupe |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne, l'adresse et le SIRET réclamés malgré la raison sociale |
 | `MigrationTest` | Une base d'une version antérieure se migre sans perdre ses tournées, index reposés, zone arrivée vide sur tout un parc déjà saisi, catalogue d'accessoires posé sans un prix ni une référence ni un fournisseur, rejouable sans effacer un prix déjà saisi, et sans toucher un article saisi à la main, détecteur de fuite arrivé absent sur tout un parc, factures d'avant restées factures et index du lien d'origine posé |
