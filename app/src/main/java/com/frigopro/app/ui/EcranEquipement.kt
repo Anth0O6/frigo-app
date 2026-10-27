@@ -103,6 +103,8 @@ fun EcranEquipement(
     onDupliquer: () -> Unit,
     onSupprimer: () -> Unit,
     onFermer: () -> Unit,
+    /** Une ligne de l'historique ouvre son intervention, dans Aujourd'hui. */
+    onOuvrirIntervention: (Intervention) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -245,7 +247,10 @@ fun EcranEquipement(
                 }
             } else {
                 items(items = historique, key = { it.id }) { intervention ->
-                    LigneHistorique(intervention = intervention)
+                    LigneHistorique(
+                        intervention = intervention,
+                        modifier = Modifier.clickable { onOuvrirIntervention(intervention) },
+                    )
                 }
             }
             // Les visites préventives **après** les interventions, et non

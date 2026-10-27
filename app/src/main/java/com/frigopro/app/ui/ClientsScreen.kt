@@ -293,6 +293,7 @@ fun ClientsRoute(
             onDupliquer = { machines.onDupliquerMachine(machineOuverte) },
             onSupprimer = { machines.onSupprimerMachine(machineOuverte) },
             onFermer = machines::onFermer,
+            onOuvrirIntervention = onOuvrirIntervention,
             modifier = modifier,
         )
 

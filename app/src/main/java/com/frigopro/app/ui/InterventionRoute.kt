@@ -20,6 +20,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frigopro.app.data.Capture
 import com.frigopro.app.data.CategoriePhoto
+import com.frigopro.app.data.Client
+import com.frigopro.app.data.Equipement
 import com.frigopro.app.data.Intervention
 import kotlinx.coroutines.launch
 
@@ -53,6 +55,9 @@ fun InterventionRoute(
     onAllerAuxFactures: () -> Unit,
     /** Ouvrir le formulaire de l'intervention : la coquille seule le détient. */
     onModifierFiche: () -> Unit,
+    /** La page du client, et la fiche de la machine : dans l'onglet Clients, que la coquille ouvre. */
+    onOuvrirClient: ((Client) -> Unit)? = null,
+    onOuvrirMachine: ((Equipement) -> Unit)? = null,
     modifier: Modifier = Modifier,
     facturesViewModel: FacturesViewModel = viewModel(factory = FacturesViewModel.Factory),
 ) {
@@ -150,6 +155,8 @@ fun InterventionRoute(
         magasin = magasin,
         actions = ActionsIntervention(
             onFermer = viewModel::onFermer,
+            onOuvrirClient = if (onOuvrirClient != null) ({ etat?.client?.let(onOuvrirClient) }) else null,
+            onOuvrirMachine = if (onOuvrirMachine != null) ({ etat?.equipement?.let(onOuvrirMachine) }) else null,
             onOnglet = viewModel::onOnglet,
             onBasculerChrono = viewModel::onBasculerChrono,
             onPoserTemps = viewModel::onPoserTemps,

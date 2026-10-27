@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frigopro.app.data.Client
 import com.frigopro.app.data.EcheanceMaintenance
 import com.frigopro.app.data.Equipement
 
@@ -51,6 +52,8 @@ fun AujourdhuiRoute(
     onVoirEntretien: () -> Unit,
     /** Le carnet des clients, sur la machine qu'une échéance F-Gas désigne. */
     onVoirClients: () -> Unit,
+    /** La page d'un client, depuis la fiche d'une intervention : c'est la coquille qui l'ouvre. */
+    onOuvrirClient: (Client) -> Unit = {},
     /** Les Réglages en plein écran, sur une page ou sur le sommaire (`null`). */
     onReglages: (PageReglages?) -> Unit,
     modifier: Modifier = Modifier,
@@ -106,6 +109,13 @@ fun AujourdhuiRoute(
             onAllerAuxFactures = onAllerAuxFactures,
             onModifierFiche = {
                 detail.etat.value?.intervention?.let(tournee::onModifierIntervention)
+            },
+            onOuvrirClient = onOuvrirClient,
+            // La machine s'ouvre comme depuis une échéance F-Gas : le ViewModel
+            // partagé du parc la reçoit, la coquille montre l'onglet Clients.
+            onOuvrirMachine = { machine ->
+                machines.onOuvrir(machine)
+                onVoirClients()
             },
             modifier = modifier,
         )

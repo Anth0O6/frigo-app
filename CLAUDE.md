@@ -667,6 +667,14 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   - La feuille de saisie d'une intervention est posée **une seule fois, par la
     coquille**. Le retour système à la racine d'un onglet ramène à
     Aujourd'hui ; Réglages ouverts, il referme la page puis les Réglages.
+  - **Les objets se désignent les uns les autres** : la fiche d'une
+    intervention mène à la page de son client et à la fiche de sa machine,
+    chaque ligne de l'historique d'une machine rouvre son intervention. Un nom
+    qu'on lit sans pouvoir le toucher obligeait à changer d'onglet et à
+    rechercher ce qu'on avait sous les yeux. Le chemin est toujours le même : le
+    `ViewModel` partagé de l'onglet visé reçoit l'objet, la coquille change
+    d'onglet. Une machine supprimée depuis ne laisse que son nom recopié, et sa
+    carte n'est alors pas cliquable — un geste qui ne fait rien est pire qu'aucun.
   - La pastille de bascule suit le mode gants (`Cibles.pastille`, 40 / 52 dp).
   Ce qui suit, jusqu'à `VueTournee` et `TourneeRoute`, décrit l'organisation
   d'avant et ses raisons ; les noms supprimés (`VueTournee`, `TourneeRoute`,
@@ -747,8 +755,8 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   l'est désormais — : l'accueil alerte, les
   onglets tiennent le détail, et une liste de trente lignes ne serait plus lue.
   Celles des factures, du magasin et du préventif comptent le reste et y mènent ;
-  une échéance F-Gas ne mène encore nulle part — un manque qui
-  ne mène nulle part n'est pas une réponse à « et maintenant ? ».
+  une échéance F-Gas ouvre sa machine — un manque qui ne mène nulle part n'est
+  pas une réponse à « et maintenant ? ».
   Les **visites** y sont arrivées en dernier, et avec un argument que les trois
   autres n'ont pas : c'est le seul travail du métier que **personne ne vient
   demander**. Un dépannage arrive par un appel, une facture par une échéance, un

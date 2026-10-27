@@ -56,6 +56,13 @@ import java.time.Duration
  */
 data class ActionsIntervention(
     val onFermer: () -> Unit = {},
+    /**
+     * Ouvrir la page du client, ou la fiche de la machine, dans l'onglet Clients.
+     * `null` quand l'hôte ne sait pas y mener : la carte n'est alors pas cliquable,
+     * plutôt que de faire un geste qui ne ferait rien.
+     */
+    val onOuvrirClient: (() -> Unit)? = null,
+    val onOuvrirMachine: (() -> Unit)? = null,
     val onOnglet: (OngletIntervention) -> Unit = {},
     val onBasculerChrono: () -> Unit = {},
     /** Le temps total, saisi à la main plutôt que chronométré. */

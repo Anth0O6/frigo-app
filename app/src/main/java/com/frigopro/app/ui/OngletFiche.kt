@@ -77,6 +77,27 @@ fun OngletFiche(
             )
         }
 
+        // Le client mène à sa page : ce qu'il doit, ses autres interventions, son
+        // parc. Une intervention d'avant le carnet n'a pas de fiche à ouvrir, et
+        // la carte n'est alors pas proposée — un nom qui ne mène nulle part se lit
+        // déjà dans le titre.
+        val ouvrirClient = actions.onOuvrirClient
+        if (etat.client != null && ouvrirClient != null) {
+            Carte(contour = true, onClick = ouvrirClient) {
+                Text(
+                    text = "CLIENT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(text = etat.client.nom, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Voir sa fiche ›",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
         // L'adresse et les deux gestes du terrain. Ils ne s'affichent que
         // lorsqu'ils mènent quelque part : un bouton « Appeler » sur un client
         // sans numéro est un bouton qui trahit.
@@ -137,7 +158,10 @@ fun OngletFiche(
 
         val machine = etat.equipement
         if (machine != null || intervention.equipementNom.isNotBlank()) {
-            Carte(contour = true) {
+            // La machine mène à sa fiche — photos de la plaque, historique —, et
+            // seulement si elle existe encore : une machine supprimée depuis ne
+            // laisse que son nom recopié.
+            Carte(contour = true, onClick = actions.onOuvrirMachine?.takeIf { machine != null }) {
                 Text(
                     text = "ÉQUIPEMENT",
                     style = MaterialTheme.typography.labelSmall,
@@ -157,6 +181,13 @@ fun OngletFiche(
                         text = plaque,
                         style = StyleChiffrePetit,
                         color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+                if (machine != null && actions.onOuvrirMachine != null) {
+                    Text(
+                        text = "Voir sa fiche ›",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }

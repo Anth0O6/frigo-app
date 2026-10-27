@@ -238,6 +238,14 @@ fun FrigoProApp(modifier: Modifier = Modifier) {
                             onglet = Onglet.PLANNING
                         },
                         onVoirClients = { onglet = Onglet.CLIENTS },
+                        // Depuis une intervention : la page du client, machine
+                        // éventuellement ouverte refermée — sinon c'est elle que
+                        // l'onglet montrerait.
+                        onOuvrirClient = { client ->
+                            machines.onFermer()
+                            carnet.onOuvrirClient(client.id)
+                            onglet = Onglet.CLIENTS
+                        },
                         onReglages = { page -> ouvrirReglages(page) },
                     )
 
