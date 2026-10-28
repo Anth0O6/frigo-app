@@ -729,7 +729,10 @@ fun EcranFacture(
             }
 
             Section(intitule = "Totaux") {
-                LigneInfoFacture("Total HT", Nombres.enEuros(facture.totalHt))
+                LigneInfoFacture(
+                    if (document.assujettiTva) "Total HT" else "Total",
+                    Nombres.enEuros(facture.totalHt),
+                )
                 if (document.assujettiTva) {
                     LigneInfoFacture(
                         "TVA ${Nombres.enTexte(document.tauxTva)} %",

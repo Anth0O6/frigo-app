@@ -85,6 +85,7 @@ object DocumentFacture {
                 )
             },
             totaux = totaux(facture),
+            horsTaxes = document.assujettiTva,
             mentions = if (avoir) {
                 mentionsAvoir(document)
             } else {
@@ -148,8 +149,10 @@ object DocumentFacture {
 
     /** Même bloc que sur le devis : la TVA au taux, puis la remise en dessous. */
     private fun totaux(facture: FactureComplete): List<LigneTotalImprimee> = buildList {
-        add(LigneTotalImprimee("Total HT", Nombres.enEuros(facture.totalHt)))
+        // En franchise, un « Total HT » au-dessus du total à payer, du même
+        // montant, laisserait croire à une taxe oubliée : le seul total est celui-là.
         if (facture.facture.assujettiTva) {
+            add(LigneTotalImprimee("Total HT", Nombres.enEuros(facture.totalHt)))
             add(
                 LigneTotalImprimee(
                     "TVA ${Nombres.enTexte(facture.facture.tauxTva)} %",

@@ -141,7 +141,7 @@ object PdfDevis {
         val premiere = page.numero == 1
 
         if (premiere) enTete(toile, document, logo)
-        titresTableau(toile, premiere)
+        titresTableau(toile, premiere, document.horsTaxes)
         var y = MiseEnPageDevis.hautDuTableau(premiere)
         page.lignes.forEach { ligne ->
             ligneTableau(toile, ligne, y)
@@ -344,13 +344,14 @@ object PdfDevis {
         toile.drawLine(gauche, basEntete - 6f, droite, basEntete - 6f, FILET)
     }
 
-    private fun titresTableau(toile: Canvas, premiere: Boolean) {
+    private fun titresTableau(toile: Canvas, premiere: Boolean, horsTaxes: Boolean) {
         val bas = MiseEnPageDevis.hautDuTableau(premiere) - 8f
         val bords = MiseEnPageDevis.bordsDroits()
         toile.drawText("Désignation", MiseEnPageDevis.MARGE.toFloat(), bas, TITRE_COLONNE)
         toile.drawText("Qté", bords[1].toFloat(), bas, TITRE_COLONNE_DROITE)
-        toile.drawText("P.U. HT", bords[2].toFloat(), bas, TITRE_COLONNE_DROITE)
-        toile.drawText("Montant HT", bords[3].toFloat(), bas, TITRE_COLONNE_DROITE)
+        val taxes = if (horsTaxes) " HT" else ""
+        toile.drawText("P.U.$taxes", bords[2].toFloat(), bas, TITRE_COLONNE_DROITE)
+        toile.drawText("Montant$taxes", bords[3].toFloat(), bas, TITRE_COLONNE_DROITE)
         toile.drawLine(
             MiseEnPageDevis.MARGE.toFloat(),
             bas + 4f,

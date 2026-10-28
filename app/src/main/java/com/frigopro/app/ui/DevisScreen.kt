@@ -1482,7 +1482,9 @@ private fun CarteTotaux(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
-        LigneTotal("Total HT", Nombres.enEuros(devis.totalHt))
+        // En franchise il n'y a pas de taxe à mettre à part : « HT » y ferait
+        // attendre une TVA qui ne viendra pas, comme sur le PDF.
+        LigneTotal(if (assujetti) "Total HT" else "Total", Nombres.enEuros(devis.totalHt))
 
         if (devis.devis.assujettiTva) {
             LigneTotal("TVA ${Nombres.enTexte(devis.devis.tauxTva)} %", Nombres.enEuros(devis.tvaDue))

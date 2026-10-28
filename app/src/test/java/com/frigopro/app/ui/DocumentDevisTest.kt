@@ -164,6 +164,28 @@ class DocumentDevisTest {
         assertTrue(document.mentions.contains(Parametres.MENTION_FRANCHISE))
     }
 
+    /**
+     * En franchise le prix écrit est celui que le client paie : rien n'y est
+     * « HT », ni les colonnes ni un total au-dessus du total à payer, qui ferait
+     * attendre une TVA qui ne viendra pas.
+     */
+    @Test
+    fun `en franchise en base, rien n'est dit hors taxes`() {
+        val document = DocumentDevis.de(devis(assujetti = false), entreprise, client, mai)
+
+        assertFalse("les colonnes ne sont pas titrées HT", document.horsTaxes)
+        assertEquals(listOf("TOTAL À PAYER"), document.totaux.map { it.intitule })
+        assertFalse(document.totaux.any { it.intitule.contains("HT") })
+    }
+
+    @Test
+    fun `assujettie, les prix sont hors taxes et la TVA s'ajoute`() {
+        val document = DocumentDevis.de(devis(), entreprise, client, mai)
+
+        assertTrue(document.horsTaxes)
+        assertEquals("Total HT", document.totaux.first().intitule)
+    }
+
     /** Une entreprise assujettie ne porte pas la mention : l'y mettre serait faux. */
     @Test
     fun `une entreprise assujettie ne porte pas la mention de franchise`() {

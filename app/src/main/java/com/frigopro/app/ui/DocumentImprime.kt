@@ -48,6 +48,13 @@ data class DocumentImprime(
      */
     val lignes: List<LigneImprimee> = emptyList(),
     val totaux: List<LigneTotalImprimee> = emptyList(),
+    /**
+     * Les prix du tableau sont **hors taxes** : vrai pour une entreprise
+     * assujettie, faux en franchise en base, où il n'y a aucune taxe à mettre à
+     * part — le prix écrit est celui que le client paie, et le titrer « HT »
+     * ferait croire qu'une TVA viendra s'y ajouter.
+     */
+    val horsTaxes: Boolean = true,
     val mentions: List<String>,
     /** Le fichier du logo, `null` si l'entreprise n'en a pas posé. */
     val logoFichier: String?,

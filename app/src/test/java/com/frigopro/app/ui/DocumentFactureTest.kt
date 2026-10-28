@@ -140,6 +140,9 @@ class DocumentFactureTest {
         assertFalse("aucune ligne de TVA", document.totaux.any { it.intitule.startsWith("TVA") })
         assertEquals("TOTAL À PAYER", document.totaux.last().intitule)
         assertEquals(Nombres.enEuros(600.0), document.totaux.last().valeur)
+        assertFalse("rien n'y est dit hors taxes", document.horsTaxes)
+        assertFalse(document.totaux.any { it.intitule.contains("HT") })
+        assertTrue("assujettie, elle l'est", DocumentFacture.de(facture(), entreprise, client, LE_12_MARS).horsTaxes)
     }
 
     @Test
