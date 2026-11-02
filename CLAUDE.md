@@ -1318,8 +1318,10 @@ Découpage en trois couches, sens de dépendance `ui → data` uniquement :
   triangle vide pour l'alerte —, parce qu'ambre et framboise se confondent au
   soleil ou pour un œil daltonien. Le bouton cyan de la ligne nomme le geste et
   ne fait que ce que la ligne faisait déjà : « Ouvrir » plutôt que
-  « Commander » ou « Planifier », tant qu'aucun écran ne commande ni ne
-  planifie depuis l'accueil.
+  « Planifier », et « Commander » seulement sur un article à racheter dont le
+  fournisseur a un téléphone (il appelle) ou un catalogue (il l'ouvre) —
+  `choisirGesteCommande` —, la ligne gardant « Ouvrir » (`onLigne`) : aucune
+  commande n'est passée.
 
 Les dépendances sont assemblées à la main dans `ConteneurApp`, porté par
 `FrigoProApplication` et atteint par `InterventionsViewModel.Factory`. Une
@@ -1646,6 +1648,7 @@ l'APK : un test rouge bloque la publication.
 | `MaintenanceViewModelTest` | Créer une gamme l'ouvre, changer la cadence ne régénère rien, affecter tout un parc d'un geste, rattacher deux fois sans remettre le départ à zéro, l'entrée au plan déplacée qui change le dû et jamais le fait, la visite qui repousse l'échéance, la gamme supprimée qui garde ses visites, la gamme retirée d'une machine qui laisse l'autre machine, la visite retirée qui ramène l'échéance, ce que l'accueil annonce et ce qu'il laisse hors préavis, le taux sur douze mois glissants, et l'attestation d'une année en cours qui s'arrête à aujourd'hui, l'affectation d'une sélection qui ne remet pas à zéro l'entrée au plan d'une machine déjà suivie, la date choisie qui ne vaut que pour les nouvelles, le compte annoncé égal au compte rendu, le retrait d'une sélection qui laisse le reste du plan et le journal, et la tournée d'un site : N cochées font N visites aux copies d'une visite seule et à la date choisie, l'échéance repoussée et le mode refermé, rien d'écrit sans case cochée, le seul site choisi, les zones dans leur ordre |
 | `DocumentAttestationTest` | Ce que l'attestation imprimée dit : le bilan avant le détail et les deux nombres, la machine jamais visitée qui le dit, « pas de contrat » distingué de « contrat non honoré », aucune certification, toutes les dates, le dénominateur pris au départ du plan de chaque machine, le rangement par zone puis machine puis cadence, et le parc du voisin qui n'y entre pas |
 | `SchemaCommitteTest` | Le schéma committé porte l'empreinte que Room compile depuis les entités |
+| `CommandeArticleTest` | Le geste de « Commander » : téléphone avant catalogue, sinon « Ouvrir », rien d'inventé sans coordonnées |
 | `RechercheGlobaleTest` | Rien de cherché ni de compté à vide, chaque famille aux règles de `Recherche`, la machine trouvée par sa zone et par son client, le plafond qui dit le compte complet |
 | `RechercheTest` | Accents repliés dans les deux sens, mots cherchés séparément et tous requis, numéro retrouvé sans sa ponctuation, zone trouvée comme le reste, un avoir trouvé par son numéro et par celui de sa facture, le carnet trouvé par la zone, le parc filtré sur les seules machines désignées, l'unité qui ramène son groupe |
 | `ReglagesManquantsTest` | Ce que l'accueil réclame sur une installation neuve, ce qu'il cesse de réclamer, et le taux facturé qui ne dispense pas du coût interne, l'adresse et le SIRET réclamés malgré la raison sociale |

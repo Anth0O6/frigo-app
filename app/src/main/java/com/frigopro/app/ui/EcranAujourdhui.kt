@@ -131,6 +131,8 @@ data class ATraiter(
      * sur un toit coûte la journée.
      */
     val manquants: List<ArticleEnStock> = emptyList(),
+    /** Les coordonnées des fournisseurs, par identifiant : copiées, jamais relues. */
+    val contacts: Map<String, ContactFournisseur> = emptyMap(),
     val echeances: List<EcheanceFgas> = emptyList(),
     val reglages: List<ReglageManquant> = emptyList(),
 ) {
@@ -156,6 +158,7 @@ data class ActionsATraiter(
     val onOuvrirVisite: (EcheanceMaintenance) -> Unit = {},
     val onVoirEntretien: () -> Unit = {},
     val onOuvrirArticle: (ArticleEnStock) -> Unit = {},
+    val onCommander: (GesteCommande) -> Unit = {},
     val onVoirMagasin: () -> Unit = {},
     val onOuvrirMachine: (Equipement) -> Unit = {},
     val onReglage: (PageReglages) -> Unit = {},
@@ -703,7 +706,13 @@ private fun LazyListScope.blocATraiter(
         item(key = "a-racheter") {
             Section(intitule = "À racheter", espacement = 8.dp, modifier = aLaMarge) {
                 contenu.manquants.take(MANQUANTS_MONTRES).forEach { entree ->
-                    LigneManquant(entree = entree, onClick = { actions.onOuvrirArticle(entree) })
+                    val geste = choisirGesteCommande(entree.article.fournisseurId?.let { contenu.contacts[it] })
+                    LigneManquant(
+                        entree = entree,
+                        geste = geste,
+                        onClick = { actions.onOuvrirArticle(entree) },
+                        onCommander = { actions.onCommander(geste) },
+                    )
                 }
                 val reste = contenu.manquants.size - MANQUANTS_MONTRES
                 if (reste > 0) {
@@ -966,12 +975,18 @@ private fun LignePreventif(
  *
  * Il dit **où** il manque, et c'est tout l'intérêt de tenir deux stocks : « 1 u
  * au camion, mini 3 » n'appelle pas le même geste que le même manque à
- * l'atelier. Le bouton dit « Ouvrir » et non « Commander » : il mène à la fiche
- * de l'article, où le stock se corrige et le transfert se pose, et l'application
- * ne passe aucune commande — le promettre serait mentir.
+ * l'atelier. Le bouton dit « Commander » seulement quand le fournisseur a un
+ * téléphone (il appelle) ou un catalogue (il l'ouvre), sinon « Ouvrir » ; la
+ * ligne mène toujours à la fiche de l'article, où le stock se corrige. L'application
+ * ne passe aucune commande : le geste est un appel ou un lien.
  */
 @Composable
-private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
+private fun LigneManquant(
+    entree: ArticleEnStock,
+    geste: GesteCommande,
+    onClick: () -> Unit,
+    onCommander: () -> Unit,
+) {
     LigneAlerte(
         gravite = GraviteAlerte.ALERTE,
         titre = entree.article.designation,
@@ -991,8 +1006,10 @@ private fun LigneManquant(entree: ArticleEnStock, onClick: () -> Unit) {
                 }
             } + entree.article.fournisseurNom
             ).filter { it.isNotBlank() }.joinToString(" · "),
-        action = "Ouvrir",
-        onAction = onClick,
+        action = geste.libelle,
+        onAction = if (geste == GesteCommande.Ouvrir) onClick else onCommander,
+        // La ligne garde « Ouvrir » : rien n'est perdu à proposer « Commander ».
+        onLigne = onClick,
     )
 }
 

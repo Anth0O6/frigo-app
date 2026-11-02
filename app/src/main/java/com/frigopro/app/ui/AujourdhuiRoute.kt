@@ -87,6 +87,10 @@ fun AujourdhuiRoute(
     val etat by accueil.etat.collectAsStateWithLifecycle()
     val impayees by factures.aRelancer.collectAsStateWithLifecycle()
     val manquants by materiel.aReapprovisionner.collectAsStateWithLifecycle()
+    val fournisseurs by materiel.tousLesFournisseurs.collectAsStateWithLifecycle()
+    val contacts = remember(fournisseurs) {
+        fournisseurs.associate { it.id to ContactFournisseur.de(it) }
+    }
     val visitesDues by plan.aFaire.collectAsStateWithLifecycle()
     val pointsGamme by plan.points.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
@@ -184,6 +188,7 @@ fun AujourdhuiRoute(
                 impayees = impayees,
                 visites = visitesDues,
                 manquants = manquants,
+                contacts = contacts,
                 echeances = etat.echeances,
                 reglages = etat.reglagesManquants,
             ),
@@ -202,6 +207,13 @@ fun AujourdhuiRoute(
                 onOuvrirArticle = { entree ->
                     materiel.onOuvrirArticle(entree.article.id)
                     onVoirMagasin()
+                },
+                onCommander = { geste ->
+                    when (geste) {
+                        is GesteCommande.Appeler -> contexte.appeler(geste.telephone)
+                        is GesteCommande.Catalogue -> contexte.ouvrirLien(geste.lien)
+                        GesteCommande.Ouvrir -> Unit
+                    }
                 },
                 onVoirMagasin = onVoirMagasin,
                 onOuvrirMachine = { machine: Equipement ->

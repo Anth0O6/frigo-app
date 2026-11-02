@@ -80,9 +80,9 @@ fun IconeAlerte(
  * à droite, en texte cyan — la couleur de l'action.
  *
  * Le geste **nomme** ce que l'on va faire, et il ne fait que ce que la ligne
- * faisait déjà : toucher la ligne et toucher le bouton mènent au même endroit.
- * Un bouton qui promettrait « Commander » sans rien commander serait pire que
- * pas de bouton.
+ * faisait déjà : toucher la ligne et toucher le bouton mènent au même endroit,
+ * sauf quand `onLigne` garde l'ouverture sur la ligne. « Commander » n'est dit
+ * que s'il appelle ou ouvre le catalogue du fournisseur : jamais sans geste.
  */
 @Composable
 fun LigneAlerte(
@@ -92,11 +92,13 @@ fun LigneAlerte(
     action: String,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Toucher la ligne, quand il diffère du bouton : « Commander » garde « Ouvrir » sur la ligne. */
+    onLigne: () -> Unit = onAction,
     couleurDetail: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     Carte(
         modifier = modifier,
-        onClick = onAction,
+        onClick = onLigne,
         contour = true,
         forme = MaterialTheme.shapes.medium,
     ) {
