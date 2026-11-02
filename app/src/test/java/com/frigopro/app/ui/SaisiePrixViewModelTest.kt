@@ -1,6 +1,7 @@
 package com.frigopro.app.ui
 
 import com.frigopro.app.data.Article
+import com.frigopro.app.data.Capture
 import com.frigopro.app.data.FauxMaterielDao
 import com.frigopro.app.data.FauxParametresDao
 import com.frigopro.app.data.FauxRangementPhotos
@@ -9,6 +10,7 @@ import com.frigopro.app.data.LecteurTarif
 import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.ScansDevis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -331,6 +333,82 @@ class SaisiePrixViewModelTest {
         assertEquals(0, etatDe(viewModel).aEnregistrer)
     }
 
+    // — Le scan d'un devis papier ———————————————————————————————————————
+
+    /**
+     * Une page scannée se lit comme un document choisi, **puis s'efface** : ses
+     * prix sont dans la saisie, et l'image garderait des prix nets là où une
+     * sauvegarde irait les chercher.
+     */
+    @Test
+    fun `une page scannee se lit puis s'efface`() = runTest {
+        val scans = FauxScans()
+        val barre = goulotte.copy(reference = "WHITE-80BCANA-2M")
+        val lues = mutableListOf<String>()
+        val lecteur = LecteurTarif { adresse ->
+            lues += adresse
+            listOf("GOULOTTE BLANC 80X60MM  WHITE-80BCANA-2M  6,00 U  7,15  42,90")
+        }
+        val viewModel = creerViewModel(0.0, barre, lecteur = lecteur, scans = scans)
+        backgroundScope.launch { viewModel.lecture.collect { } }
+
+        viewModel.onScan("page.jpg", pris = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf("scan://page.jpg"), lues)
+        assertEquals(1, viewModel.lecture.value!!.reportees)
+        assertEquals(7.15, ligne(viewModel, barre.id).saisie.prixAchat!!, 0.001)
+        assertEquals(listOf("page.jpg"), scans.effaces)
+        assertEquals("rien n'est écrit avant « Enregistrer »", 0.0, daoMateriel.tousLesArticles().single().prixAchat, 0.0)
+    }
+
+    /** Une page illisible s'efface aussi : l'échec se dit, l'image ne reste pas. */
+    @Test
+    fun `une page scannee illisible s'efface aussi`() = runTest {
+        val scans = FauxScans()
+        val viewModel = creerViewModel(0.0, pompe, lecteur = LecteurTarif { listOf("Bonjour") }, scans = scans)
+        backgroundScope.launch { viewModel.lecture.collect { } }
+
+        viewModel.onScan("floue.jpg", pris = true)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.lecture.value!!.echec!!.startsWith("Aucune ligne de prix"))
+        assertEquals(listOf("floue.jpg"), scans.effaces)
+    }
+
+    /**
+     * Une prise de vue abandonnée ne lit rien et n'ouvre aucun bilan : dire
+     * « aucune ligne de prix reconnue » accuserait une photo qu'on n'a pas prise.
+     */
+    @Test
+    fun `un scan abandonne ne lit rien et ne laisse rien`() = runTest {
+        val scans = FauxScans()
+        var lu = false
+        val viewModel = creerViewModel(0.0, pompe, lecteur = LecteurTarif { lu = true; emptyList() }, scans = scans)
+        backgroundScope.launch { viewModel.lecture.collect { } }
+
+        viewModel.onScan("vide.jpg", pris = false)
+        advanceUntilIdle()
+
+        assertFalse(lu)
+        assertNull(viewModel.lecture.value)
+        assertEquals(listOf("vide.jpg"), scans.effaces)
+    }
+
+    /** Un dossier de scans en mémoire : seule compte la liste de ce qui a été effacé. */
+    private class FauxScans : ScansDevis {
+        val effaces = mutableListOf<String>()
+
+        override fun preparer(): Capture =
+            throw UnsupportedOperationException("Une capture demande un Uri, absent de la JVM.")
+
+        override fun adresse(nom: String): String = "scan://$nom"
+
+        override suspend fun effacer(nom: String) {
+            effaces += nom
+        }
+    }
+
     /** L'état de l'écran, une fois que tout ce qui était en cours a abouti. */
     private fun TestScope.etatDe(viewModel: SaisiePrixViewModel): EtatSaisiePrix {
         advanceUntilIdle()
@@ -344,6 +422,7 @@ class SaisiePrixViewModelTest {
         coefficient: Double,
         vararg articles: Article,
         lecteur: LecteurTarif = LecteurTarif { null },
+        scans: ScansDevis = ScansDevis.Aucun,
     ): SaisiePrixViewModel {
         val ordonnanceur = UnconfinedTestDispatcher(testScheduler)
         Dispatchers.setMain(ordonnanceur)
@@ -353,6 +432,7 @@ class SaisiePrixViewModelTest {
             MaterielRepository(daoMateriel),
             ParametresRepository(daoParametres, FauxRangementPhotos()),
             lecteur,
+            scans,
         )
         // `etat` est un `stateIn(WhileSubscribed)` : sans collecteur il resterait
         // à sa valeur initiale, et les assertions liraient une liste vide.

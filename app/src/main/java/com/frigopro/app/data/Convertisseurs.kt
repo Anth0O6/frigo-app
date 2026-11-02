@@ -86,6 +86,12 @@ object Convertisseurs {
         valeur?.let(ModeDeplacement::valueOf)
 
     @TypeConverter
+    fun depuisCoutAchat(cout: CoutAchat?): String? = cout?.name
+
+    @TypeConverter
+    fun versCoutAchat(valeur: String?): CoutAchat? = valeur?.let(CoutAchat::valueOf)
+
+    @TypeConverter
     fun depuisOrigineTrajet(origine: OrigineTrajet?): String? = origine?.name
 
     @TypeConverter

@@ -12,6 +12,8 @@ import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.ItineraireRelais
 import com.frigopro.app.data.LecteurDevis
 import com.frigopro.app.data.LecteurTarif
+import com.frigopro.app.data.ScansDevis
+import com.frigopro.app.data.StockageScans
 import com.frigopro.app.data.MaterielRepository
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.PrestationRepository
@@ -69,6 +71,9 @@ class ConteneurApp(private val contexte: Context) {
 
     /** La lecture des devis fournisseurs, sur l'appareil. */
     val lecteurDevis: LecteurTarif by lazy { LecteurDevis(contexte.applicationContext) }
+
+    /** Les pages de devis photographiées, effacées sitôt lues. */
+    val scansDevis: ScansDevis by lazy { StockageScans(contexte.applicationContext) }
 
     /**
      * Le calcul d'itinéraire, pour la facturation du déplacement.

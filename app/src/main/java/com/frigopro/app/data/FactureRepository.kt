@@ -29,6 +29,19 @@ class FactureRepository(private val dao: FactureDao) {
     val factures: Flow<List<Facture>> = dao.observerToutes()
 
     /**
+     * Le bénéfice de chaque période, recomposé à chaque écriture — voir
+     * [CalculBenefice]. La date du jour est demandée à chaque émission, pour qu'un
+     * onglet resté ouvert passé minuit ne garde pas « aujourd'hui » d'hier.
+     */
+    fun benefices(
+        base: Flow<BaseBenefice>,
+        aujourdhui: () -> LocalDate = LocalDate::now,
+    ): Flow<Map<PeriodeBenefice, Benefice>> =
+        combine(dao.observerToutes(), dao.observerToutesLesLignes(), base) { factures, lignes, b ->
+            CalculBenefice.parPeriode(factures, lignes, b, aujourdhui())
+        }
+
+    /**
      * Les factures avec leur montant.
      *
      * Même motif que pour les devis : le montant est la somme des lignes, et le

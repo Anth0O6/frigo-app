@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.PalierPrestation
+import com.frigopro.app.data.CoutAchat
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.ui.composants.BoutonContour
@@ -208,6 +209,7 @@ fun SectionTarifs(
     onTauxPenalites: (Double) -> Unit,
     onCoefficientMateriel: (Double) -> Unit,
     onAssujettiTva: (Boolean) -> Unit,
+    chiffrage: ActionsChiffrage = ActionsChiffrage(),
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         IntituleSection(texte = "La main-d'œuvre")
@@ -251,6 +253,9 @@ fun SectionTarifs(
                 "1,4 vend 100 € d'achat à 140 €. Laissé à zéro, un article sans prix de " +
                 "vente se propose au prix coûtant — jamais à un prix inventé.",
         )
+
+        IntituleSection(texte = "HT ou TTC")
+        BlocChiffrage(parametres = parametres, actions = chiffrage)
 
         IntituleSection(texte = "Le paiement")
         ChampEntier(
@@ -512,6 +517,80 @@ private fun BlocTva(
                 "Elle n'est juste que tant que votre chiffre d'affaires reste sous le seuil " +
                 "de la franchise ; au-delà, choisissez « Assujetti ». Un document déjà " +
                 "établi garde son régime.",
+        )
+    }
+}
+
+/** Les gestes du bloc « HT ou TTC », regroupés comme ceux du déplacement. */
+data class ActionsChiffrage(
+    val onCoutAchat: (CoutAchat) -> Unit = {},
+    val onSaisieTtc: (Boolean) -> Unit = {},
+    val onTtcParLigne: (Boolean) -> Unit = {},
+    val onSousTotaux: (Boolean) -> Unit = {},
+)
+
+/**
+ * Comment l'application chiffre et montre la TVA, réglé une fois pour toutes —
+ * chaque devis fournisseur repris et chaque devis ouvert permettant ensuite d'en
+ * décider autrement sur place.
+ *
+ * Le coût d'achat se **choisit entre trois pastilles**, dont la première suit le
+ * régime : c'est elle qui fait la bonne chose sans qu'on y pense, et le dire en
+ * toutes lettres dessous évite qu'on la croie arbitraire. La saisie TTC ne se
+ * propose qu'à une entreprise assujettie : en franchise il n'y a pas de TVA à
+ * retirer, et une case sans effet vaut moins que pas de case.
+ */
+@Composable
+private fun BlocChiffrage(parametres: Parametres, actions: ActionsChiffrage) {
+    val assujettie = parametres.assujettiTva
+    Text(
+        text = "Coût d'achat d'un devis fournisseur repris",
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    RangeePastilles(
+        options = CoutAchat.entries.toList(),
+        retenue = parametres.coutAchat,
+        libelle = { it.libelle },
+        onChoisir = actions.onCoutAchat,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    NoteReglage(
+        texte = when (parametres.coutAchat) {
+            CoutAchat.SELON_REGIME -> if (assujettie) {
+                "Assujetti : vous récupérez la TVA payée au fournisseur, le coût est donc " +
+                    "le HT, et la marge s'applique dessus."
+            } else {
+                "Franchise : vous payez la TVA du fournisseur sans la récupérer, le coût " +
+                    "est donc le TTC, et la marge s'applique dessus."
+            }
+            CoutAchat.HT -> "La marge s'applique toujours au prix HT du fournisseur."
+            CoutAchat.TTC -> "La marge s'applique toujours au prix fournisseur TVA comprise."
+        } + " Chaque devis fournisseur repris peut en décider autrement.",
+    )
+    Carte(contour = true) {
+        if (assujettie) {
+            LigneInterrupteur(
+                intitule = "Saisir les prix en TTC",
+                // La raison de la case, et sa limite : penser en TTC, oui ;
+                // retirer la TVA d'une ligne, non — elle est due sur tout le devis.
+                detail = "Lignes libres et lignes retouchées : vous tapez le prix TTC, le " +
+                    "devis en déduit le HT. La TVA reste due sur toutes les lignes.",
+                actif = parametres.saisieTtc,
+                onChange = actions.onSaisieTtc,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            LigneInterrupteur(
+                intitule = "Afficher le TTC de chaque ligne",
+                actif = parametres.ttcParLigne,
+                onChange = actions.onTtcParLigne,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        LigneInterrupteur(
+            intitule = "Sous-totaux par famille",
+            detail = "Matériel, main-d'œuvre et prestations, déplacement, avant le total.",
+            actif = parametres.sousTotaux,
+            onChange = actions.onSousTotaux,
         )
     }
 }

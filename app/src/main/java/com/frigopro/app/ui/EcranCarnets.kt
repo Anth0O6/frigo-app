@@ -1,6 +1,9 @@
 package com.frigopro.app.ui
 
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -13,6 +16,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -279,6 +285,14 @@ private fun SaisiePrixRoute(
     val lecture by viewModel.lecture.collectAsStateWithLifecycle()
     val articles by viewModel.tousLesArticles.collectAsStateWithLifecycle()
 
+    // La prise de vue quitte l'application : le nom du fichier à lire doit
+    // survivre à l'aller-retour, y compris si le système a repris le processus.
+    var scan by rememberSaveable { mutableStateOf<String?>(null) }
+    val appareilPhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { pris ->
+        scan?.let { viewModel.onScan(it, pris) }
+        scan = null
+    }
+
     EcranSaisiePrix(
         etat = etat,
         fournisseurs = fournisseurs,
@@ -297,6 +311,17 @@ private fun SaisiePrixRoute(
         onAbandonner = viewModel::onAbandonner,
         onReglerCoefficient = { onReglage(ReglageManquant.COEFFICIENT_MATERIEL.page) },
         onLireDevis = viewModel::onLireDevis,
+        onScanner = {
+            val prise = viewModel.preparerScan()
+            scan = prise.nom
+            try {
+                appareilPhoto.launch(prise.uri)
+            } catch (_: ActivityNotFoundException) {
+                // Pas d'appareil photo : le fichier préparé ne servira pas.
+                viewModel.onScan(prise.nom, pris = false)
+                scan = null
+            }
+        },
         onRapprocher = viewModel::onRapprocher,
         onCreerArticle = viewModel::onCreerArticle,
         onIgnorer = viewModel::onIgnorer,

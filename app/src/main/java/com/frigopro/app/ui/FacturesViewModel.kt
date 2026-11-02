@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.frigopro.app.FrigoProApplication
+import com.frigopro.app.data.BaseBenefice
+import com.frigopro.app.data.Benefice
 import com.frigopro.app.data.Client
 import com.frigopro.app.data.ClientRepository
 import com.frigopro.app.data.DevisComplet
@@ -18,6 +20,7 @@ import com.frigopro.app.data.Intervention
 import com.frigopro.app.data.LigneFacture
 import com.frigopro.app.data.CategoriePrestation
 import com.frigopro.app.data.ParametresRepository
+import com.frigopro.app.data.PeriodeBenefice
 import com.frigopro.app.data.Prestation
 import com.frigopro.app.data.PrestationRepository
 import com.frigopro.app.data.StatutFacture
@@ -145,6 +148,19 @@ class FacturesViewModel(
      * qu'un écran doive suivre à la seconde.
      */
     private val _aujourdhui = MutableStateFlow(LocalDate.now())
+
+    private val _baseBenefice = MutableStateFlow(BaseBenefice.FACTURE)
+
+    /** Facturé ou encaissé : les deux questions qu'on se pose, au choix de l'écran. */
+    val baseBenefice: StateFlow<BaseBenefice> = _baseBenefice.asStateFlow()
+
+    /** Ce qui reste dans la poche, par période — voir [com.frigopro.app.data.CalculBenefice]. */
+    val benefices: StateFlow<Map<PeriodeBenefice, Benefice>> = factures.benefices(_baseBenefice)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(TEMPS_ARRET_MS), emptyMap())
+
+    fun onBaseBenefice(base: BaseBenefice) {
+        _baseBenefice.value = base
+    }
 
     val compteurs: StateFlow<CompteursFactures> =
         combine(liste, _aujourdhui) { toutes, jour ->

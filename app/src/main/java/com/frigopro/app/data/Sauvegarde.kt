@@ -519,6 +519,16 @@ data class ParametresSauvegarde(
      */
     val delaiPaiementJours: Int = 30,
     val tauxPenalitesRetard: Double = 0.0,
+    /**
+     * Les choix de chiffrage HT ou TTC, depuis le format 18. Absents d'un fichier
+     * d'avant, ils valent ce qu'ils valent en base après la migration : le coût
+     * d'achat suit le régime, et les trois cases sont décochées — un devis se
+     * chiffre et s'affiche comme il le faisait alors.
+     */
+    val coutAchat: String = "SELON_REGIME",
+    val saisieTtc: Boolean = false,
+    val ttcParLigne: Boolean = false,
+    val sousTotaux: Boolean = false,
     val modifieLe: Long = 0L,
 )
 
@@ -595,7 +605,7 @@ data class PrestationSauvegarde(
  * [ArchiveSauvegarde]) dont ce JSON n'est qu'une entrée. Un fichier `.json`
  * exporté par une version antérieure reste restaurable tel quel.
  */
-const val FORMAT_COURANT: Int = 17
+const val FORMAT_COURANT: Int = 18
 
 /**
  * `prettyPrint` parce qu'une sauvegarde doit pouvoir se relire à l'œil, et
@@ -1262,6 +1272,10 @@ internal fun Parametres.versSauvegarde(): ParametresSauvegarde = ParametresSauve
     refacturerPeages = refacturerPeages,
     delaiPaiementJours = delaiPaiementJours,
     tauxPenalitesRetard = tauxPenalitesRetard,
+    coutAchat = coutAchat.name,
+    saisieTtc = saisieTtc,
+    ttcParLigne = ttcParLigne,
+    sousTotaux = sousTotaux,
     modifieLe = modifieLe.toEpochMilli(),
 )
 
@@ -1273,6 +1287,9 @@ internal fun ParametresSauvegarde.versParametres(): Parametres? {
     // l'heure, sans que rien ne le signale.
     val mode = ModeDeplacement.entries.firstOrNull { it.name == modeDeplacement }
         ?: return null
+    // Même règle : deviner le coût d'achat ferait marger sur le HT une
+    // entreprise qui paie la TVA sans la récupérer, ou l'inverse.
+    val cout = CoutAchat.entries.firstOrNull { it.name == coutAchat } ?: return null
     return Parametres(
         technicien = technicien,
         attestation = attestation,
@@ -1300,6 +1317,10 @@ internal fun ParametresSauvegarde.versParametres(): Parametres? {
         refacturerPeages = refacturerPeages,
         delaiPaiementJours = delaiPaiementJours,
         tauxPenalitesRetard = tauxPenalitesRetard,
+        coutAchat = cout,
+        saisieTtc = saisieTtc,
+        ttcParLigne = ttcParLigne,
+        sousTotaux = sousTotaux,
         modifieLe = Instant.ofEpochMilli(modifieLe),
     )
 }

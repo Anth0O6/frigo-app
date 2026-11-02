@@ -59,6 +59,7 @@ object DocumentDevis {
                 )
             },
             totaux = totaux(devis),
+            horsTaxes = document.assujettiTva,
             mentions = mentions(devis),
             logoFichier = parametres.logoFichier,
             nomSansNumero = "devis",
@@ -90,8 +91,10 @@ object DocumentDevis {
      * l'administration attend.
      */
     private fun totaux(devis: DevisComplet): List<LigneTotalImprimee> = buildList {
-        add(LigneTotalImprimee("Total HT", Nombres.enEuros(devis.totalHt)))
+        // En franchise, un « Total HT » au-dessus du total à payer, du même
+        // montant, laisserait croire à une taxe oubliée : le seul total est celui-là.
         if (devis.devis.assujettiTva) {
+            add(LigneTotalImprimee("Total HT", Nombres.enEuros(devis.totalHt)))
             add(
                 LigneTotalImprimee(
                     "TVA ${Nombres.enTexte(devis.devis.tauxTva)} %",

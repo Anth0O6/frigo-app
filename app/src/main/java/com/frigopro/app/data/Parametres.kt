@@ -155,6 +155,23 @@ data class Parametres(
      * chez un vrai client sans que personne ne l'ait relu.
      */
     val tauxPenalitesRetard: Double = 0.0,
+    /**
+     * Ce que coûte le matériel repris d'un devis fournisseur : son prix HT, ou
+     * ce prix TVA comprise. Voir [CoutAchat].
+     */
+    val coutAchat: CoutAchat = CoutAchat.SELON_REGIME,
+    /**
+     * Les prix tapés à la main sur un devis — ligne libre, ligne retouchée — se
+     * saisissent TTC, l'application en déduisant le HT qui s'imprime. C'est la
+     * façon de « penser en TTC » sa main-d'œuvre sans retirer la TVA d'une
+     * ligne, ce qui serait faux pour une entreprise assujettie. Sans effet en
+     * franchise en base, où HT et TTC ne font qu'un.
+     */
+    val saisieTtc: Boolean = false,
+    /** Le devis affiche le TTC de chaque ligne sous son HT. */
+    val ttcParLigne: Boolean = false,
+    /** Le devis sépare ses totaux : matériel, main-d'œuvre et prestations, déplacement. */
+    val sousTotaux: Boolean = false,
     val derniereSauvegardeLe: Instant? = null,
     val modifieLe: Instant = Instant.EPOCH,
 ) {
@@ -236,5 +253,31 @@ data class Parametres(
          * prévenir.
          */
         const val PLANCHER_PENALITES = 3
+    }
+}
+
+/**
+ * Le coût d'achat du matériel repris d'un devis fournisseur, qui n'annonce que
+ * des prix hors taxes.
+ *
+ * La question n'a pas la même réponse selon l'entreprise : **assujettie**, elle
+ * récupère la TVA payée au fournisseur, et son coût est le HT ; **en franchise
+ * en base**, elle la paie sans la récupérer, et son coût réel est le TTC — y
+ * appliquer sa marge sur le HT, c'est vendre sous son prix de revient sans le
+ * voir. [SELON_REGIME] suit donc le régime réglé, et les deux autres le
+ * forcent ; la feuille d'import permet de toute façon de trancher autrement
+ * pour un devis donné.
+ */
+enum class CoutAchat(val libelle: String) {
+    SELON_REGIME("Selon le régime"),
+    HT("HT"),
+    TTC("TTC"),
+    ;
+
+    /** Le coût est-il TVA comprise, pour une entreprise [assujettie] ou non ? */
+    fun ttc(assujettie: Boolean): Boolean = when (this) {
+        SELON_REGIME -> !assujettie
+        HT -> false
+        TTC -> true
     }
 }

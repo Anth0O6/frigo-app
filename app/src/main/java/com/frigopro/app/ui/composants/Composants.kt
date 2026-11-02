@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -414,6 +416,36 @@ fun EmplacementImage(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(8.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * La case d'une ligne, à la taille de celle de la checklist — gants compris.
+ *
+ * Elle ne coche rien seule : c'est toute la rangée qui coche, posée par
+ * l'appelant, pour la même raison que la checklist d'une intervention.
+ */
+@Composable
+fun CaseACocher(cochee: Boolean) {
+    Surface(
+        modifier = Modifier.size(LocalCibles.current.case),
+        shape = MaterialTheme.shapes.small,
+        color = if (cochee) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (cochee) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Cochée",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }

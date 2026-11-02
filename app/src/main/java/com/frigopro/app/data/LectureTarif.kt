@@ -237,6 +237,15 @@ object LectureTarif {
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
 
+    /**
+     * Les deux échecs d'une lecture, dits de la même façon depuis la saisie des
+     * prix et depuis un devis client : le second dit aussi ce qui marche mieux,
+     * jamais seulement « erreur ».
+     */
+    const val ECHEC_OUVERTURE = "Le document n'a pas pu être ouvert."
+    const val ECHEC_AUCUNE_LIGNE = "Aucune ligne de prix reconnue. Un PDF reçu par courriel se lit le " +
+        "mieux ; une photo doit être nette, droite et prise de près."
+
     /** Ce qui sépare deux colonnes dans une ligne reconstituée. */
     const val SEPARATEUR_COLONNE = "  "
 

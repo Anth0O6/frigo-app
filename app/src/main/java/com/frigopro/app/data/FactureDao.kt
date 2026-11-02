@@ -110,6 +110,10 @@ abstract class FactureDao {
     @Query("SELECT * FROM lignes_facture")
     abstract suspend fun toutesLesLignes(): List<LigneFacture>
 
+    /** Toutes les lignes, observées : ce dont le bénéfice se recompose. */
+    @Query("SELECT * FROM lignes_facture")
+    abstract fun observerToutesLesLignes(): Flow<List<LigneFacture>>
+
     /**
      * Le montant hors taxes de chaque facture, en une requête.
      *

@@ -3,6 +3,7 @@ package com.frigopro.app.data
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -1007,5 +1008,55 @@ class SauvegardeRepositoryTest {
 
         assertEquals(false, relue.detecteurFuite)
         assertEquals("R404A", relue.fluide)
+    }
+
+    /**
+     * Les choix HT ou TTC reviennent entiers : restaurer sans eux ferait marger
+     * sur le HT une entreprise en franchise qui paie la TVA du fournisseur sans la
+     * récupérer — une marge plus faible que prévu, sur chaque devis repris.
+     */
+    @Test
+    fun `le chiffrage HT ou TTC revient entier`() = runTest {
+        daoParametres.enregistrer(
+            Parametres(
+                coutAchat = CoutAchat.TTC,
+                saisieTtc = true,
+                ttcParLigne = true,
+                sousTotaux = true,
+            ),
+        )
+
+        val cible = Cible()
+        cible.depot.restaurer(repository.exporter().contenu)
+
+        val reglages = cible.parametres.contenu!!
+        assertEquals(CoutAchat.TTC, reglages.coutAchat)
+        assertTrue(reglages.saisieTtc)
+        assertTrue(reglages.ttcParLigne)
+        assertTrue(reglages.sousTotaux)
+    }
+
+    /** Des réglages d'avant le format 18 se relisent comme la base migrée : rien ne change. */
+    @Test
+    fun `des reglages d'avant le format 18 se relisent sans rien changer`() {
+        val texte = """{"technicien":"Karim","coefficientMateriel":1.4}"""
+
+        val relus = JSON_SAUVEGARDE.decodeFromString(ParametresSauvegarde.serializer(), texte).versParametres()!!
+
+        assertEquals(CoutAchat.SELON_REGIME, relus.coutAchat)
+        assertFalse(relus.saisieTtc)
+        assertFalse(relus.ttcParLigne)
+        assertFalse(relus.sousTotaux)
+    }
+
+    /** Un coût d'achat inconnu fait refuser le fichier, comme un mode de déplacement. */
+    @Test
+    fun `un cout d'achat inconnu fait refuser le fichier`() = runTest {
+        val douteux = """
+            {"format": 18, "exporteeLe": "2026-10-27T10:00:00Z",
+             "parametres": {"coutAchat": "A_PEU_PRES"}}
+        """.trimIndent()
+
+        assertEquals(ResultatRestauration.Illisible, vierge().restaurer(douteux))
     }
 }

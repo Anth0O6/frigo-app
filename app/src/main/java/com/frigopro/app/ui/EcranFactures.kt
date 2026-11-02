@@ -143,6 +143,8 @@ fun FacturesRoute(
     val avoirRefuse by viewModel.avoirRefuse.collectAsStateWithLifecycle()
     val catalogue by viewModel.catalogue.collectAsStateWithLifecycle()
     val manques by viewModel.manques.collectAsStateWithLifecycle()
+    val benefices by viewModel.benefices.collectAsStateWithLifecycle()
+    val baseBenefice by viewModel.baseBenefice.collectAsStateWithLifecycle()
     val contexte = LocalContext.current
 
     // La permission de notifier n'est demandée qu'ici, et jamais au démarrage :
@@ -259,6 +261,13 @@ fun FacturesRoute(
             onSupprimer = { aSupprimer = it },
             onVoirDevis = onVoirDevis,
             rappelsActifs = rappelsActifs,
+            benefice = {
+                CarteBenefice(
+                    benefices = benefices,
+                    base = baseBenefice,
+                    onBase = viewModel::onBaseBenefice,
+                )
+            },
             onAutoriserRappels = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     demandeRappels.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -331,6 +340,8 @@ fun ListeFactures(
     rappelsActifs: Boolean = true,
     onAutoriserRappels: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** La carte du bénéfice, posée par la route : elle tient ses propres flux. */
+    benefice: @Composable () -> Unit = {},
 ) {
     val statuts = LocalStatuts.current
     val aujourdhui = remember { LocalDate.now() }
@@ -416,6 +427,11 @@ fun ListeFactures(
                             onClick = onAutoriserRappels,
                         )
                     }
+                }
+                // Le bénéfice en tête, sauf pendant une recherche : on cherche alors
+                // une facture, et la carte repousserait les résultats sous le pouce.
+                if (!cherche && factures.isNotEmpty()) {
+                    item(key = "benefice") { benefice() }
                 }
                 if (cherche && trouvees.isEmpty()) {
                     // « Rien ne correspond » et « aucune facture » n'appellent
@@ -713,7 +729,10 @@ fun EcranFacture(
             }
 
             Section(intitule = "Totaux") {
-                LigneInfoFacture("Total HT", Nombres.enEuros(facture.totalHt))
+                LigneInfoFacture(
+                    if (document.assujettiTva) "Total HT" else "Total",
+                    Nombres.enEuros(facture.totalHt),
+                )
                 if (document.assujettiTva) {
                     LigneInfoFacture(
                         "TVA ${Nombres.enTexte(document.tauxTva)} %",
@@ -784,6 +803,9 @@ fun EcranFacture(
                 saisieLigne = false
             },
             onFermer = { saisieLigne = false },
+            // Le choix HT ou TTC, ouvert en HT : l'écran des factures ne lit pas le
+            // réglage de saisie, et une facture se complète rarement à la main.
+            tauxTva = document.tauxTva.takeIf { document.assujettiTva },
         )
     }
 

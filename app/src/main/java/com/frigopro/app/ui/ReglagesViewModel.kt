@@ -12,6 +12,7 @@ import com.frigopro.app.data.EquipementRepository
 import com.frigopro.app.data.InterventionRepository
 import com.frigopro.app.data.ModeDeplacement
 import com.frigopro.app.data.PalierPrestation
+import com.frigopro.app.data.CoutAchat
 import com.frigopro.app.data.Parametres
 import com.frigopro.app.data.ParametresRepository
 import com.frigopro.app.data.Prestation
@@ -166,6 +167,14 @@ class ReglagesViewModel(
         modifier { it.copy(coutHoraireInterne = cout.coerceAtLeast(0.0)) }
 
     fun onTauxTva(taux: Double) = modifier { it.copy(tauxTva = taux) }
+
+    fun onCoutAchat(cout: CoutAchat) = modifier { it.copy(coutAchat = cout) }
+
+    fun onSaisieTtc(actif: Boolean) = modifier { it.copy(saisieTtc = actif) }
+
+    fun onTtcParLigne(actif: Boolean) = modifier { it.copy(ttcParLigne = actif) }
+
+    fun onSousTotaux(actif: Boolean) = modifier { it.copy(sousTotaux = actif) }
 
     /**
      * Le délai de paiement accordé, en jours.
