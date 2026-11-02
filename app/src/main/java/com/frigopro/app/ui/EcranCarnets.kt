@@ -75,6 +75,7 @@ fun BasculeAtelier(vue: VueAtelier, onVue: (VueAtelier) -> Unit) {
         retenue = vue,
         libelle = { it.libelle },
         onChoisir = onVue,
+        egales = true,
     )
 }
 

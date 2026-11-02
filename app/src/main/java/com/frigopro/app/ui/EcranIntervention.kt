@@ -45,7 +45,6 @@ import com.frigopro.app.ui.composants.MargeEcran
 import com.frigopro.app.ui.composants.RangeeOnglets
 import com.frigopro.app.ui.theme.AValider
 import com.frigopro.app.ui.theme.StyleChiffre
-import com.frigopro.app.ui.theme.StyleChiffrePetit
 import java.time.Duration
 
 /**
@@ -238,24 +237,6 @@ private fun EnTeteIntervention(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                if (!etat.intervention.chrono.vierge) {
-                    val enMarche = etat.intervention.chrono.enMarche
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = if (enMarche) {
-                            AValider.copy(alpha = 0.16f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                    ) {
-                        Text(
-                            text = ecoule.enChrono(),
-                            style = StyleChiffrePetit,
-                            color = if (enMarche) AValider else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                         )
                     }
                 }

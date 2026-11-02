@@ -224,13 +224,17 @@ fun <T> RangeePastilles(
     libelle: (T) -> String,
     onChoisir: (T) -> Unit,
     modifier: Modifier = Modifier,
+    egales: Boolean = false,
 ) {
     val hauteur = LocalCibles.current.pastille
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { option ->
             val choisie = option == retenue
+            // `egales` : poids égaux sur la largeur, libellé réduit s'il déborde.
+            var reduction by remember { mutableStateOf(1f) }
             Surface(
-                modifier = Modifier.heightIn(min = hauteur),
+                modifier = (if (egales) Modifier.weight(1f) else Modifier)
+                    .heightIn(min = hauteur),
                 shape = MaterialTheme.shapes.small,
                 color = if (choisie) {
                     MaterialTheme.colorScheme.primary
@@ -242,15 +246,27 @@ fun <T> RangeePastilles(
                 // Centré dans la hauteur de la cible : en mode gants la pastille
                 // grandit, et le libellé ne doit pas rester collé en haut.
                 Box(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    modifier = Modifier
+                        .then(if (egales) Modifier.fillMaxWidth() else Modifier)
+                        .padding(horizontal = if (egales) 4.dp else 12.dp, vertical = 9.dp),
                     contentAlignment = Alignment.Center,
                 ) {
+                    val base = if (choisie) {
+                        MaterialTheme.typography.labelMedium
+                    } else {
+                        MaterialTheme.typography.bodyMedium
+                    }
                     Text(
                         text = libelle(option),
-                        style = if (choisie) {
-                            MaterialTheme.typography.labelMedium
+                        style = if (egales && reduction < 1f) {
+                            base.copy(fontSize = base.fontSize * reduction)
                         } else {
-                            MaterialTheme.typography.bodyMedium
+                            base
+                        },
+                        onTextLayout = { r ->
+                            if (egales && r.hasVisualOverflow && reduction > 0.6f) {
+                                reduction *= 0.92f
+                            }
                         },
                         color = if (choisie) {
                             MaterialTheme.colorScheme.onPrimary
