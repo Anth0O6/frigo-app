@@ -138,6 +138,8 @@ fun EcranTourneeSite(
                 }
             }
 
+            // Plan pas encore lu : on ne conclut rien, la liste va arriver.
+            if (!tournee.chargee) return@Column
             if (toutes.isEmpty()) {
                 Encart(
                     texte = "Ce site ne doit plus aucune visite : tout ce qui était en retard " +

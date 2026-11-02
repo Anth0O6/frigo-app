@@ -26,6 +26,7 @@ import com.frigopro.app.data.SuiviMaintenance
 import com.frigopro.app.data.Technicien
 import com.frigopro.app.data.TechnicienRepository
 import com.frigopro.app.data.ZoneEcheances
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -351,6 +353,18 @@ class MaintenanceViewModel(
 
     private val _siteEnTournee = MutableStateFlow<String?>(null)
 
+    /**
+     * Vrai dès que le plan a émis une première fois. [echeances] démarre sur une
+     * liste vide, et sans ce repère une tournée qui s'ouvre aurait dit, le temps
+     * d'une image, que le site ne doit plus aucune visite.
+     */
+    private val planLu: Flow<Boolean> = combine(
+        equipements.equipements,
+        maintenance.gammes,
+        maintenance.affectations,
+        maintenance.releves,
+    ) { _, _, _, _ -> true }.onStart { emit(false) }
+
     private val _cochees = MutableStateFlow<Set<Pair<String, String>>>(emptySet())
 
     /**
@@ -367,7 +381,8 @@ class MaintenanceViewModel(
         _siteEnTournee,
         _cochees,
         clients.clients,
-    ) { liste, site, cochees, carnet ->
+        planLu,
+    ) { liste, site, cochees, carnet, planLu ->
         site?.let { clientId ->
             val zones = PlanMaintenance.tournee(liste, clientId, aujourdhui())
             val dues = zones.flatMap { zone -> zone.echeances.map { it.cle } }.toSet()
@@ -376,6 +391,7 @@ class MaintenanceViewModel(
                 clientNom = carnet.firstOrNull { it.id == clientId }?.nom.orEmpty(),
                 zones = zones,
                 cochees = cochees intersect dues,
+                chargee = planLu,
             )
         }
     }.stateIn(
@@ -566,6 +582,11 @@ data class TourneeSite(
     val clientNom: String,
     val zones: List<ZoneEcheances>,
     val cochees: Set<Pair<String, String>>,
+    /**
+     * Faux tant que le plan n'a rien émis : une liste vide n'est alors pas « rien
+     * de dû » mais « pas encore lu », et l'écran ne doit pas conclure.
+     */
+    val chargee: Boolean = true,
 ) {
     val echeances: List<EcheanceMaintenance> get() = zones.flatMap { it.echeances }
 
